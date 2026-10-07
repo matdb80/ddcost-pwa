@@ -1,73 +1,67 @@
-# React + TypeScript + Vite
+# DDCost PWA v2.0
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Versione web di DDCost (Preventivatore Speciali) con database centralizzato MySQL.
 
-Currently, two official plugins are available:
+## Caratteristiche
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Autenticazione OAuth 2.0** — login sicuro con Kimi
+- **Database MySQL** — dati sincronizzati su cloud, niente più conflitti OneDrive
+- **Responsive** — funziona su PC, tablet e smartphone
+- **Aggiornamenti automatici** — niente più installazione manuale
 
-## React Compiler
+## Stack tecnico
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Frontend: React 19 + TypeScript + Tailwind CSS + shadcn/ui
+- Backend: Hono + tRPC + Drizzle ORM
+- Database: MySQL
+- Auth: OAuth 2.0 (Kimi)
 
-## Expanding the ESLint configuration
+## Schermate disponibili
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+| Route | Descrizione |
+|---|---|
+| `/` | Home / Dashboard |
+| `/cicli` | Cicli Standard e prezzi minimi |
+| `/bandelle-t` | Bandelle a T |
+| `/bandelle-veneta` | Bandelle per scuri alla veneta |
+| `/preventivi` | Preventivi Unatantum |
+| `/offerte` | Offerte Commerciali |
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Migrazione dati da DDCost desktop
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+Per importare i dati storici dai database SQLite alla versione PWA:
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npx tsx scripts/import-sqlite.ts <percorso_cartella_DDCost>
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Esempio:
+```bash
+npx tsx scripts/import-sqlite.ts "C:/Users/Mario/Documents/DDCost"
 ```
+
+Il percorso deve contenere i file:
+- `preventivi_unatantum.sqlite`
+- `costi_standard.sqlite`
+- `simulazioni_cicli.sqlite`
+- `offerte_commerciali.sqlite`
+
+## Sviluppo
+
+```bash
+npm install
+npm run db:push    # sincronizza schema DB
+npm run dev        # avvia server sviluppo
+```
+
+## Build produzione
+
+```bash
+npm run build
+npm start
+```
+
+## Note
+
+- Le immagini per le Bandelle a T vanno copiate in `public/images/`
+- I file Excel per le Bandelle Veneta vanno messi in `data/` (gestione futura)
