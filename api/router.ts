@@ -1,14 +1,17 @@
 import { authRouter } from "./auth-router";
+import { cycleRouter } from "./cycle-router";
+import { quoteRouter } from "./quote-router";
+import { simulationRouter } from "./simulation-router";
+import { offerRouter } from "./offer-router";
 import { createRouter, publicQuery } from "./middleware";
 
 export const appRouter = createRouter({
   ping: publicQuery.query(() => ({ ok: true, ts: Date.now() })),
   auth: authRouter,
-
-  // TODO: add feature routers here, e.g.
-  // todo: createRouter({
-  //   list: publicQuery.query(() => findTodos()),
-  // }),
+  cycle: cycleRouter,
+  quote: quoteRouter,
+  simulation: simulationRouter,
+  offer: offerRouter,
 });
 
 export type AppRouter = typeof appRouter;
