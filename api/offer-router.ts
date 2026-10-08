@@ -12,9 +12,8 @@ export const offerRouter = createRouter({
         limit: z.number().min(1).max(500).default(100),
       })
     )
-    .query(async ({ ctx, input }) => {
+    .query(async ({ input }) => {
       const db = getDb();
-      const userId = ctx.user.id;
       const search = input.search?.trim();
 
       if (search) {
@@ -23,10 +22,7 @@ export const offerRouter = createRouter({
           .select()
           .from(commercialOffers)
           .where(
-            and(
-              eq(commercialOffers.userId, userId),
-              sql`${commercialOffers.name} LIKE ${pattern} OR ${commercialOffers.client} LIKE ${pattern} OR ${commercialOffers.reference} LIKE ${pattern}`
-            )
+            sql`${commercialOffers.name} LIKE ${pattern} OR ${commercialOffers.client} LIKE ${pattern} OR ${commercialOffers.reference} LIKE ${pattern}`
           )
           .orderBy(desc(commercialOffers.createdAt))
           .limit(input.limit);
@@ -35,24 +31,18 @@ export const offerRouter = createRouter({
       return db
         .select()
         .from(commercialOffers)
-        .where(eq(commercialOffers.userId, userId))
         .orderBy(desc(commercialOffers.createdAt))
         .limit(input.limit);
     }),
 
   get: authedQuery
     .input(z.object({ id: z.number() }))
-    .query(async ({ ctx, input }) => {
+    .query(async ({ input }) => {
       const db = getDb();
       const rows = await db
         .select()
         .from(commercialOffers)
-        .where(
-          and(
-            eq(commercialOffers.id, input.id),
-            eq(commercialOffers.userId, ctx.user.id)
-          )
-        )
+        .where(eq(commercialOffers.id, input.id))
         .limit(1);
       return rows[0] ?? null;
     }),

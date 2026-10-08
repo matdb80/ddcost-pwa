@@ -12,9 +12,8 @@ export const simulationRouter = createRouter({
         limit: z.number().min(1).max(500).default(100),
       })
     )
-    .query(async ({ ctx, input }) => {
+    .query(async ({ input }) => {
       const db = getDb();
-      const userId = ctx.user.id;
       const search = input.search?.trim();
 
       if (search) {
@@ -23,10 +22,7 @@ export const simulationRouter = createRouter({
           .select()
           .from(cycleSimulations)
           .where(
-            and(
-              eq(cycleSimulations.userId, userId),
-              sql`${cycleSimulations.name} LIKE ${pattern} OR ${cycleSimulations.code} LIKE ${pattern} OR ${cycleSimulations.description} LIKE ${pattern} OR ${cycleSimulations.client} LIKE ${pattern}`
-            )
+            sql`${cycleSimulations.name} LIKE ${pattern} OR ${cycleSimulations.code} LIKE ${pattern} OR ${cycleSimulations.description} LIKE ${pattern} OR ${cycleSimulations.client} LIKE ${pattern}`
           )
           .orderBy(desc(cycleSimulations.createdAt))
           .limit(input.limit);
@@ -35,24 +31,18 @@ export const simulationRouter = createRouter({
       return db
         .select()
         .from(cycleSimulations)
-        .where(eq(cycleSimulations.userId, userId))
         .orderBy(desc(cycleSimulations.createdAt))
         .limit(input.limit);
     }),
 
   get: authedQuery
     .input(z.object({ id: z.number() }))
-    .query(async ({ ctx, input }) => {
+    .query(async ({ input }) => {
       const db = getDb();
       const rows = await db
         .select()
         .from(cycleSimulations)
-        .where(
-          and(
-            eq(cycleSimulations.id, input.id),
-            eq(cycleSimulations.userId, ctx.user.id)
-          )
-        )
+        .where(eq(cycleSimulations.id, input.id))
         .limit(1);
       return rows[0] ?? null;
     }),
