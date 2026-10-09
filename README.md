@@ -27,69 +27,95 @@ Versione web di DDCost (Preventivatore Speciali) con database centralizzato MySQ
 | `/preventivi` | Preventivi Unatantum |
 | `/offerte` | Offerte Commerciali |
 
-## Pubblicazione online (Deploy)
+---
 
-### Opzione consigliata: Railway.app
+## Pubblicazione online — Fly.io (consigliato)
 
-Per un'app fullstack con backend Node.js + MySQL, **Railway** e' la scelta piu' semplice.
+**Perche' Fly.io:**
+- Piano gratuito reale (3 VM sempre attive, nessun "sleep")
+- Zero cold start (il server e' sempre acceso)
+- Node.js nativo, nessuna modifica al codice
 
-#### Passo 1 — Push su GitHub
+### Passo 1 — Push su GitHub
 
 ```bash
-# 1. Crea un nuovo repository vuoto su GitHub (senza README, .gitignore o licenza)
-#    Esempio: https://github.com/TUOUSERNAME/ddcost-pwa
+# 1. Crea un repository vuoto su GitHub (senza README, .gitignore o licenza)
+#    https://github.com/new → Nome: ddcost-pwa
 
-# 2. Aggiungi il remote e pusha
+# 2. Nella cartella del progetto
 git remote add origin https://github.com/TUOUSERNAME/ddcost-pwa.git
 git branch -M main
 git push -u origin main
 ```
 
-#### Passo 2 — Deploy su Railway
+### Passo 2 — Installa Fly CLI
 
-1. Vai su [railway.app](https://railway.app) e registrati con GitHub
-2. Clicca **"New Project"** → **"Deploy from GitHub repo"**
-3. Seleziona il repository `ddcost-pwa`
-4. Railway rileva automaticamente il `package.json` e configura:
-   - **Build**: `npm run build`
-   - **Start**: `npm start`
-5. Vai nella sezione **Variables** e aggiungi tutte le variabili dal tuo file `.env`:
-   - `DATABASE_URL`
-   - `APP_ID`
-   - `APP_SECRET`
-   - `VITE_KIMI_AUTH_URL`
-   - `VITE_APP_ID`
-   - `KIMI_AUTH_URL`
-   - `KIMI_OPEN_URL`
-   - `OWNER_UNION_ID`
-6. Clicca **Deploy**
-7. Una volta deployato, copia l'URL generato (es. `https://ddcost-production.up.railway.app`)
+```bash
+# macOS/Linux
+curl -L https://fly.io/install.sh | sh
 
-#### Passo 3 — Aggiorna OAuth
+# Windows (PowerShell)
+iwr https://fly.io/install.ps1 -useb | iex
+```
 
-1. Vai nel portale Kimi dove hai registrato l'applicazione
-2. Aggiorna la **Callback URL**:
-   ```
-   https://TUO-URL-RAILWAY.app/api/oauth/callback
-   ```
-3. Aggiorna anche `VITE_REDIRECT_URI` e `VITE_KIMI_AUTH_URL` nelle variabili Railway se necessario
+### Passo 3 — Registrati e crea l'app
 
----
+```bash
+# Login (apre il browser)
+fly auth login
 
-### Perche' non Vercel?
+# Crea l'app (scegli la regione 'Frankfurt, Germany (fra)' per l'Italia)
+fly apps create ddcost-pwa
+```
 
-Vercel e' ottimo per **frontend statici** (React, Next.js, ecc.). Il tuo DDCost pero' e' un'app **fullstack** con:
-- Server backend Node.js (Hono)
-- API tRPC
-- Database MySQL con connessioni persistenti
+### Passo 4 — Imposta le variabili d'ambiente
 
-Su Vercel questo richiede di riscrivere il backend come "Serverless Functions", con molte modifiche al codice. Railway invece esegue direttamente il tuo server Node.js senza modifiche.
+Copia TUTTE le variabili dal tuo file `.env`:
+
+```bash
+fly secrets set DATABASE_URL="mysql://..."
+fly secrets set APP_ID="il-tuo-app-id"
+fly secrets set APP_SECRET="il-tuo-app-secret"
+fly secrets set VITE_KIMI_AUTH_URL="https://..."
+fly secrets set VITE_APP_ID="il-tuo-app-id"
+fly secrets set KIMI_AUTH_URL="https://..."
+fly secrets set KIMI_OPEN_URL="https://..."
+fly secrets set OWNER_UNION_ID="il-tuo-union-id"
+```
+
+### Passo 5 — Deploy
+
+```bash
+fly deploy
+```
+
+Fly.io builda l'immagine Docker e deploya. Al termine ti mostra l'URL:
+```
+https://ddcost-pwa.fly.dev
+```
+
+### Passo 6 — Aggiorna OAuth
+
+Vai nel portale Kimi e aggiorna la **Callback URL**:
+```
+https://ddcost-pwa.fly.dev/api/oauth/callback
+```
+
+### Aggiornamenti futuri
+
+Ogni volta che modifichi il codice:
+```bash
+git add .
+git commit -m "descrizione cambiamento"
+git push origin main
+fly deploy
+```
 
 ---
 
 ## Migrazione dati da DDCost desktop
 
-Per importare i dati storici dai database SQLite alla versione PWA:
+Per importare i dati storici dai database SQLite:
 
 ```bash
 # Unisci database da 2 PC (se necessario)
@@ -104,11 +130,7 @@ Esempio:
 npx tsx scripts/import-merged-sqlite.ts /mnt/agents/output/merge_unified
 ```
 
-Il percorso deve contenere i file:
-- `preventivi_unatantum.sqlite`
-- `costi_standard.sqlite`
-- `simulazioni_cicli.sqlite`
-- `offerte_commerciali.sqlite`
+---
 
 ## Sviluppo locale
 
@@ -127,7 +149,7 @@ npm start          # avvia server produzione
 
 ## Variabili d'ambiente
 
-Copia `.env.example` in `.env` e compila tutti i valori. **Non committare mai il file `.env`** (e' gia' in `.gitignore`).
+Copia `.env.example` in `.env` e compila tutti i valori. **Non committare mai il file `.env`**.
 
 ## Note
 
