@@ -16,20 +16,25 @@ export function useAuth(options?: UseAuthOptions) {
 
   const utils = trpc.useUtils();
 
-  const {
-    data: user,
-    isLoading,
-    error,
-    refetch,
-  } = trpc.auth.me.useQuery(undefined, {
-    staleTime: 1000 * 60 * 5,
-    retry: false,
-  });
-
-  const logoutMutation = trpc.auth.logout.useMutation({
+    const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: async () => {
       await utils.invalidate();
       navigate(redirectPath);
+    },
+    onError: async () => {
+      // Se l'API fallisce (token scaduto), pulisce comunque e reindirizza
+      window.location.href = redirectPath;
+    },
+  });
+
+  const logout = useCallback(() => {
+    logoutMutation.mutate(undefined, {
+      onSettled: () => {
+        // Sempre reindirizza dopo il logout, anche se l'API fallisce
+        window.location.href = redirectPath;
+      },
+    });
+  }, [logoutMutation, redirectPath]);
     },
   });
 
