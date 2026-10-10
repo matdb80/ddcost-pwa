@@ -95,7 +95,7 @@ export const cycleRouter = createRouter({
         dataJson: z.string().optional(),
       })
     )
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ input }) => {
       const db = getDb();
       const { id, ...data } = input;
       await db
