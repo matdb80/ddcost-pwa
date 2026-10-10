@@ -15,6 +15,7 @@ const TABLES = [
   "quotes",
   "cycle_simulations",
   "commercial_offers",
+  "legacy_source_archives",
 ] as const;
 
 type BackupTable = (typeof TABLES)[number];
@@ -53,12 +54,21 @@ export async function downloadBackup(c: Context): Promise<Response> {
     await connection.query("START TRANSACTION");
     transactionStarted = true;
 
+    // Before historical import there are five tables. Afterwards the archived
+    // original SQLite ZIP is stored as a sixth table.
+    const [archiveTable] = await connection.query<RowDataPacket[]>(
+      "SELECT table_name FROM information_schema.tables " +
+      "WHERE table_schema = DATABASE() AND table_name = 'legacy_source_archives'",
+    );
+    const includedTables = archiveTable.length ? TABLES :
+      TABLES.filter((t) => t !== "legacy_source_archives");
+
     const records = {} as Record<BackupTable, RowDataPacket[]>;
     const tableDefinitions = {} as Record<BackupTable, string>;
     const rowCounts = {} as Record<BackupTable, number>;
     const tableChecksums = {} as Record<BackupTable, string>;
 
-    for (const table of TABLES) {
+    for (const table of includedTables) {
       const [definitionRows] = await connection.query<RowDataPacket[]>(
         "SHOW CREATE TABLE " + table,
       );
@@ -86,7 +96,7 @@ export async function downloadBackup(c: Context): Promise<Response> {
       formatVersion: 1,
       exportedAtUtc: new Date().toISOString(),
       database: "ddcost",
-      tables: [...TABLES],
+      tables: [...includedTables],
       rowCounts,
       tableChecksums,
       tableDefinitions,

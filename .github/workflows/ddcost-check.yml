@@ -1,0 +1,24 @@
+name: DDCost build check
+on:
+  push:
+    branches:
+      - feature/legacy-migration-248
+  pull_request:
+    branches:
+      - main
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: development
+      NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: sed -i 's#https://npm.mirrors.msh.team/#https://registry.npmjs.org/#g' package-lock.json
+      - run: npm ci --include=dev --include=optional --no-audit --no-fund
+      - run: ./node_modules/.bin/tsc -b
+      - run: npm run build

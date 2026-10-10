@@ -30,6 +30,9 @@ try {
     throw new Error("Overall SHA-256 checksum mismatch");
   }
 
+  if (payload.tables?.includes("legacy_source_archives")) {
+    requiredTables.push("legacy_source_archives");
+  }
   for (const table of requiredTables) {
     const rows = payload.records?.[table];
     if (!Array.isArray(rows)) throw new Error("Missing table: " + table);

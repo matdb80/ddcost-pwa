@@ -9,6 +9,7 @@ import {
   Briefcase,
   LogOut,
   Download,
+  DatabaseZap,
   User,
 } from "lucide-react";
 
@@ -19,6 +20,7 @@ const navItems = [
   { path: "/bandelle-veneta", label: "Bandelle Veneta", icon: Scissors },
   { path: "/preventivi", label: "Preventivi", icon: FileText },
   { path: "/offerte", label: "Offerte Commerciali", icon: Briefcase },
+  { path: "/importa-storico", label: "Importa storico", icon: DatabaseZap },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {

@@ -41,8 +41,8 @@ export const cycles = mysqlTable("cycles", {
   description: varchar("description", { length: 500 }),
   client: varchar("client", { length: 255 }),
   lot: varchar("lot", { length: 100 }),
-  standardCost: decimal("standardCost", { precision: 12, scale: 3 }),
-  minimumPrice: decimal("minimumPrice", { precision: 12, scale: 2 }),
+  standardCost: decimal("standardCost", { precision: 30, scale: 18 }),
+  minimumPrice: decimal("minimumPrice", { precision: 30, scale: 18 }),
   dataJson: text("dataJson"),
 });
 
@@ -62,8 +62,8 @@ export const cycleSimulations = mysqlTable("cycle_simulations", {
   client: varchar("client", { length: 255 }),
   sourceRootId: bigint("sourceRootId", { mode: "number", unsigned: true }),
   sourceRev: bigint("sourceRev", { mode: "number", unsigned: true }),
-  standardCost: decimal("standardCost", { precision: 12, scale: 3 }),
-  minimumPrice: decimal("minimumPrice", { precision: 12, scale: 2 }),
+  standardCost: decimal("standardCost", { precision: 30, scale: 18 }),
+  minimumPrice: decimal("minimumPrice", { precision: 30, scale: 18 }),
   dataJson: text("dataJson"),
 });
 
@@ -82,9 +82,9 @@ export const quotes = mysqlTable("quotes", {
   userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
   client: varchar("client", { length: 255 }),
   reference: varchar("reference", { length: 255 }),
-  targetTotal: decimal("targetTotal", { precision: 12, scale: 2 }),
-  totalBeforeRebalance: decimal("totalBeforeRebalance", { precision: 12, scale: 2 }),
-  totalFinal: decimal("totalFinal", { precision: 12, scale: 2 }),
+  targetTotal: decimal("targetTotal", { precision: 30, scale: 18 }),
+  totalBeforeRebalance: decimal("totalBeforeRebalance", { precision: 30, scale: 18 }),
+  totalFinal: decimal("totalFinal", { precision: 30, scale: 18 }),
   numProducts: bigint("numProducts", { mode: "number", unsigned: true }).default(0),
   generalNotes: text("generalNotes"),
   clientNotes: text("clientNotes"),
