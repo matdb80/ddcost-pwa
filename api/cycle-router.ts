@@ -101,7 +101,7 @@ export const cycleRouter = createRouter({
       await db
         .update(cycles)
         .set(data)
-        .where(and(eq(cycles.id, id), eq(cycles.userId, ctx.user.id)));
+        .where(eq(cycles.id, id));
       return { ok: true };
     }),
 
