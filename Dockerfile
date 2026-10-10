@@ -10,9 +10,14 @@ RUN apt-get update \
 
 COPY package.json package-lock.json ./
 
+# Il lockfile contiene URL npm.mirrors.msh.team; Render potrebbe non raggiungerli.
+# Convertiamo soltanto gli URL dei pacchetti nel container, senza modificare Git.
+RUN sed -i 's#https://npm.mirrors.msh.team/#https://registry.npmjs.org/#g' package-lock.json
+ENV NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
+
 # Impedisce a NODE_ENV/NPM_CONFIG_OMIT di eliminare gli strumenti di build.
 ENV NODE_ENV=development
-RUN npm ci --include=dev --include=optional --no-audit --no-fund \
+RUN npm ci --include=dev --include=optional --no-audit --no-fund --loglevel=verbose \
     && test -x node_modules/.bin/vite \
     && test -x node_modules/.bin/esbuild \
     && node_modules/.bin/vite --version
