@@ -45,8 +45,9 @@ const jwks = jose.createRemoteJWKSet(new URL(getJwksUrl()));
 // PKCE helpers
 // ─────────────────────────────────────────────────────────────
 
-function base64URLEncode(buffer: ArrayBuffer): string {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+function base64URLEncode(buffer: ArrayBuffer | Uint8Array): string {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  return btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
