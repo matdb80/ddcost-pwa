@@ -10,6 +10,7 @@ import {
   createMicrosoftCallbackHandler,
 } from "./ms-auth";
 import { runDbDiagnostics } from "./db-check";
+import { downloadBackup } from "./backup";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
@@ -18,6 +19,9 @@ app.use(bodyLimit({ maxSize: 50 * 1024 * 1024 }));
 // Microsoft Entra ID OAuth routes
 app.get("/api/auth/microsoft/login", createMicrosoftLoginHandler());
 app.get("/api/auth/microsoft/callback", createMicrosoftCallbackHandler());
+
+// Authenticated, read-only download of a complete DDCost logical backup.
+app.get("/api/backup/download", downloadBackup);
 
 // tRPC API
 app.use("/api/trpc/*", async (c) => {
