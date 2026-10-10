@@ -8,6 +8,7 @@ import {
   FileText,
   Briefcase,
   LogOut,
+  Download,
   User,
 } from "lucide-react";
 
@@ -52,6 +53,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+        <div className="p-4 border-t border-slate-700">
+          <a
+            href="/api/backup/download"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white"
+            title="Scarica una copia completa dei dati DDCost"
+          >
+            <Download className="w-4 h-4" />
+            Esporta backup
+          </a>
+        </div>
         <div className="p-4 border-t border-slate-700">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center">
