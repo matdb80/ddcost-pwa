@@ -235,21 +235,48 @@ async function insertBatches(
   }
 }
 
-async function verifyInserted(db: Connection, data: Payload): Promise<void> {
+function decimalEqual(actual: unknown, expected: unknown): boolean {
+  if (actual == null || expected == null) return actual == null && expected == null;
+  const clean = (value: unknown): string => {
+    const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(String(value));
+    if (!match) throw new Error("Unexpected monetary data format");
+    const integer = match[2].replace(/^0+(?=\d)/, "");
+    const fraction = (match[3] ?? "").replace(/0+$/, "");
+    if (integer === "0" && !fraction) return "0";
+    return match[1] + integer + (fraction ? "." + fraction : "");
+  };
+  return clean(actual) === clean(expected);
+}
+
+async function verifyInserted(
+  db: Connection, data: Payload, userId: number,
+): Promise<void> {
   const counts = await getCounts(db);
   for (const table of Object.keys(TABLE_COUNTS) as LegacyTable[]) {
     if (counts[table] !== TABLE_COUNTS[table]) {
       throw new Error("Imported row count mismatch: " + table);
     }
+    // Compare EVERY destination column for every row, not just JSON/counts.
     const [records] = await db.query<RowDataPacket[]>(
-      "SELECT id, dataJson FROM \`" + table + "\` ORDER BY id",
+      "SELECT * FROM \`" + table + "\` ORDER BY id",
     );
     const expectedRows = data.rows[table];
+    const columns = EXPECTED_COLUMNS[table];
+    const decimals = DECIMAL_COLUMNS[table] ?? [];
     for (let i = 0; i < records.length; i++) {
-      const expected = expectedRows[i];
-      if (String(records[i].id) !== String(expected.id) ||
-          records[i].dataJson !== expected.data_json) {
-        throw new Error("Historical ID or JSON mismatch: " + table);
+      const values = convert(table, expectedRows[i], userId);
+      for (let j = 0; j < columns.length; j++) {
+        const col = columns[j];
+        const actual = records[i][col] as unknown;
+        const expected = values[j];
+        const matches = decimals.includes(col)
+          ? decimalEqual(actual, expected)
+          : actual == null || expected == null
+            ? actual == null && expected == null
+            : String(actual) === String(expected);
+        if (!matches) {
+          throw new Error("Imported row mismatch in " + table + "." + col);
+        }
       }
     }
   }
@@ -364,7 +391,7 @@ async function migration(c: Context, commit: boolean): Promise<Response> {
       ["DDCost_Archivi_Originali_e_Audit.zip",
        EXPECTED_ARCHIVE_SHA256, data.originalArchiveBase64],
     );
-    await verifyInserted(db, data);
+    await verifyInserted(db, data, Number(user.id));
     await db.query("COMMIT");
     inTransaction = false;
 
