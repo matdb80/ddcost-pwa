@@ -11,7 +11,7 @@ export async function signSessionToken(
   return new jose.SignJWT(payload)
     .setProtectedHeader({ alg: JWT_ALG })
     .setIssuedAt()
-    .setExpirationTime("1 year")
+    .setExpirationTime("8h")
     .sign(secret);
 }
 

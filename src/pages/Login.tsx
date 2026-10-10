@@ -1,19 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Paths } from "@contracts/constants";
 
-function getOAuthUrl() {
-  const kimiAuthUrl = import.meta.env.VITE_KIMI_AUTH_URL;
-  const appID = import.meta.env.VITE_APP_ID;
-  const redirectUri = `${window.location.origin}/api/oauth/callback`;
-  const state = btoa(redirectUri);
-
-  const url = new URL(`${kimiAuthUrl}/api/oauth/authorize`);
-  url.searchParams.set("client_id", appID);
-  url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", "profile");
-  url.searchParams.set("state", state);
-
+function getMicrosoftLoginUrl(): string {
+  const redirectTo = new URLSearchParams(window.location.search).get("redirect_to") || "/";
+  const url = new URL(Paths.microsoftLogin, window.location.origin);
+  url.searchParams.set("redirect_to", redirectTo);
   return url.toString();
 }
 
@@ -22,17 +14,20 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle>Welcome</CardTitle>
+          <CardTitle>DDCost — Accesso</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground text-center">
+            Accesso riservato al personale autorizzato DIDIEFFE GROUP SRL
+          </p>
           <Button
             className="w-full"
             size="lg"
             onClick={() => {
-              window.location.href = getOAuthUrl();
+              window.location.href = getMicrosoftLoginUrl();
             }}
           >
-            Sign in with Kimi
+            Accedi con Microsoft 365
           </Button>
         </CardContent>
       </Card>

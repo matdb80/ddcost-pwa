@@ -31,24 +31,16 @@ export function useAuth(options?: UseAuthOptions) {
       await utils.invalidate();
       navigate(redirectPath);
     },
-    onError: async () => {
-      window.location.href = redirectPath;
-    },
   });
 
-  const logout = useCallback(() => {
-    logoutMutation.mutate(undefined, {
-      onSettled: () => {
-        window.location.href = redirectPath;
-      },
-    });
-  }, [logoutMutation, redirectPath]);
+  const logout = useCallback(() => logoutMutation.mutate(), [logoutMutation]);
 
   useEffect(() => {
     if (redirectOnUnauthenticated && !isLoading && !user) {
-      const currentPath = window.location.pathname;
+      const currentPath = window.location.pathname + window.location.search;
       if (currentPath !== redirectPath) {
-        navigate(redirectPath);
+        const loginWithRedirect = `${redirectPath}?redirect_to=${encodeURIComponent(currentPath)}`;
+        navigate(loginWithRedirect);
       }
     }
   }, [redirectOnUnauthenticated, isLoading, user, navigate, redirectPath]);

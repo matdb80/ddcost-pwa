@@ -71,12 +71,13 @@ export default function AuthLayout({
           </div>
           <Button
             onClick={() => {
-              window.location.href = LOGIN_PATH;
+              const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
+              window.location.href = `${LOGIN_PATH}?redirect_to=${returnUrl}`;
             }}
             size="lg"
             className="w-full shadow-lg hover:shadow-xl transition-all"
           >
-            Sign in
+            Accedi
           </Button>
         </div>
       </div>
