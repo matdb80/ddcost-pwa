@@ -1,6 +1,6 @@
 export const Session = {
-  cookieName: "kimi_sid",
-  maxAgeMs: 365 * 24 * 60 * 60 * 1000,
+  cookieName: "ddcost_sid",
+  maxAgeMs: 8 * 60 * 60 * 1000, // 8 hours
 } as const;
 
 export const ErrorMessages = {
@@ -10,5 +10,6 @@ export const ErrorMessages = {
 
 export const Paths = {
   login: "/login",
-  oauthCallback: "/api/oauth/callback",
+  microsoftLogin: "/api/auth/microsoft/login",
+  microsoftCallback: "/api/auth/microsoft/callback",
 } as const;
