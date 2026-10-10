@@ -11,6 +11,7 @@ import {
 } from "./ms-auth";
 import { runDbDiagnostics } from "./db-check";
 import { downloadBackup } from "./backup";
+import { previewLegacyImport, commitLegacyImport } from "./legacy-import";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
@@ -22,6 +23,10 @@ app.get("/api/auth/microsoft/callback", createMicrosoftCallbackHandler());
 
 // Authenticated, read-only download of a complete DDCost logical backup.
 app.get("/api/backup/download", downloadBackup);
+
+// Admin-only historical SQLite migration (upload SHA-256 allowlisted).
+app.post("/api/legacy-import/preview", previewLegacyImport);
+app.post("/api/legacy-import/commit", commitLegacyImport);
 
 // tRPC API
 app.use("/api/trpc/*", async (c) => {
