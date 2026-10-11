@@ -91,9 +91,9 @@ export default function FeedbackAdminPage() {
   const listQuery = trpc.feedback.listAdmin.useQuery({
     page,
     pageSize,
-    status: statusFilter || undefined,
-    type: typeFilter || undefined,
-    severity: severityFilter || undefined,
+    status: (statusFilter || undefined) as "nuova" | "da_pianificare" | "in_lavorazione" | "risolta_collaudo" | "rilasciata" | "duplicata" | "non_riproducibile" | undefined,
+    type: (typeFilter || undefined) as "bug" | "miglioramento" | "nuova_funzione" | undefined,
+    severity: (severityFilter || undefined) as "normale" | "bloccante" | undefined,
     search: search || undefined,
   });
   const detailQuery = trpc.feedback.getById.useQuery(

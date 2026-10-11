@@ -40,7 +40,7 @@ function getBuildVersion(): string {
   return "dev-build";
 }
 
-async function compressImage(file: File, maxSizeKB: number = 300): Promise<{ mimeType: string; dataBase64: string; fileName: string }> {
+async function compressImage(file: File, maxSizeKB: number = 300): Promise<{ mimeType: "image/webp" | "image/jpeg" | "image/png"; dataBase64: string; fileName: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -108,7 +108,7 @@ export default function FeedbackModal({ open, onOpenChange, cycleId, cycleRev }:
   const [severity, setSeverity] = useState<"normale" | "bloccante">("normale");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [screenshot, setScreenshot] = useState<{ mimeType: string; dataBase64: string; fileName: string } | null>(null);
+  const [screenshot, setScreenshot] = useState<{ mimeType: "image/webp" | "image/jpeg" | "image/png"; dataBase64: string; fileName: string } | null>(null);
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<{ success: boolean; ticketNumber?: string; message?: string } | null>(null);
