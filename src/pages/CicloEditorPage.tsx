@@ -55,7 +55,6 @@ export default function CicloEditorPage() {
   const [originalDbDataJson, setOriginalDbDataJson] = useState<string | null>(null);
   const [hasRecalculated, setHasRecalculated] = useState(false);
   const [lastRecalculatedSignature, setLastRecalculatedSignature] = useState<string | null>(null);
-  const [hasEconomicChanges, setHasEconomicChanges] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [rigaEdit, setRigaEdit] = useState<RigaCiclo | null>(null);
   const [rigaIndex, setRigaIndex] = useState<number | null>(null);
@@ -106,15 +105,6 @@ export default function CicloEditorPage() {
     const current = JSON.stringify(serializeCycleDataJson(model));
     setHasChanges(current !== originalJson && originalJson !== "");
   }, [model, originalJson, isNew]);
-
-  // Compare normalized inputs, including customized simulation lots.
-  useEffect(() => {
-    if (isNew || !getCycle.data) {
-      setHasEconomicChanges(false);
-      return;
-    }
-    setHasEconomicChanges(economicSignature(model) !== economicSignature(parseCycleRow(getCycle.data)));
-  }, [model, getCycle.data, isNew]);
 
   const handleChange = <K extends keyof typeof model>(
     field: K,
