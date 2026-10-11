@@ -10,6 +10,7 @@ import BandelleVenetaPage from "./pages/BandelleVenetaPage"
 import PreventiviPage from "./pages/PreventiviPage"
 import OffertePage from "./pages/OffertePage"
 import ImportaStorico from "./pages/ImportaStorico"
+import FeedbackAdminPage from "./pages/FeedbackAdminPage"
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth({ redirectOnUnauthenticated: false });
@@ -43,6 +44,7 @@ export default function App() {
       <Route path="/preventivi" element={<ProtectedRoute><PreventiviPage /></ProtectedRoute>} />
       <Route path="/offerte" element={<ProtectedRoute><OffertePage /></ProtectedRoute>} />
       <Route path="/importa-storico" element={<ProtectedRoute><ImportaStorico /></ProtectedRoute>} />
+      <Route path="/segnalazioni" element={<ProtectedRoute><FeedbackAdminPage /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )
