@@ -20,6 +20,7 @@ export async function runDbDiagnostics() {
   try {
     connection = await mysql.createConnection({
       uri: dbUrl,
+      ssl: { rejectUnauthorized: true },
       connectTimeout: 8000,
     });
 
