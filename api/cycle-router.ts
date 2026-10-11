@@ -4,6 +4,75 @@ import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { cycles } from "@db/schema";
 
+/**
+ * No-op guard at the API boundary. Compare the selected original revision
+ * with the proposed new business values, ignoring revision metadata and
+ * formatting-only differences (50 vs "50.0", DECIMAL trailing zeroes).
+ */
+type CycleContent = {
+  code?: string | null;
+  description?: string | null;
+  client?: string | null;
+  lot?: string | null;
+  standardCost?: string | null;
+  minimumPrice?: string | null;
+  dataJson?: string | null;
+};
+
+function canonicalNumber(raw: string | null | undefined): string {
+  const str = (raw ?? "").trim();
+  if (!/^-?\d+(?:\.\d+)?$/.test(str)) return str;
+  const parts = str.split(".");
+  const integer = parts[0].replace(/^(-?)0+(?=\d)/, "$1");
+  const fraction = (parts[1] ?? "").replace(/0+$/, "");
+  const whole = integer === "-0" ? "0" : integer;
+  return fraction ? whole + "." + fraction : whole;
+}
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value !== null && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(obj).sort().map(k => [k, canonicalJson(obj[k])])
+    );
+  }
+  return value;
+}
+
+function businessJson(row: CycleContent): string {
+  if (!row.dataJson) return "";
+  try {
+    const parsed: unknown = JSON.parse(row.dataJson);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return row.dataJson;
+    }
+    const value = { ...(parsed as Record<string, unknown>) };
+    // Revision metadata is added by the server and is not a business change.
+    delete value.rev;
+    delete value.rootId;
+    delete value.root_id;
+    // The columns, not legacy JSON, are authoritative for anagrafica.
+    value.codice = row.code ?? "";
+    value.descrizione = row.description ?? "";
+    value.cliente = row.client ?? "";
+    value.lotto = canonicalNumber(row.lot);
+    return JSON.stringify(canonicalJson(value));
+  } catch {
+    return row.dataJson;
+  }
+}
+
+function sameCycleContent(a: CycleContent, b: CycleContent): boolean {
+  return (a.code ?? "") === (b.code ?? "") &&
+    (a.description ?? "") === (b.description ?? "") &&
+    (a.client ?? "") === (b.client ?? "") &&
+    canonicalNumber(a.lot) === canonicalNumber(b.lot) &&
+    canonicalNumber(a.standardCost) === canonicalNumber(b.standardCost) &&
+    canonicalNumber(a.minimumPrice) === canonicalNumber(b.minimumPrice) &&
+    businessJson(a) === businessJson(b);
+}
+
 export const cycleRouter = createRouter({
   list: authedQuery
     .input(
@@ -146,6 +215,7 @@ export const cycleRouter = createRouter({
   createRevision: authedQuery
     .input(
       z.object({
+        sourceId: z.number().int().positive(),
         rootId: z.number(),
         code: z.string().optional(),
         description: z.string().optional(),
@@ -158,6 +228,29 @@ export const cycleRouter = createRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
+
+      // Refuse missing, deleted or unowned sources; never overwrite history.
+      const sourceRows = await db.select().from(cycles).where(and(
+        eq(cycles.id, input.sourceId),
+        eq(cycles.userId, ctx.user.id),
+        eq(cycles.deleted, 0)
+      )).limit(1);
+      const source = sourceRows[0];
+      if (!source || (source.rootId ?? source.id) !== input.rootId) {
+        throw new Error("Ciclo di origine non disponibile.");
+      }
+      const proposed: CycleContent = {
+        code: input.code ?? source.code,
+        description: input.description ?? source.description,
+        client: input.client ?? source.client,
+        lot: input.lot ?? source.lot,
+        standardCost: input.standardCost ?? source.standardCost,
+        minimumPrice: input.minimumPrice ?? source.minimumPrice,
+        dataJson: input.dataJson ?? source.dataJson,
+      };
+      if (sameCycleContent(source, proposed)) {
+        throw new Error("Nessuna modifica rilevata: revisione non creata.");
+      }
 
       // Find latest revision by rootId
       const rows = await db

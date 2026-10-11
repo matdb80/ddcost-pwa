@@ -106,6 +106,11 @@ export default function CicloEditorPage() {
     setHasChanges(current !== originalJson && originalJson !== "");
   }, [model, originalJson, isNew]);
 
+  // An editor button must never create a revision from an untouched cycle.
+  // Compute synchronously from the loaded baseline, not from delayed state.
+  const isModified = isNew || (originalJson.length > 0 &&
+    JSON.stringify(serializeCycleDataJson(model)) !== originalJson);
+
   const handleChange = <K extends keyof typeof model>(
     field: K,
     value: (typeof model)[K]
@@ -189,13 +194,21 @@ export default function CicloEditorPage() {
         dataJson,
       });
     } else {
-      // Always create a new revision for existing cycles
+      if (!isModified) {
+        alert("Nessuna modifica rilevata: revisione non creata.");
+        return;
+      }
       setSaveDialogOpen(true);
     }
   };
 
   const confirmSaveRevision = () => {
-    if (!numericId) return;
+    if (!numericId || !getCycle.data || createRevision.isPending) return;
+    if (!isModified) {
+      setSaveDialogOpen(false);
+      alert("Nessuna modifica rilevata: revisione non creata.");
+      return;
+    }
 
     // Block save if economic changes exist but user hasn't recalculated
     const economicChangedNow = !!getCycle.data &&
@@ -238,6 +251,7 @@ export default function CicloEditorPage() {
     }
 
     createRevision.mutate({
+      sourceId: numericId,
       rootId: model.rootId ?? numericId,
       code: model.codice,
       description: model.descrizione,
@@ -326,7 +340,9 @@ export default function CicloEditorPage() {
                 </button>
                 <button
                   onClick={handleSave}
-                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
+                  disabled={!isNew && (!isModified || createRevision.isPending)}
+                  title={!isNew && !isModified ? "Nessuna modifica da salvare" : "Salva"}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Save className="h-4 w-4" />
                   Salva
@@ -911,7 +927,8 @@ export default function CicloEditorPage() {
                 </button>
                 <button
                   onClick={confirmSaveRevision}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
+                  disabled={!isModified || createRevision.isPending}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Crea Revisione
                 </button>
