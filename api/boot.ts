@@ -10,6 +10,7 @@ import {
   createMicrosoftCallbackHandler,
 } from "./ms-auth";
 import { runDbDiagnostics } from "./db-check";
+import { migrateFeedbackOnlyOnStaging } from "./staging-feedback-migration";
 import { migrateStagingCycles } from "./staging-cycle-migration";
 import { downloadBackup } from "./backup";
 import { previewLegacyImport, commitLegacyImport } from "./legacy-import";
@@ -43,6 +44,11 @@ app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
 export default app;
 
 if (env.isProduction) {
+  // This flag must never be enabled outside the guarded staging service.
+  if (process.env.DDCOST_STAGING_MIGRATE_FEEDBACK === "1") {
+    await migrateFeedbackOnlyOnStaging();
+  }
+
   if (process.env.DDCOST_STAGING_MIGRATE_SOFT_DELETE === "1") {
     await migrateStagingCycles();
   }
