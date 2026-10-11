@@ -10,6 +10,7 @@ import {
   createMicrosoftCallbackHandler,
 } from "./ms-auth";
 import { runDbDiagnostics } from "./db-check";
+import { migrateStagingCycles } from "./staging-cycle-migration";
 import { downloadBackup } from "./backup";
 import { previewLegacyImport, commitLegacyImport } from "./legacy-import";
 
@@ -42,6 +43,10 @@ app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
 export default app;
 
 if (env.isProduction) {
+  if (process.env.DDCOST_STAGING_MIGRATE_SOFT_DELETE === "1") {
+    await migrateStagingCycles();
+  }
+
   if (process.env.DB_DIAGNOSTICS === "1") {
     try {
       await runDbDiagnostics();
