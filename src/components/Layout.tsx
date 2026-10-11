@@ -11,7 +11,10 @@ import {
   Download,
   DatabaseZap,
   User,
+  ClipboardList,
 } from "lucide-react";
+
+import FloatingFeedbackButton from "@/components/feedback/FloatingFeedbackButton";
 
 const navItems = [
   { path: "/", label: "Home", icon: Home },
@@ -54,6 +57,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+          {user?.role === "admin" && (
+            <Link to="/segnalazioni" className={"flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium " +
+              (location.pathname === "/segnalazioni" ? "bg-emerald-600 text-white" : "text-slate-300 hover:bg-slate-800")}>
+              <ClipboardList className="w-4 h-4"/>Registro Segnalazioni
+            </Link>
+          )}
         </nav>
         <div className="p-4 border-t border-slate-700">
           <a
@@ -101,6 +110,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </header>
         <div className="flex-1 overflow-auto p-6">{children}</div>
       </main>
+      <FloatingFeedbackButton />
     </div>
   );
 }

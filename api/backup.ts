@@ -16,6 +16,9 @@ const TABLES = [
   "cycle_simulations",
   "commercial_offers",
   "legacy_source_archives",
+  "feedback_tickets",
+  "feedback_attachments",
+  "feedback_settings",
 ] as const;
 
 type BackupTable = (typeof TABLES)[number];
@@ -42,6 +45,7 @@ export async function downloadBackup(c: Context): Promise<Response> {
   try {
     connection = await mysql.createConnection({
       uri: env.databaseUrl,
+      ssl: { rejectUnauthorized: true },
       connectTimeout: 10000,
       supportBigNumbers: true,
       bigNumberStrings: true,
@@ -54,14 +58,14 @@ export async function downloadBackup(c: Context): Promise<Response> {
     await connection.query("START TRANSACTION");
     transactionStarted = true;
 
-    // Before historical import there are five tables. Afterwards the archived
-    // original SQLite ZIP is stored as a sixth table.
-    const [archiveTable] = await connection.query<RowDataPacket[]>(
-      "SELECT table_name FROM information_schema.tables " +
-      "WHERE table_schema = DATABASE() AND table_name = 'legacy_source_archives'",
+    // Include only tables present on this instance; the feedback schema is
+    // additive and does not yet exist on older production deployments.
+    const [available] = await connection.query<RowDataPacket[]>(
+      "SELECT table_name AS name FROM information_schema.tables " +
+      "WHERE table_schema = DATABASE()",
     );
-    const includedTables = archiveTable.length ? TABLES :
-      TABLES.filter((t) => t !== "legacy_source_archives");
+    const found = new Set(available.map(row => String(row.name)));
+    const includedTables = TABLES.filter(name => found.has(name));
 
     const records = {} as Record<BackupTable, RowDataPacket[]>;
     const tableDefinitions = {} as Record<BackupTable, string>;

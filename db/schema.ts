@@ -4,6 +4,7 @@ import {
   serial,
   varchar,
   text,
+  mediumtext,
   timestamp,
   bigint,
   decimal,
@@ -117,3 +118,48 @@ export const commercialOffers = mysqlTable("commercial_offers", {
 
 export type CommercialOffer = typeof commercialOffers.$inferSelect;
 export type InsertCommercialOffer = typeof commercialOffers.$inferInsert;
+
+/** Segnalazioni DDCost. Tabelle indipendenti dalle registrazioni economiche. */
+export const feedbackTickets = mysqlTable("feedback_tickets", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull().$onUpdate(() => new Date()),
+  userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+  userName: varchar("userName", { length: 255 }),
+  userEmail: varchar("userEmail", { length: 320 }),
+  ticketNumber: varchar("ticketNumber", { length: 50 }).notNull().unique(),
+  type: mysqlEnum("type", ["bug", "miglioramento", "nuova_funzione"]).notNull(),
+  severity: mysqlEnum("severity", ["normale", "bloccante"]).notNull().default("normale"),
+  status: mysqlEnum("status", [
+    "nuova", "da_pianificare", "in_lavorazione", "risolta_collaudo",
+    "rilasciata", "duplicata", "non_riproducibile",
+  ]).notNull().default("nuova"),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  pageRoute: varchar("pageRoute", { length: 255 }),
+  buildVersion: varchar("buildVersion", { length: 100 }),
+  cycleId: bigint("cycleId", { mode: "number", unsigned: true }),
+  cycleRev: bigint("cycleRev", { mode: "number", unsigned: true }),
+  technicalNote: text("technicalNote"),
+  includeInReleaseCount: tinyint("includeInReleaseCount", { unsigned: true }).notNull().default(1),
+});
+export type FeedbackTicket = typeof feedbackTickets.$inferSelect;
+export type InsertFeedbackTicket = typeof feedbackTickets.$inferInsert;
+
+export const feedbackAttachments = mysqlTable("feedback_attachments", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  ticketId: bigint("ticketId", { mode: "number", unsigned: true }).notNull(),
+  mimeType: varchar("mimeType", { length: 100 }).notNull(),
+  fileName: varchar("fileName", { length: 255 }),
+  sizeBytes: bigint("sizeBytes", { mode: "number", unsigned: true }).notNull(),
+  dataBase64: mediumtext("dataBase64").notNull(),
+});
+export type FeedbackAttachment = typeof feedbackAttachments.$inferSelect;
+
+export const feedbackSettings = mysqlTable("feedback_settings", {
+  id: serial("id").primaryKey(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull().$onUpdate(() => new Date()),
+  releaseThreshold: bigint("releaseThreshold", { mode: "number", unsigned: true }).notNull().default(10),
+});
+export type FeedbackSetting = typeof feedbackSettings.$inferSelect;
