@@ -18,7 +18,7 @@ const navItems = [
   { path: "/cicli", label: "Cicli Standard", icon: Factory },
   { path: "/bandelle-t", label: "Bandelle a T", icon: Wrench },
   { path: "/bandelle-veneta", label: "Bandelle Veneta", icon: Scissors },
-  { path: "/preventivi", label: "Preventivi", icon: FileText },
+  { path: "/preventivi", label: "Preventivi Speciali Unatantum", icon: FileText },
   { path: "/offerte", label: "Offerte Commerciali", icon: Briefcase },
   { path: "/importa-storico", label: "Importa storico", icon: DatabaseZap },
 ];

@@ -7,6 +7,7 @@ import {
   timestamp,
   bigint,
   decimal,
+  tinyint,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -44,6 +45,8 @@ export const cycles = mysqlTable("cycles", {
   standardCost: decimal("standardCost", { precision: 30, scale: 18 }),
   minimumPrice: decimal("minimumPrice", { precision: 30, scale: 18 }),
   dataJson: text("dataJson"),
+  deleted: tinyint("deleted", { unsigned: true }).default(0),
+  deletedAt: timestamp("deletedAt"),
 });
 
 export type Cycle = typeof cycles.$inferSelect;

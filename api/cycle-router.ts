@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, count, and } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { cycles } from "@db/schema";
@@ -9,30 +9,44 @@ export const cycleRouter = createRouter({
     .input(
       z.object({
         search: z.string().optional(),
-        limit: z.number().min(1).max(500).default(100),
+        page: z.number().min(1).default(1),
+        pageSize: z.number().min(1).max(100).default(25),
+        includeDeleted: z.boolean().optional(),
       })
     )
     .query(async ({ input }) => {
       const db = getDb();
       const search = input.search?.trim();
+      const offset = (input.page - 1) * input.pageSize;
 
+      const conditions = [];
+      if (!input.includeDeleted) {
+        conditions.push(eq(cycles.deleted, 0));
+      }
       if (search) {
         const pattern = `%${search}%`;
-        return db
-          .select()
-          .from(cycles)
-          .where(
-            sql`${cycles.code} LIKE ${pattern} OR ${cycles.description} LIKE ${pattern} OR ${cycles.client} LIKE ${pattern}`
-          )
-          .orderBy(desc(cycles.createdAt))
-          .limit(input.limit);
+        conditions.push(
+          sql`(${cycles.code} LIKE ${pattern} OR ${cycles.description} LIKE ${pattern} OR ${cycles.client} LIKE ${pattern})`
+        );
       }
 
-      return db
+      const whereClause = conditions.length ? and(...conditions) : undefined;
+
+      const totalRows = await db
+        .select({ value: count() })
+        .from(cycles)
+        .where(whereClause);
+      const total = totalRows[0]?.value ?? 0;
+
+      const items = await db
         .select()
         .from(cycles)
+        .where(whereClause)
         .orderBy(desc(cycles.createdAt))
-        .limit(input.limit);
+        .limit(input.pageSize)
+        .offset(offset);
+
+      return { items, total, page: input.page, pageSize: input.pageSize };
     }),
 
   get: authedQuery
@@ -70,15 +84,11 @@ export const cycleRouter = createRouter({
         standardCost: input.standardCost,
         minimumPrice: input.minimumPrice,
         dataJson: input.dataJson,
-        rootId: undefined, // will be set to id after insert
+        rootId: undefined,
         rev: 1,
       });
       const id = Number(result[0].insertId);
-      // Update rootId to self
-      await db
-        .update(cycles)
-        .set({ rootId: id })
-        .where(eq(cycles.id, id));
+      await db.update(cycles).set({ rootId: id }).where(eq(cycles.id, id));
       return { id };
     }),
 
@@ -105,12 +115,28 @@ export const cycleRouter = createRouter({
       return { ok: true };
     }),
 
+  /** Soft-delete: mark with dedicated columns (never touch dataJson) */
   delete: authedQuery
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
       await db
-        .delete(cycles)
+        .update(cycles)
+        .set({ deleted: 1, deletedAt: new Date() })
+        .where(
+          and(eq(cycles.id, input.id), eq(cycles.userId, ctx.user.id))
+        );
+      return { ok: true };
+    }),
+
+  /** Restore soft-deleted cycle */
+  restore: authedQuery
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = getDb();
+      await db
+        .update(cycles)
+        .set({ deleted: 0, deletedAt: null })
         .where(
           and(eq(cycles.id, input.id), eq(cycles.userId, ctx.user.id))
         );
@@ -118,10 +144,22 @@ export const cycleRouter = createRouter({
     }),
 
   createRevision: authedQuery
-    .input(z.object({ rootId: z.number() }))
+    .input(
+      z.object({
+        rootId: z.number(),
+        code: z.string().optional(),
+        description: z.string().optional(),
+        client: z.string().optional(),
+        lot: z.string().optional(),
+        standardCost: z.string().optional(),
+        minimumPrice: z.string().optional(),
+        dataJson: z.string().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
-      // Find latest revision
+
+      // Find latest revision by rootId
       const rows = await db
         .select()
         .from(cycles)
@@ -134,23 +172,72 @@ export const cycleRouter = createRouter({
         .orderBy(desc(cycles.rev))
         .limit(1);
 
-      const latest = rows[0];
-      if (!latest) throw new Error("Cycle not found");
+      let latest = rows[0];
+
+      // Handle orphaned cycles (rootId points to non-existent row)
+      if (!latest) {
+        const selfRows = await db
+          .select()
+          .from(cycles)
+          .where(
+            and(
+              eq(cycles.id, input.rootId),
+              eq(cycles.userId, ctx.user.id)
+            )
+          )
+          .limit(1);
+        if (selfRows[0]) {
+          latest = selfRows[0];
+        } else {
+          throw new Error("Cycle not found");
+        }
+      }
 
       const newRev = (latest.rev ?? 1) + 1;
+
+      // Merge new data over latest; ensure rootId and rev are consistent
+      let mergedDataJson = latest.dataJson;
+      if (input.dataJson) {
+        try {
+          const base = latest.dataJson ? JSON.parse(latest.dataJson) : {};
+          const override = JSON.parse(input.dataJson);
+          mergedDataJson = JSON.stringify({
+            ...base,
+            ...override,
+            rootId: input.rootId,
+            root_id: input.rootId,
+            rev: newRev,
+          });
+        } catch {
+          mergedDataJson = input.dataJson;
+        }
+      } else if (latest.dataJson) {
+        try {
+          const base = JSON.parse(latest.dataJson);
+          mergedDataJson = JSON.stringify({
+            ...base,
+            rootId: input.rootId,
+            root_id: input.rootId,
+            rev: newRev,
+          });
+        } catch {
+          mergedDataJson = latest.dataJson;
+        }
+      }
+
       const result = await db.insert(cycles).values({
         userId: ctx.user.id,
         rootId: input.rootId,
         rev: newRev,
-        code: latest.code,
-        description: latest.description,
-        client: latest.client,
-        lot: latest.lot,
-        standardCost: latest.standardCost,
-        minimumPrice: latest.minimumPrice,
-        dataJson: latest.dataJson,
+        code: input.code ?? latest.code,
+        description: input.description ?? latest.description,
+        client: input.client ?? latest.client,
+        lot: input.lot ?? latest.lot,
+        standardCost: input.standardCost ?? latest.standardCost,
+        minimumPrice: input.minimumPrice ?? latest.minimumPrice,
+        dataJson: mergedDataJson,
       });
 
-      return { id: Number(result[0].insertId), rev: newRev };
+      return { id: Number(result[0].insertId), rev: newRev, rootId: input.rootId };
     }),
 });

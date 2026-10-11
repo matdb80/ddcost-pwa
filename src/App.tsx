@@ -4,6 +4,7 @@ import Home from './pages/Home'
 import Login from "./pages/Login"
 import NotFound from "./pages/NotFound"
 import CicliPage from "./pages/CicliPage"
+import CicloEditorPage from "./pages/CicloEditorPage"
 import BandelleTPage from "./pages/BandelleTPage"
 import BandelleVenetaPage from "./pages/BandelleVenetaPage"
 import PreventiviPage from "./pages/PreventiviPage"
@@ -35,6 +36,8 @@ export default function App() {
       <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
       <Route path="/login" element={<Login />} />
       <Route path="/cicli" element={<ProtectedRoute><CicliPage /></ProtectedRoute>} />
+      <Route path="/cicli/new" element={<ProtectedRoute><CicloEditorPage /></ProtectedRoute>} />
+      <Route path="/cicli/:id" element={<ProtectedRoute><CicloEditorPage /></ProtectedRoute>} />
       <Route path="/bandelle-t" element={<ProtectedRoute><BandelleTPage /></ProtectedRoute>} />
       <Route path="/bandelle-veneta" element={<ProtectedRoute><BandelleVenetaPage /></ProtectedRoute>} />
       <Route path="/preventivi" element={<ProtectedRoute><PreventiviPage /></ProtectedRoute>} />
