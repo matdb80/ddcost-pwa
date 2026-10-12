@@ -291,6 +291,8 @@ export default function PreventivoEditorPage() {
   const locked = readOnly && !isNew;
   return <Layout>
     <div className="max-w-6xl mx-auto space-y-5 pb-10">
+      {/* Sticky quote identity and actions share the same scroll container as the editor. */}
+      <div className="sticky top-0 z-30 -mx-2 mb-4 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-md space-y-3 max-h-[60vh] overflow-y-auto">
       <div className="flex flex-wrap justify-between gap-3 items-center">
         <div className="flex items-center gap-2">
           <Link to="/preventivi" className="p-2 border rounded"><ArrowLeft size={16}/></Link>
@@ -308,25 +310,26 @@ export default function PreventivoEditorPage() {
             </>}
         </div>
       </div>
+      <section className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        {(["cliente","riferimento_preventivo","titolo_preventivo"] as const).map(key=>
+          <label key={key} className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">{key === "cliente" ? "Cliente *" : key === "riferimento_preventivo" ? "Riferimento" : "Titolo preventivo"}</span>
+            <input className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100" value={doc[key] ?? ""} disabled={locked}
+              onChange={e=>update(key,e.target.value)}/>
+          </label>)}
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">Totale desiderato € (quadratura, facoltativo)</span>
+          <input type="number" step="0.01" className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100"
+            disabled={locked} value={doc.target_totale ?? ""}
+            onChange={e=>update("target_totale",e.target.value === "" ? null : Number(e.target.value),true)}/>
+        </label>
+      </section>
+      </div>
       {copyMessage && <div role="status" className="text-sm bg-emerald-50 border border-emerald-200 text-emerald-900 rounded p-3">{copyMessage}</div>}
       {error && <div role="alert" className="border border-red-400 bg-red-50 p-3 rounded text-red-800">{error}</div>}
       {!isNew && <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 p-3 rounded">
         Ogni modifica salva una nuova revisione; la versione originale non viene sovrascritta. I calcoli storici sono preservati finché non modifichi i dati economici.
       </div>}
-      <section className="bg-white border rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-        {(["cliente","riferimento_preventivo","titolo_preventivo"] as const).map(key=>
-          <label key={key} className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">{key === "cliente" ? "Cliente *" : key === "riferimento_preventivo" ? "Riferimento" : "Titolo preventivo"}</span>
-            <input className="border rounded p-2 disabled:bg-slate-100" value={doc[key] ?? ""} disabled={locked}
-              onChange={e=>update(key,e.target.value)}/>
-          </label>)}
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Totale desiderato € (quadratura, facoltativo)</span>
-          <input type="number" step="0.01" className="border rounded p-2 disabled:bg-slate-100"
-            disabled={locked} value={doc.target_totale ?? ""}
-            onChange={e=>update("target_totale",e.target.value === "" ? null : Number(e.target.value),true)}/>
-        </label>
-      </section>
       <section className="bg-white border rounded-xl p-5 space-y-3">
         <h2 className="font-semibold text-lg">Prezzo di listino da sconto cliente</h2>
         <p className="text-xs text-slate-600">Il listino lordo viene ricavato dal prezzo netto finale dell'articolo selezionato, applicando gli sconti successivi (es. 40+10% = fattore 0,54). Il listino è arrotondato in eccesso al centesimo; il prezzo netto del preventivo non viene cambiato.</p>
