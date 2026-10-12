@@ -1,20 +1,13 @@
 import Layout from "@/components/Layout";
 import { trpc } from "@/providers/trpc";
 import { useState } from "react";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Link } from "react-router";
+import { Plus, Search } from "lucide-react";
 
 export default function PreventiviPage() {
   const [search, setSearch] = useState("");
   const { data: quotes, refetch } = trpc.quote.list.useQuery({ search, limit: 100 });
-  const createQuote = trpc.quote.create.useMutation({ onSuccess: () => refetch() });
-  const deleteQuote = trpc.quote.delete.useMutation({ onSuccess: () => refetch() });
 
-  const handleCreate = () => {
-    createQuote.mutate({
-      client: "Nuovo cliente",
-      dataJson: JSON.stringify({ products: [] }),
-    });
-  };
 
   return (
     <Layout>
@@ -30,13 +23,13 @@ export default function PreventiviPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <button
-            onClick={handleCreate}
+          <Link
+            to="/preventivi/new"
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
           >
             <Plus className="w-4 h-4" />
             Nuovo Preventivo
-          </button>
+          </Link>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -55,19 +48,14 @@ export default function PreventiviPage() {
               {quotes?.map((q) => (
                 <tr key={q.id} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="px-4 py-3 text-slate-500">{q.id}</td>
-                  <td className="px-4 py-3 font-medium text-slate-800">{q.client}</td>
+                  <td className="px-4 py-3 font-medium text-slate-800"><Link className="text-emerald-700 hover:underline" to={`/preventivi/${q.id}`}>{q.client || "(senza cliente)"}</Link></td>
                   <td className="px-4 py-3 text-slate-600">{q.reference}</td>
                   <td className="px-4 py-3 text-slate-500">{q.rev}</td>
                   <td className="px-4 py-3 text-right font-mono text-slate-700">
                     {q.totalFinal ? `€ ${q.totalFinal}` : "-"}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => q.id && deleteQuote.mutate({ id: q.id })}
-                      className="text-red-500 hover:text-red-700 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <Link className="text-emerald-700 hover:underline" to={`/preventivi/${q.id}`}>Apri / Modifica</Link>
                   </td>
                 </tr>
               ))}
