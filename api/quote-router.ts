@@ -1,8 +1,38 @@
 import { z } from "zod";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { quotes } from "@db/schema";
+import { quotes, productGroups } from "@db/schema";
+
+const ALLOWED_MATERIALS = new Set(["ferro","ottone","inox"]);
+
+async function validateQuoteClassifications(dataJson: string | undefined): Promise<void> {
+  if (!dataJson) throw new Error("Il preventivo deve contenere i prodotti");
+  let document: unknown;
+  try { document = JSON.parse(dataJson); }
+  catch { throw new Error("JSON preventivo non valido"); }
+  const rows = (document as { prodotti?: unknown } | null)?.prodotti;
+  if (!Array.isArray(rows) || rows.length === 0)
+    throw new Error("Inserire almeno un prodotto");
+  const usedGroups = new Set<string>();
+  for (let i = 0; i < rows.length; i++) {
+    const product = rows[i] as Record<string, unknown> | null;
+    if (!product || typeof product !== "object") throw new Error("Prodotto " + (i+1) + " non valido");
+    const group = String(product.gruppo_merceologico ?? "").trim();
+    const material = String(product.materiale_prodotto ?? "").trim().toLocaleLowerCase("it-IT");
+    if (!group) throw new Error("Selezionare il gruppo merceologico del prodotto " + (i+1));
+    if (!ALLOWED_MATERIALS.has(material))
+      throw new Error("Selezionare ferro, ottone o inox per il prodotto " + (i+1));
+    usedGroups.add(group);
+  }
+  const db = getDb();
+  const exists = await db.select({ name: productGroups.name })
+    .from(productGroups).where(inArray(productGroups.name, Array.from(usedGroups)));
+  const recognized = new Set(exists.map(g=>g.name.toLocaleLowerCase("it-IT")));
+  for (const name of usedGroups)
+    if (!recognized.has(name.toLocaleLowerCase("it-IT")))
+      throw new Error("Gruppo merceologico non registrato: " + name);
+}
 
 export const quoteRouter = createRouter({
   list: authedQuery
@@ -64,6 +94,7 @@ export const quoteRouter = createRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await validateQuoteClassifications(input.dataJson);
       const db = getDb();
       const result = await db.insert(quotes).values({
         userId: ctx.user.id,
@@ -126,6 +157,7 @@ export const quoteRouter = createRouter({
       dataJson: z.string().min(2),
     }))
     .mutation(async ({ ctx, input }) => {
+      await validateQuoteClassifications(input.dataJson);
       const db = getDb();
       return db.transaction(async (tx) => {
         const sourceRows = await tx.select().from(quotes).where(and(
