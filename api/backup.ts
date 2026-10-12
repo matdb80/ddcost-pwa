@@ -20,6 +20,7 @@ const TABLES = [
   "feedback_attachments",
   "feedback_settings",
   "feedback_exports",
+  "product_groups",
 ] as const;
 
 type BackupTable = (typeof TABLES)[number];
