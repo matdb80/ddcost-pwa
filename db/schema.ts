@@ -164,6 +164,17 @@ export const feedbackAttachments = mysqlTable("feedback_attachments", {
   dataBase64: mediumtext("dataBase64").notNull(),
 });
 
+// Append-only export receipts; separate from ticket resolution status.
+export const feedbackExports = mysqlTable("feedback_exports", {
+  id: serial("id").primaryKey(),
+  ticketId: bigint("ticketId", { mode: "number", unsigned: true }).notNull(),
+  exportedAt: timestamp("exportedAt").defaultNow().notNull(),
+  batchId: varchar("batchId", { length: 64 }).notNull(),
+  format: mysqlEnum("format", ["json", "markdown"]).notNull(),
+  source: mysqlEnum("source", ["ui", "legacy"]).notNull().default("ui"),
+});
+export type FeedbackExport = typeof feedbackExports.$inferSelect;
+
 export type FeedbackAttachment = typeof feedbackAttachments.$inferSelect;
 export type InsertFeedbackAttachment = typeof feedbackAttachments.$inferInsert;
 
