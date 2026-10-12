@@ -106,6 +106,85 @@ export const quoteRouter = createRouter({
       return { ok: true };
     }),
 
+  /**
+   * Save edited quote as an append-only revision, never overwriting historical data.
+   * In particular, the two imported records sharing rootId 20 / rev 2 remain untouched.
+   */
+  saveRevision: authedQuery
+    .input(z.object({
+      sourceId: z.number().int().positive(),
+      client: z.string().max(255).optional(),
+      reference: z.string().max(255).optional(),
+      targetTotal: z.string().nullable().optional(),
+      totalBeforeRebalance: z.string().optional(),
+      totalFinal: z.string().optional(),
+      numProducts: z.number().int().min(0).optional(),
+      generalNotes: z.string().optional(),
+      clientNotes: z.string().optional(),
+      supplierNotes: z.string().optional(),
+      summary: z.string().optional(),
+      dataJson: z.string().min(2),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = getDb();
+      return db.transaction(async (tx) => {
+        const sourceRows = await tx.select().from(quotes).where(and(
+          eq(quotes.id, input.sourceId), eq(quotes.userId, ctx.user.id)
+        )).limit(1);
+        const source = sourceRows[0];
+        if (!source) throw new Error("Preventivo di origine non trovato");
+        const { sourceId, ...changes } = input;
+        let json: Record<string, unknown>;
+        try {
+          json = JSON.parse(changes.dataJson);
+          if (!json || typeof json !== "object" || !Array.isArray(json.prodotti)) throw new Error();
+        } catch {
+          throw new Error("Contenuto preventivo non valido");
+        }
+        const compare = (a: unknown, b: unknown) => String(a ?? "") === String(b ?? "");
+        // Reject revisions that only change the sequence metadata.
+        const original = (() => { try { return JSON.parse(source.dataJson ?? "{}"); } catch { return {}; } })();
+        const clean = (v: Record<string, unknown>) => {
+          const { rev: _rev, root_id: _root, ...rest } = v;
+          return JSON.stringify(rest);
+        };
+        if (clean(json) === clean(original)
+          && compare(changes.client, source.client)
+          && compare(changes.reference, source.reference)
+          && compare(changes.targetTotal, source.targetTotal)
+          && compare(changes.totalBeforeRebalance, source.totalBeforeRebalance)
+          && compare(changes.totalFinal, source.totalFinal)
+          && compare(changes.numProducts, source.numProducts)
+          && compare(changes.generalNotes, source.generalNotes)
+          && compare(changes.clientNotes, source.clientNotes)
+          && compare(changes.supplierNotes, source.supplierNotes)) {
+          throw new Error("Nessuna modifica rilevata: revisione non creata");
+        }
+        const rootId = source.rootId ?? source.id;
+        const latestRows = await tx.select({ rev: quotes.rev }).from(quotes)
+          .where(and(eq(quotes.rootId, rootId), eq(quotes.userId, ctx.user.id)))
+          .orderBy(desc(quotes.rev), desc(quotes.id)).limit(1);
+        const nextRev = Math.max(Number(latestRows[0]?.rev ?? source.rev ?? 1), Number(source.rev ?? 1)) + 1;
+        const patchedJson = JSON.stringify({ ...json, root_id: rootId, rev: nextRev });
+        const result = await tx.insert(quotes).values({
+          userId: ctx.user.id,
+          rootId, rev: nextRev,
+          client: changes.client ?? source.client,
+          reference: changes.reference ?? source.reference,
+          targetTotal: changes.targetTotal === null ? null : changes.targetTotal ?? source.targetTotal,
+          totalBeforeRebalance: changes.totalBeforeRebalance ?? source.totalBeforeRebalance,
+          totalFinal: changes.totalFinal ?? source.totalFinal,
+          numProducts: changes.numProducts ?? source.numProducts,
+          generalNotes: changes.generalNotes ?? source.generalNotes,
+          clientNotes: changes.clientNotes ?? source.clientNotes,
+          supplierNotes: changes.supplierNotes ?? source.supplierNotes,
+          summary: changes.summary ?? source.summary,
+          dataJson: patchedJson,
+        });
+        return { id: Number(result[0].insertId), rev: nextRev, rootId };
+      });
+    }),
+
   delete: authedQuery
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
