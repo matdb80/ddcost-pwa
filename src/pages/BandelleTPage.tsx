@@ -1,114 +1,134 @@
 import Layout from "@/components/Layout";
 import { useState } from "react";
-import { Calculator } from "lucide-react";
+import { Calculator, Copy } from "lucide-react";
+import { quoteBandellaT, type TKind, type TPosition, type TRequest, type TResponse } from "@/lib/bandelle-t-listino";
 
-const AMBITI = [
-  {
-    id: "occhio-standard",
-    title: "Occhio standard",
-    desc: "Occhio centrale o decentrato standard",
-    img: "/images/occhio standard.png",
-  },
-  {
-    id: "occhio-misura",
-    title: "Occhio decentrato a misura",
-    desc: "Entratura a misura personalizzata",
-    img: "/images/decentrato a misura.png",
-  },
-  {
-    id: "zanca-filo",
-    title: "Zanca a filo",
-    desc: "Zancatura a filo con lama",
-    img: "/images/zancata a filo.png",
-  },
+const AMBITI: Array<{ id: TKind; title: string; desc: string; img: string }> = [
+  { id:"standard", title:"Occhio standard", desc:"Occhio centrale o decentrato con posizionamento standard", img:"/images/occhio standard.png" },
+  { id:"misura", title:"Occhio decentrato a misura", desc:"Posizione dell'occhio da definire a disegno", img:"/images/decentrato a misura.png" },
+  { id:"zanca", title:"Zanca a filo", desc:"Zancatura a filo, lama da 16 cm", img:"/images/zancata a filo.png" },
 ];
+const initial: TRequest = {
+  kind:"standard", quantity:20, collar:55, position:"centrale",
+  diameterOther:false, reverseOffset:false, overlap:false,
+  zancaLength:35, reinforcedApproved:false,
+};
+const prices3 = (n:number) => n.toLocaleString("it-IT",{minimumFractionDigits:3,maximumFractionDigits:3});
+const prices2 = (n:number) => n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2});
 
 export default function BandelleTPage() {
-  const [selected, setSelected] = useState<string | null>(null);
-
-  return (
-    <Layout>
-      <div className="max-w-5xl mx-auto">
-        <h2 className="text-lg font-semibold text-slate-800 mb-4">
-          Bandelle a T — Calcolo prezzi
-        </h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          {AMBITI.map((amb) => (
-            <button
-              key={amb.id}
-              onClick={() => setSelected(amb.id)}
-              className={`text-left p-4 rounded-xl border-2 transition-all ${
-                selected === amb.id
-                  ? "border-emerald-500 bg-emerald-50"
-                  : "border-slate-200 bg-white hover:border-emerald-300"
-              }`}
-            >
-              <div className="h-24 bg-white rounded-lg border border-slate-100 mb-3 flex items-center justify-center overflow-hidden">
-                <img
-                  src={amb.img}
-                  alt={amb.title}
-                  className="max-h-full max-w-full object-contain"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              </div>
-              <h3 className="font-semibold text-slate-800">{amb.title}</h3>
-              <p className="text-xs text-slate-500 mt-1">{amb.desc}</p>
-            </button>
-          ))}
-        </div>
-
-        {selected && (
-          <div className="bg-white rounded-xl border border-slate-200 p-6">
-            <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-              <Calculator className="w-4 h-4 text-emerald-600" />
-              Dati calcolo
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1">
-                  Quantità lotto
-                </label>
-                <input
-                  type="number"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  defaultValue={20}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1">
-                  Collo C richiesto (mm)
-                </label>
-                <input
-                  type="number"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  defaultValue={55}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1">
-                  Diametro occhio (mm)
-                </label>
-                <input
-                  type="number"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  defaultValue={12}
-                />
-              </div>
-            </div>
-            <div className="mt-4 flex gap-2">
-              <button className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
-                Calcola prezzo
-              </button>
-              <button className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors">
-                Clear
-              </button>
-            </div>
-          </div>
-        )}
+  const [req,setReq] = useState<TRequest>(initial);
+  const [response,setResponse] = useState<TResponse|null>(null);
+  const [message,setMessage] = useState("");
+  const set = <K extends keyof TRequest>(key:K,value:TRequest[K]) => {
+    setReq(prev=>({...prev,[key]:value}));
+    setResponse(null);
+    setMessage("");
+  };
+  const calculate = () => {
+    try {
+      const result = quoteBandellaT(req);
+      setResponse(result);
+      setMessage("");
+    } catch (err) {
+      setResponse(null);
+      setMessage(err instanceof Error ? err.message : "Combinazione non disponibile");
+    }
+  };
+  const copyResult = () => {
+    if (!response) return;
+    const text = [
+      "BANDELLA A T SMERALDA - LISTINO",
+      "Tipologia: "+AMBITI.find(a=>a.id===req.kind)?.title,
+      "Codice: "+response.code,
+      "Lotto: "+req.quantity+" pz",
+      "Collo: "+req.collar+" mm (listino "+response.size+" mm)",
+      "Prezzo base: "+prices3(response.base)+" €/pz",
+      ...response.additions.map(a=>a.description+": "+prices2(a.euro)+" €/pz"),
+      "Prezzo netto unitario: "+prices3(response.unit)+" €/pz",
+      "Totale lotto: "+prices2(response.total)+" €",
+      ...response.notes,
+      "Fonte: Listino Smeralda, nota aumento 4,5% dal 01/03/2026 già inclusa.",
+    ].join("\n");
+    void navigator.clipboard.writeText(text).then(()=>setMessage("Riepilogo copiato."),()=>setMessage("Copia non riuscita."));
+  };
+  return <Layout>
+    <div className="max-w-5xl mx-auto pb-10 space-y-5">
+      <div>
+        <h2 className="text-lg font-semibold text-slate-800">Bandelle a T — Listino Smeralda</h2>
+        <p className="text-sm text-slate-500">Lama 16 cm · Tabelle originali del file XLSM · Aggiornamento prezzi indicato nel foglio: +4,5% dal 01/03/2026, già incluso.</p>
       </div>
-    </Layout>
-  );
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {AMBITI.map(a=><button type="button" key={a.id} onClick={()=>set("kind",a.id)}
+          className={"text-left p-4 rounded-xl border-2 transition-all "+(req.kind===a.id?"border-emerald-500 bg-emerald-50":"border-slate-200 bg-white hover:border-emerald-300")}>
+          <div className="h-24 bg-white rounded-lg border border-slate-100 mb-3 flex items-center justify-center overflow-hidden">
+            <img src={a.img} alt={a.title} className="max-h-full max-w-full object-contain" />
+          </div>
+          <h3 className="font-semibold text-slate-800">{a.title}</h3>
+          <p className="text-xs text-slate-500 mt-1">{a.desc}</p>
+        </button>)}
+      </div>
+      <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        <h3 className="font-semibold flex items-center gap-2"><Calculator size={18} className="text-emerald-600"/>Dati di calcolo</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Quantità lotto (4–100 pz)
+            <input type="number" min="4" max="100" step="1" className="border rounded p-2" value={req.quantity}
+              onChange={e=>set("quantity",Number(e.target.value))}/>
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Collo D richiesto (mm)
+            <input type="number" min="1" step="0.1" className="border rounded p-2" value={req.collar}
+              onChange={e=>set("collar",Number(e.target.value))}/>
+          </label>
+          {req.kind==="standard"&&<label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Posizione occhio standard
+            <select className="border rounded p-2" value={req.position} onChange={e=>set("position",e.target.value as TPosition)}>
+              <option value="centrale">Centrale (Z=2 mm)</option>
+              <option value="decentrato">Decentrato (Z=6 mm)</option>
+            </select>
+          </label>}
+          {req.kind==="zanca"&&<label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Lunghezza zanca a filo (mm)
+            <input type="number" min="1" step="0.1" className="border rounded p-2" value={req.zancaLength}
+              onChange={e=>set("zancaLength",Number(e.target.value))}/>
+          </label>}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <label className="flex gap-2 items-center"><input type="checkbox" checked={req.diameterOther} onChange={e=>set("diameterOther",e.target.checked)}/>Occhio diverso da Ø12 (+3,00 €/pz)</label>
+          <label className="flex gap-2 items-center"><input type="checkbox" checked={req.overlap} onChange={e=>set("overlap",e.target.checked)}/>Applicazione sormonto (+{req.kind==="zanca"?"2,00":"2,50"} €/pz)</label>
+          {req.kind==="standard" && req.position==="decentrato"&&
+            <label className="flex gap-2 items-center"><input type="checkbox" checked={req.reverseOffset} onChange={e=>set("reverseOffset",e.target.checked)}/>Decentratura al contrario (+1,00 €/pz)</label>}
+          {req.kind==="zanca" && req.zancaLength>35 &&
+            <label className="flex gap-2 items-center"><input type="checkbox" checked={req.reinforcedApproved} onChange={e=>set("reinforcedApproved",e.target.checked)}/>
+              Rinforzo/spessore maggiorato valutato e confermato (+2,00 €/pz)
+            </label>}
+        </div>
+        {req.kind==="zanca"&&req.zancaLength>35&&<p className="text-amber-800 text-sm">
+          Per zanche superiori a 35 mm il foglio prescrive una verifica tecnica: l'eventuale supplemento di 2 € si applica solo se necessario e confermato.
+        </p>}
+        {req.kind==="misura"&&<p className="text-slate-600 text-sm">Posizione occhio a disegno. Prima dell'ordine occorre definire le quote e completare il codice variabile.</p>}
+        <div className="flex gap-3 flex-wrap">
+          <button type="button" onClick={calculate} className="bg-emerald-600 text-white rounded px-4 py-2 font-semibold hover:bg-emerald-700">Calcola prezzo</button>
+          <button type="button" onClick={()=>{setReq(initial);setResponse(null);setMessage("");}} className="bg-slate-100 rounded px-4 py-2">Azzera</button>
+        </div>
+        {message&&<div role="status" className="bg-amber-50 border border-amber-200 text-amber-900 rounded p-3 text-sm">{message}</div>}
+      </section>
+      {response&&<section className="bg-white rounded-xl border-2 border-emerald-200 p-6 space-y-3">
+        <div className="flex justify-between gap-3 flex-wrap items-center"><h3 className="font-semibold text-xl">Preventivo da listino</h3>
+          <button type="button" onClick={copyResult} className="border rounded px-3 py-2 text-sm flex gap-2 items-center"><Copy size={16}/>Copia riepilogo</button>
+        </div>
+        <dl className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+          <div><dt className="text-slate-500">Codice listino</dt><dd className="font-mono font-semibold">{response.code}</dd></div>
+          <div><dt className="text-slate-500">Collo tabellato</dt><dd className="font-semibold">{response.size} mm</dd></div>
+          <div><dt className="text-slate-500">Fascia lotto</dt><dd className="font-semibold">{response.tier} pz</dd></div>
+          <div><dt className="text-slate-500">Prezzo base</dt><dd className="font-semibold">{prices3(response.base)} €/pz</dd></div>
+          <div><dt className="text-slate-500">Supplementi complessivi</dt><dd className="font-semibold">{prices2(response.additions.reduce((s,a)=>s+a.euro,0))} €/pz</dd></div>
+          <div><dt className="text-slate-500">Prezzo netto unitario</dt><dd className="font-semibold text-lg text-emerald-700">{prices3(response.unit)} €/pz</dd></div>
+        </dl>
+        {response.additions.length>0&&<div className="border-t pt-2 text-sm">
+          {response.additions.map((a,i)=><p key={i}>{a.description}: +{prices2(a.euro)} €/pz</p>)}
+        </div>}
+        <p className="text-2xl font-bold text-emerald-800 border-t pt-3">Totale lotto ({req.quantity} pz): € {prices2(response.total)}</p>
+        {response.notes.map((n,i)=><p className="text-sm text-slate-600" key={i}>{n}</p>)}
+        <p className="text-xs text-amber-800 bg-amber-50 rounded p-3">Il risultato è basato soltanto sulle combinazioni disponibili nel listino. Per misure e lavorazioni fuori standard è necessaria una verifica tecnico-commerciale; i valori non vengono salvati automaticamente come preventivi aziendali.</p>
+      </section>}
+    </div>
+  </Layout>;
 }
