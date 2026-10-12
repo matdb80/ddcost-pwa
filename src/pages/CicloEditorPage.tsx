@@ -712,6 +712,7 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                {(["COMPONENTE", "COMPONENTE/ASSIEME", "LAVORAZIONE A PESO", "LAVORAZIONE A PEZZO", "LAVORAZIONE TERZISTA A PESO", "LAVORAZIONE TERZISTA A PEZZO"].includes(rigaEdit.categoria)) && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Fornitore</label>
                   <input
@@ -721,6 +722,8 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     Tipo Materiale
@@ -732,6 +735,8 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     Tipo Materia Prima
@@ -743,6 +748,8 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Lunghezza</label>
                   <input
@@ -753,6 +760,8 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Larghezza</label>
                   <input
@@ -763,6 +772,8 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Spessore</label>
                   <input
@@ -773,6 +784,8 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Diametro</label>
                   <input
@@ -783,6 +796,8 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {(["MATERIA PRIMA DA TRASFORMARE", "LAVORAZIONE A PESO", "LAVORAZIONE TERZISTA A PESO"].includes(rigaEdit.categoria)) && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Peso Kg</label>
                   <input
@@ -793,6 +808,7 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     Nr Componenti
@@ -806,6 +822,7 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                {(rigaEdit.categoria === "LAVORAZIONE INTERNA") && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     Colpi/min (pezzi/min)
@@ -818,6 +835,8 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {(rigaEdit.categoria === "LAVORAZIONE INTERNA") && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Lotto Voce</label>
                   <input
@@ -829,6 +848,8 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {(rigaEdit.categoria === "LAVORAZIONE INTERNA") && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     Attrezzaggio min
@@ -843,6 +864,8 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {(rigaEdit.categoria !== "LAVORAZIONE INTERNA") && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     Costo Unitario €
@@ -857,6 +880,8 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {(false) && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     Costo/min €
@@ -869,6 +894,8 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Sfrido %</label>
                   <input
@@ -879,6 +906,14 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {rigaEdit.categoria === "SPESA ATTREZZATURA DEDICATA" && (
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" checked={rigaEdit.considera === true}
+                      onChange={(e) => handleRigaChange("considera", e.target.checked)} />
+                    Includi costo attrezzatura nel ciclo
+                  </label>
+                )}
                 <div className="col-span-2 md:col-span-3">
                   <label className="block text-xs font-medium text-slate-500 mb-1">Note</label>
                   <textarea
