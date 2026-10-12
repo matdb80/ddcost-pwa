@@ -52,7 +52,7 @@ export default function PreventiviPage() {
                   <td className="px-4 py-3 text-slate-600">{q.reference}</td>
                   <td className="px-4 py-3 text-slate-500">{q.rev}</td>
                   <td className="px-4 py-3 text-right font-mono text-slate-700">
-                    {q.totalFinal ? `€ ${q.totalFinal}` : "-"}
+                    {q.totalFinal != null ? `€ ${Number(q.totalFinal).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "-"}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <Link className="text-emerald-700 hover:underline" to={`/preventivi/${q.id}`}>Apri / Modifica</Link>
