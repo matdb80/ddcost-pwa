@@ -29,8 +29,14 @@ describe("Bandelle a T — workbook Smeralda (2026 updated values)",()=>{
     expect(r.unit).toBe(12.234);
     expect(r.total).toBe(244.68);
   });
-  it("refuses unlisted standard decentralized code at other collars",()=>{
-    expect(()=>calculate({position:"decentrato",collar:65})).toThrow(/non codificato/);
+  it("decentralized eye shares central price tier at every listed collar",()=>{
+    const central = calculate({position:"centrale",collar:65});
+    const decentralized = calculate({position:"decentrato",collar:65});
+    expect(decentralized.base).toBe(central.base);
+    expect(decentralized.unit).toBe(central.unit);
+    expect(decentralized.total).toBe(central.total);
+    expect(decentralized.notes.join(" ")).toMatch(/codice di riferimento del centrale/);
+    expect(calculate({position:"decentrato",collar:55}).code).toBe("VBC00017BPIUGOFF");
   });
   it("accepts only exact listed integer collars, without rounding",()=>{
     expect(calculate({collar:55,quantity:5}).base).toBe(6.934);
