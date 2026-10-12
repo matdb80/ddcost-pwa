@@ -6,7 +6,7 @@ import { Plus, Search } from "lucide-react";
 
 export default function PreventiviPage() {
   const [search, setSearch] = useState("");
-  const { data: quotes, refetch } = trpc.quote.list.useQuery({ search, limit: 100 });
+  const { data: quotes } = trpc.quote.list.useQuery({ search, limit: 100 });
 
 
   return (
