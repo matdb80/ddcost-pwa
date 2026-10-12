@@ -16,6 +16,10 @@ const TABLES = [
   "cycle_simulations",
   "commercial_offers",
   "legacy_source_archives",
+  "feedback_tickets",
+  "feedback_attachments",
+  "feedback_settings",
+  "feedback_exports",
 ] as const;
 
 type BackupTable = (typeof TABLES)[number];
@@ -49,19 +53,26 @@ export async function downloadBackup(c: Context): Promise<Response> {
       dateStrings: true,
     });
 
-    // A single transaction keeps rows from the five tables in one snapshot.
+    // A single transaction keeps rows from all tables in one snapshot.
     // SQL identifiers below come only from the hard-coded TABLES constant.
     await connection.query("START TRANSACTION");
     transactionStarted = true;
 
-    // Before historical import there are five tables. Afterwards the archived
-    // original SQLite ZIP is stored as a sixth table.
-    const [archiveTable] = await connection.query<RowDataPacket[]>(
-      "SELECT table_name FROM information_schema.tables " +
-      "WHERE table_schema = DATABASE() AND table_name = 'legacy_source_archives'",
+    // Include *all* current DDCost tables, including feedback and export
+    // receipts. On older production environments optional tables may not yet
+    // exist; never fabricate them in a read-only backup.
+    const [actualTables] = await connection.query<RowDataPacket[]>(
+      "SELECT TABLE_NAME AS tableName FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE()"
     );
-    const includedTables = archiveTable.length ? TABLES :
-      TABLES.filter((t) => t !== "legacy_source_archives");
+    const known = new Set(actualTables.map(t => String(t.tableName)));
+    const required = ["users", "cycles", "quotes", "cycle_simulations", "commercial_offers"];
+    if (required.some(t => !known.has(t)))
+      throw new Error("Backup source is missing a required economic table");
+    const includedTables = TABLES.filter(t => known.has(t));
+    if (known.has("feedback_tickets") &&
+        ["feedback_attachments", "feedback_settings", "feedback_exports"].some(t => !known.has(t))) {
+      throw new Error("Backup refused: feedback tables incomplete");
+    }
 
     const records = {} as Record<BackupTable, RowDataPacket[]>;
     const tableDefinitions = {} as Record<BackupTable, string>;
