@@ -3,7 +3,7 @@ import { quoteBandellaT, type TRequest, PRICES, TIERS } from "./bandelle-t-listi
 const base: TRequest = {
   kind:"standard", quantity:20, collar:55,position:"centrale",
   diameterOther:false, reverseOffset:false, overlap:false,
-  zancaLength:35,reinforcedApproved:false,
+  zancaLength:35,
 };
 const calculate = (rest: Partial<TRequest> = {}) => quoteBandellaT({...base,...rest});
 describe("Bandelle a T — workbook Smeralda (2026 updated values)",()=>{
@@ -32,23 +32,24 @@ describe("Bandelle a T — workbook Smeralda (2026 updated values)",()=>{
   it("refuses unlisted standard decentralized code at other collars",()=>{
     expect(()=>calculate({position:"decentrato",collar:65})).toThrow(/non codificato/);
   });
-  it("snaps between table collars and informs the user",()=>{
-    const r=calculate({collar:60,quantity:5});
-    expect(r.size).toBe(55);
-    expect(r.base).toBe(6.934);
-    expect(r.notes.join(" ")).toMatch(/arrotondato/);
+  it("accepts only exact listed integer collars, without rounding",()=>{
+    expect(calculate({collar:55,quantity:5}).base).toBe(6.934);
+    expect(calculate({collar:65,quantity:5}).base).toBe(7.2);
+    expect(()=>calculate({collar:60,quantity:5})).toThrow(/Collo non previsto/);
+    expect(()=>calculate({collar:55.5,quantity:5})).toThrow(/misura intera/);
+    expect(()=>calculate({collar:150,quantity:5})).toThrow(/Collo non previsto/);
+    expect(()=>calculate({kind:"zanca",collar:155,quantity:5})).toThrow(/Collo non previsto/);
   });
   it("a misura: 155mm qty20 publishes price; qty21 does not",()=>{
     expect(calculate({kind:"misura",collar:155,quantity:20}).base).toBe(12.126);
     expect(()=>calculate({kind:"misura",collar:155,quantity:21})).toThrow(/non pubblica/);
   });
-  it("zanca: conditional >35 mm reinforcement is not automatic",()=>{
-    const normal=calculate({kind:"zanca",quantity:10,collar:115,zancaLength:40});
-    expect(normal.base).toBe(12.23);
-    expect(normal.unit).toBe(12.23);
-    expect(normal.notes.join(" ")).toMatch(/NON è incluso/);
-    const approved=calculate({kind:"zanca",quantity:10,collar:115,zancaLength:40,reinforcedApproved:true});
-    expect(approved.unit).toBe(14.23);
+  it("zanca a filo: only whole millimeters 15 through 35 inclusive",()=>{
+    expect(calculate({kind:"zanca",quantity:10,collar:115,zancaLength:15}).base).toBe(12.23);
+    expect(calculate({kind:"zanca",quantity:10,collar:115,zancaLength:35}).base).toBe(12.23);
+    expect(()=>calculate({kind:"zanca",quantity:10,collar:115,zancaLength:14})).toThrow(/15 a 35/);
+    expect(()=>calculate({kind:"zanca",quantity:10,collar:115,zancaLength:36})).toThrow(/15 a 35/);
+    expect(()=>calculate({kind:"zanca",quantity:10,collar:115,zancaLength:15.3})).toThrow(/15 a 35/);
   });
   it("zanca supplement sormonto differs from standard",()=>{
     expect(calculate({kind:"zanca",quantity:4,collar:55,overlap:true}).unit).toBe(11.66);
@@ -56,6 +57,6 @@ describe("Bandelle a T — workbook Smeralda (2026 updated values)",()=>{
   it("never silently extrapolates beyond available quantity or collar",()=>{
     expect(()=>calculate({quantity:101})).toThrow(/4 a 100/);
     expect(()=>calculate({quantity:3})).toThrow(/4 a 100/);
-    expect(()=>calculate({collar:500})).toThrow(/Collo fuori/);
+    expect(()=>calculate({collar:500})).toThrow(/Collo non previsto/);
   });
 });
