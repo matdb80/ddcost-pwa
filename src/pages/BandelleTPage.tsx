@@ -46,18 +46,17 @@ export default function BandelleTPage() {
   };
   const copyResult = () => {
     if (!response) return;
+    const roundedUnit = Math.round((response.unit + Number.EPSILON) * 100) / 100;
+    const roundedTotal = Math.round((roundedUnit * req.quantity + Number.EPSILON) * 100) / 100;
+    const eyeType = req.kind === "standard"
+      ? (req.position === "centrale" ? "centrale" : "decentrato")
+      : (req.kind === "misura" ? "a misura" : "zancato a filo");
     const text = [
-      "BANDELLA A T SMERALDA - LISTINO",
-      "Tipologia: "+AMBITI.find(a=>a.id===req.kind)?.title,
-      "Codice: "+response.code,
-      "Lotto: "+req.quantity+" pz",
-      "Collo selezionato: "+response.size+" mm",
-      "Prezzo base: "+prices3(response.base)+" €/pz",
-      ...response.additions.map(a=>a.description+": "+prices2(a.euro)+" €/pz"),
-      "Prezzo netto unitario: "+prices3(response.unit)+" €/pz",
-      "Totale lotto: "+prices2(response.total)+" €",
-      ...response.notes,
-      "Fonte: Listino Smeralda, nota aumento 4,5% dal 01/03/2026 già inclusa.",
+      "Codice: " + response.code,
+      "Bandella a T occhio " + eyeType + " C=" + response.size,
+      "Lotto: " + req.quantity,
+      "Prezzo netto unitario: " + prices2(roundedUnit),
+      "Totale : " + prices2(roundedTotal),
     ].join("\n");
     void navigator.clipboard.writeText(text).then(()=>setMessage("Riepilogo copiato."),()=>setMessage("Copia non riuscita."));
   };
