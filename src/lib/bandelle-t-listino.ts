@@ -66,7 +66,6 @@ export type TRequest = {
   reverseOffset: boolean;
   overlap: boolean;
   zancaLength: number;
-  reinforcedApproved: boolean;
 };
 export type TResponse = {
   code: string;
@@ -81,18 +80,16 @@ export type TResponse = {
 export function quoteBandellaT(r: TRequest): TResponse {
   if (!Number.isInteger(r.quantity) || r.quantity < 4 || r.quantity > 100)
     throw new Error("Listino valido esclusivamente per lotti da 4 a 100 pezzi. Richiedere quotazione manuale.");
-  if (!Number.isFinite(r.collar) || r.collar <= 0)
-    throw new Error("Indicare un collo D positivo (mm).");
+  if (!Number.isInteger(r.collar) || r.collar <= 0)
+    throw new Error("Il collo D deve essere una misura intera presente nel listino.");
   const rows = PRICES[r.kind];
   if (!rows) throw new Error("Tipologia non valida");
-  if (r.collar < rows[0].collo || r.collar > rows[rows.length - 1].collo)
-    throw new Error("Collo fuori dai valori tabellati per questa tipologia: preventivo da valutare.");
+  const row = rows.find(current => current.collo === r.collar);
+  if (!row) throw new Error("Collo non previsto: scegliere esclusivamente una misura indicata nel listino.");
+  if (r.kind === "zanca" && (!Number.isInteger(r.zancaLength) || r.zancaLength < 15 || r.zancaLength > 35))
+    throw new Error("La zanca a filo deve avere una misura intera da 15 a 35 mm.");
   const idx = TIERS.findIndex(t => r.quantity >= t.min && r.quantity <= t.max);
   if (idx < 0) throw new Error("Lotto non supportato");
-  // Smallest configured collar in an exact halfway tie (no unlisted extrapolation).
-  const row = rows.reduce((best, current) =>
-    Math.abs(current.collo-r.collar) < Math.abs(best.collo-r.collar) ? current : best
-  );
   const base = row.prices[idx];
   if (base === null || base === undefined)
     throw new Error("Per questo collo e lotto il listino non pubblica un prezzo: richiedere quotazione manuale.");
@@ -107,16 +104,11 @@ export function quoteBandellaT(r: TRequest): TResponse {
   if (r.reverseOffset && r.kind === "standard" && r.position === "decentrato")
     additions.push({ description:"Decentratura al contrario", euro:1 });
   if (r.overlap) additions.push({ description:"Applicazione sormonto", euro:r.kind === "zanca" ? 2 : 2.5 });
-  if (r.reinforcedApproved && r.kind === "zanca" && r.zancaLength > 35)
-    additions.push({description:"Rinforzo/spessore maggiorato concordato", euro:2});
   const notes: string[] = [];
-  if (r.collar !== row.collo) notes.push("Collo richiesto "+r.collar+" mm, arrotondato al valore più vicino: "+row.collo+" mm.");
   if (r.kind === "standard") notes.push(r.position === "centrale" ? "Posizionamento centrale Z=2 mm." : "Decentratura standard Z=6 mm.");
   if (r.kind === "misura") notes.push("Posizionamento dell'occhio a disegno; completare codice variabile e quote prima dell'ordine.");
   if (r.kind === "zanca") {
-    notes.push("Verificare a disegno la zancatura a filo e il codice variabile.");
-    if (r.zancaLength > 35 && !r.reinforcedApproved)
-      notes.push("Zanca a filo oltre 35 mm: valutare necessità di rinforzo/spessore maggiorato. L'eventuale supplemento netto di 2 €/pz NON è incluso senza conferma.");
+    notes.push("Zanca a filo "+r.zancaLength+" mm. Verificare a disegno la zancatura e il codice variabile.");
   }
   const unit = Math.round((base+additions.reduce((sum,a)=>sum+a.euro,0))*1000)/1000;
   return { code,size:row.collo,tier:TIERS[idx].label,base,additions,unit,total:Math.round(unit*r.quantity*1000)/1000,notes };
