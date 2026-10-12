@@ -95,6 +95,47 @@ function calculateQuote(document: QuoteDocument): QuoteDocument {
     "\n\n" + lines.join("\n") + "\n\nTotale: € " + euro(totalFinal);
   return d;
 }
+
+function factorFromDiscount(text: string): number {
+  const parts = text.replace(/\s/g, "").replace(/%/g, "").split("+");
+  if (!parts.length || parts.some(p => !/^\d+(?:[.,]\d+)?$/.test(p))) throw Error("Inserire uno sconto valido (es. 40+10%)");
+  let f = 1;
+  for (const part of parts) {
+    const p = Number(part.replace(",", "."));
+    if (p < 0 || p >= 100) throw Error("Sconto fuori intervallo");
+    f *= 1 - p / 100;
+  }
+  return f;
+}
+function buildListino(previous: Record<string, any>, quote: QuoteDocument, productIndex: number) {
+  const chosen = quote.prodotti?.[productIndex] as Product | undefined;
+  if (!chosen) throw Error("Selezionare un prodotto di riferimento");
+  const discount = String(previous.sconto_riferimento ?? "").trim();
+  if (!discount) throw Error("Inserire lo sconto cliente");
+  const factor = factorFromDiscount(discount);
+  const requestedNet = val(chosen.prezzo_netto_unitario_finale);
+  if (!Number.isFinite(requestedNet) || requestedNet <= 0) throw Error("Prezzo netto di riferimento non valido");
+  const theoretical = requestedNet / factor;
+  // Round UP to the next cent: the discounted price must not drop below target.
+  const gross = Math.ceil((theoretical - 1e-10) * 100) / 100;
+  const resultNet = gross * factor;
+  const full = val(chosen.full_cost);
+  return {
+    ...previous,
+    descrizione_riferimento: String(chosen.descrizione ?? ""),
+    fonte: "prodotto selezionato nel preventivo",
+    prezzo_minimo_riferimento: requestedNet,
+    full_cost_riferimento: full,
+    prezzo_listino_minimo_teorico: theoretical,
+    prezzo_listino_generato: gross,
+    sconto_riferimento: discount,
+    rows: [{
+      sconto: discount, fattore_netto: factor, prezzo_listino: gross,
+      netto: resultNet, margine_netto: resultNet > 0 ? (resultNet - full) / resultNet * 100 : null,
+    }],
+  };
+}
+
 const fields: Array<{key:string;label:string;step?:string}> = [
   {key:"quantita",label:"Quantità",step:"1"},
   {key:"materiale_cad",label:"Materiale €/pz",step:"0.0001"},
@@ -119,6 +160,8 @@ export default function PreventivoEditorPage() {
   const [originalJson, setOriginalJson] = useState("");
   const [readOnly, setReadOnly] = useState(!isNew);
   const [dirtyCalculation, setDirtyCalculation] = useState(false);
+  const [listinoModified, setListinoModified] = useState(false);
+  const [priceProductIndex, setPriceProductIndex] = useState(0);
   const [error, setError] = useState("");
   const { data, isLoading } = trpc.quote.get.useQuery({ id:numericId }, { enabled: !isNew && numericId > 0 });
   const create = trpc.quote.create.useMutation();
@@ -134,6 +177,7 @@ export default function PreventivoEditorPage() {
       setOriginalJson(data.dataJson ?? "");
       setBaseline(JSON.stringify(parsed));
       setDirtyCalculation(false);
+      setListinoModified(false);
       setReadOnly(true);
       setError("");
     } catch {
@@ -167,6 +211,7 @@ export default function PreventivoEditorPage() {
     if (create.isPending || revise.isPending) return;
     try {
       const computed = dirtyCalculation || isNew ? calculateQuote(doc) : doc;
+      if (listinoModified) computed.listino = buildListino(computed.listino ?? {}, computed, priceProductIndex);
       const json = JSON.stringify(computed);
       if (!isNew && originalJson === json) return setError("Nessuna modifica rilevata");
       const payload = {
@@ -231,6 +276,39 @@ export default function PreventivoEditorPage() {
             disabled={locked} value={doc.target_totale ?? ""}
             onChange={e=>update("target_totale",e.target.value === "" ? null : Number(e.target.value),true)}/>
         </label>
+      </section>
+      <section className="bg-white border rounded-xl p-5 space-y-3">
+        <h2 className="font-semibold text-lg">Prezzo di listino da sconto cliente</h2>
+        <p className="text-xs text-slate-600">Il listino lordo viene ricavato dal prezzo netto finale dell'articolo selezionato, applicando gli sconti successivi (es. 40+10% = fattore 0,54). Il listino è arrotondato in eccesso al centesimo; il prezzo netto del preventivo non viene cambiato.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span>Prodotto di riferimento</span>
+            <select disabled={locked} className="border rounded p-2 disabled:bg-slate-100" value={priceProductIndex}
+              onChange={e=>{setPriceProductIndex(Number(e.target.value));setListinoModified(true);}}>
+              {(doc.prodotti as Product[]).map((p,i)=><option key={i} value={i}>{i+1}. {p.descrizione||"(senza descrizione)"}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span>Sconto cliente (es. 40+10%)</span>
+            <input disabled={locked} className="border rounded p-2 disabled:bg-slate-100"
+              value={doc.listino?.sconto_riferimento ?? ""}
+              onChange={e=>{update("listino",{...(doc.listino ?? {}),sconto_riferimento:e.target.value});setListinoModified(true);}}/>
+          </label>
+        </div>
+        {(() => {
+          const discount = String(doc.listino?.sconto_riferimento ?? "").trim();
+          if (!discount) return <p className="text-sm text-slate-500">Inserire lo sconto cliente per calcolare il listino lordo.</p>;
+          try {
+            const data = listinoModified
+              ? buildListino(doc.listino ?? {}, preview ?? doc, priceProductIndex)
+              : doc.listino;
+            return <div className="grid grid-cols-1 md:grid-cols-3 gap-2 bg-slate-50 rounded p-3 text-sm">
+              <span>Netto di riferimento: <b>€ {euro(data.prezzo_minimo_riferimento)}</b></span>
+              <span>Listino lordo: <b>€ {euro(data.prezzo_listino_generato)}</b></span>
+              <span>Netto dopo sconto: <b>€ {euro(data.rows?.[0]?.netto)}</b></span>
+            </div>;
+          } catch (err) { return <p className="text-red-700 text-sm">{err instanceof Error?err.message:"Sconto non valido"}</p>; }
+        })()}
       </section>
       <div className="flex justify-between items-center">
         <h2 className="font-semibold text-xl">Prodotti ({doc.prodotti?.length ?? 0})</h2>
