@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { eq, desc, sql, and, count, inArray } from "drizzle-orm";
 import { createRouter, authedQuery, adminQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { feedbackTickets, feedbackAttachments, feedbackSettings } from "@db/schema";
+import { feedbackTickets, feedbackAttachments, feedbackSettings, feedbackExports } from "@db/schema";
 
 function generateTicketNumber(id: number): string {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -102,6 +102,7 @@ export const feedbackRouter = createRouter({
         status: z.enum(["nuova", "da_pianificare", "in_lavorazione", "risolta_collaudo", "rilasciata", "duplicata", "non_riproducibile"]).optional(),
         type: z.enum(["bug", "miglioramento", "nuova_funzione"]).optional(),
         severity: z.enum(["normale", "bloccante"]).optional(),
+        exported: z.enum(["yes","no"]).optional(),
         search: z.string().max(200).optional(),
       })
     )
@@ -119,6 +120,12 @@ export const feedbackRouter = createRouter({
       if (input.severity) {
         conditions.push(eq(feedbackTickets.severity, input.severity));
       }
+      if (input.exported === "no") conditions.push(
+        sql`NOT EXISTS (SELECT 1 FROM feedback_exports e WHERE e.ticketId = ${feedbackTickets.id})`
+      );
+      if (input.exported === "yes") conditions.push(
+        sql`EXISTS (SELECT 1 FROM feedback_exports e WHERE e.ticketId = ${feedbackTickets.id})`
+      );
       if (input.search?.trim()) {
         const pattern = `%${input.search.trim()}%`;
         conditions.push(
@@ -132,7 +139,10 @@ export const feedbackRouter = createRouter({
         .select()
         .from(feedbackTickets)
         .where(whereClause)
-        .orderBy(desc(feedbackTickets.createdAt))
+        .orderBy(
+          sql`CASE WHEN EXISTS (SELECT 1 FROM feedback_exports e WHERE e.ticketId = ${feedbackTickets.id}) THEN 1 ELSE 0 END`,
+          desc(feedbackTickets.createdAt)
+        )
         .limit(input.pageSize)
         .offset(offset);
 
@@ -143,7 +153,15 @@ export const feedbackRouter = createRouter({
 
       const total = countResult[0]?.value ?? 0;
 
-      return { items: rows, total, page: input.page, pageSize: input.pageSize, totalPages: Math.ceil(total / input.pageSize) };
+      const receipts = rows.length
+        ? await db.select({ ticketId: feedbackExports.ticketId, exportedAt: feedbackExports.exportedAt })
+          .from(feedbackExports).where(inArray(feedbackExports.ticketId, rows.map(r => r.id)))
+          .orderBy(desc(feedbackExports.exportedAt))
+        : [];
+      const firstReceipt = new Map<number, Date>();
+      for (const item of receipts) if (!firstReceipt.has(item.ticketId)) firstReceipt.set(item.ticketId, item.exportedAt);
+      const items = rows.map(r => ({ ...r, exportedAt: firstReceipt.get(r.id) ?? null }));
+      return { items, total, page: input.page, pageSize: input.pageSize, totalPages: Math.ceil(total / input.pageSize) };
     }),
 
   getById: adminQuery
@@ -161,7 +179,10 @@ export const feedbackRouter = createRouter({
         .from(feedbackAttachments)
         .where(eq(feedbackAttachments.ticketId, input.id));
 
-      return { ticket: rows[0] ?? null, attachments };
+      const receipts = await db.select({ exportedAt: feedbackExports.exportedAt, source: feedbackExports.source })
+        .from(feedbackExports).where(eq(feedbackExports.ticketId, input.id))
+        .orderBy(desc(feedbackExports.exportedAt)).limit(1);
+      return { ticket: rows[0] ? { ...rows[0], exportedAt: receipts[0]?.exportedAt ?? null, exportSource: receipts[0]?.source ?? null } : null, attachments };
     }),
 
   updateStatus: adminQuery
@@ -236,7 +257,7 @@ export const feedbackRouter = createRouter({
 
   getStats: authedQuery.query(async () => {
     const db = getDb();
-    const [totalResult, pendingResult, blockingResult, thresholdResult] = await Promise.all([
+    const [totalResult, pendingResult, blockingResult, thresholdResult, unexportedResult] = await Promise.all([
       db.select({ value: count() }).from(feedbackTickets),
       db
         .select({ value: count() })
@@ -252,6 +273,8 @@ export const feedbackRouter = createRouter({
         .from(feedbackTickets)
         .where(eq(feedbackTickets.severity, "bloccante")),
       db.select().from(feedbackSettings).limit(1),
+      db.select({ value: count() }).from(feedbackTickets)
+        .where(sql`NOT EXISTS (SELECT 1 FROM feedback_exports e WHERE e.ticketId = ${feedbackTickets.id})`),
     ]);
 
     const total = totalResult[0]?.value ?? 0;
@@ -261,6 +284,7 @@ export const feedbackRouter = createRouter({
 
     return {
       total,
+      neverExported: unexportedResult[0]?.value ?? 0,
       pendingForRelease,
       blocking,
       threshold,
@@ -280,7 +304,9 @@ export const feedbackRouter = createRouter({
       const rows = await db
         .select()
         .from(feedbackTickets)
-        .where(input.ids?.length ? inArray(feedbackTickets.id, input.ids) : undefined)
+        .where(input.ids?.length
+          ? inArray(feedbackTickets.id, input.ids)
+          : sql`NOT EXISTS (SELECT 1 FROM feedback_exports e WHERE e.ticketId = ${feedbackTickets.id})`)
         .orderBy(desc(feedbackTickets.createdAt))
         .limit(500);
 
@@ -288,8 +314,10 @@ export const feedbackRouter = createRouter({
         ? rows.filter((r) => input.ids!.includes(r.id))
         : rows;
 
+      if (filtered.length === 0) throw new Error("Nessuna nuova segnalazione da esportare. Selezionare i ticket per riesportarli.");
+      const ids = filtered.map(r => r.id);
       if (input.format === "json") {
-        return { format: "json", content: JSON.stringify(filtered, null, 2) };
+        return { format: "json", ids, content: JSON.stringify(filtered, null, 2) };
       }
 
       // Markdown format
@@ -311,6 +339,29 @@ export const feedbackRouter = createRouter({
         )
         .join("\n");
 
-      return { format: "markdown", content: md };
+      return { format: "markdown", ids, content: md };
+    }),
+
+  /** Called by the UI only after triggering the browser download. Export receipt
+   *  is not proof the file was subsequently sent to ChatGPT. */
+  recordExport: adminQuery
+    .input(z.object({
+      ids: z.array(z.number().int().positive()).min(1).max(500),
+      batchId: z.string().uuid(),
+      format: z.enum(["json", "markdown"]),
+    }))
+    .mutation(async ({ input }) => {
+      const db = getDb();
+      return db.transaction(async tx => {
+        const valid = await tx.select({ id: feedbackTickets.id }).from(feedbackTickets)
+          .where(inArray(feedbackTickets.id, input.ids));
+        if (valid.length !== new Set(input.ids).size)
+          throw new Error("Impossibile tracciare export: elenco ticket incompleto");
+        for (const id of new Set(input.ids)) {
+          await tx.execute(sql`INSERT IGNORE INTO feedback_exports (ticketId, batchId, format, source)
+            VALUES (${id}, ${input.batchId}, ${input.format}, 'ui')`);
+        }
+        return { ok: true, count: valid.length };
+      });
     }),
 });
