@@ -10,6 +10,7 @@ import BandelleVenetaPage from "./pages/BandelleVenetaPage"
 import PreventiviPage from "./pages/PreventiviPage"
 import PreventivoEditorPage from "./pages/PreventivoEditorPage"
 import OffertePage from "./pages/OffertePage"
+import OffertaEditorPage from "./pages/OffertaEditorPage"
 import ImportaStorico from "./pages/ImportaStorico"
 import FeedbackAdminPage from "./pages/FeedbackAdminPage"
 
@@ -46,6 +47,8 @@ export default function App() {
       <Route path="/preventivi/new" element={<ProtectedRoute><PreventivoEditorPage /></ProtectedRoute>} />
       <Route path="/preventivi/:id" element={<ProtectedRoute><PreventivoEditorPage /></ProtectedRoute>} />
       <Route path="/offerte" element={<ProtectedRoute><OffertePage /></ProtectedRoute>} />
+      <Route path="/offerte/new" element={<ProtectedRoute><OffertaEditorPage /></ProtectedRoute>} />
+      <Route path="/offerte/:id" element={<ProtectedRoute><OffertaEditorPage /></ProtectedRoute>} />
       <Route path="/importa-storico" element={<ProtectedRoute><ImportaStorico /></ProtectedRoute>} />
       <Route path="/segnalazioni" element={<ProtectedRoute><FeedbackAdminPage /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
