@@ -74,6 +74,15 @@ export const cycleSimulations = mysqlTable("cycle_simulations", {
 export type CycleSimulation = typeof cycleSimulations.$inferSelect;
 export type InsertCycleSimulation = typeof cycleSimulations.$inferInsert;
 
+// Shared company product groups (new catalog, no changes to imported quotes).
+export const productGroups = mysqlTable("product_groups", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 120 }).notNull().unique(),
+  createdBy: bigint("createdBy", { mode: "number", unsigned: true }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ProductGroup = typeof productGroups.$inferSelect;
+
 // ============================================================
 // DDCost - Preventivi Unatantum
 // ============================================================
