@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
-import { Navigate } from "react-router";
+import { Navigate, Link } from "react-router";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertTriangle,
+  ArrowLeft,
   Bug,
   Lightbulb,
   Sparkles,
@@ -195,6 +196,10 @@ export default function FeedbackAdminPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
+          <Link to="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 hover:text-emerald-900 hover:underline mb-2">
+            <ArrowLeft className="w-4 h-4" />
+            Torna alla Home
+          </Link>
           <h1 className="text-2xl font-bold text-slate-800">Registro Segnalazioni</h1>
           <p className="text-sm text-slate-500">Gestione ticket di bug, miglioramenti e nuove funzioni</p>
         </div>
