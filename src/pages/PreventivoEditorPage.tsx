@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
 import { trpc } from "@/providers/trpc";
-import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy } from "lucide-react";
+import { formatQuoteForCopy } from "@/lib/quote-copy";
 
 type Product = Record<string, any>;
 type QuoteDocument = Record<string, any>;
 const val = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const euro = (v: unknown) => val(v).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const blankProduct = (): Product => ({
+  gruppo_merceologico: "", materiale_prodotto: "",
   codice: "", descrizione: "", quantita: 1, materiale_cad: 0, lavoro_h: 0, costo_lavoro: 24,
   trattamenti_cad: 0, attrezzaggi_h: 0, progettazione_h: 0, costo_progettazione: 50,
   ricarico_spese: 0.75, margine: 0.2, prezzo_manuale: null, quadrabile: true,
@@ -123,6 +125,8 @@ function buildListino(previous: Record<string, any>, quote: QuoteDocument, produ
   return {
     ...previous,
     descrizione_riferimento: String(chosen.descrizione ?? ""),
+    codice_riferimento: String(chosen.codice ?? ""),
+    product_index_riferimento: productIndex,
     fonte: "prodotto selezionato nel preventivo",
     prezzo_minimo_riferimento: requestedNet,
     full_cost_riferimento: full,
@@ -163,6 +167,12 @@ export default function PreventivoEditorPage() {
   const [listinoModified, setListinoModified] = useState(false);
   const [priceProductIndex, setPriceProductIndex] = useState(0);
   const [error, setError] = useState("");
+  const [copyMessage, setCopyMessage] = useState("");
+  const [newGroupIndex, setNewGroupIndex] = useState<number | null>(null);
+  const [newGroupName, setNewGroupName] = useState("");
+  const groupsQuery = trpc.productGroup.list.useQuery();
+  const createGroup = trpc.productGroup.create.useMutation();
+  const utils = trpc.useUtils();
   const { data, isLoading } = trpc.quote.get.useQuery({ id:numericId }, { enabled: !isNew && numericId > 0 });
   const create = trpc.quote.create.useMutation();
   const revise = trpc.quote.saveRevision.useMutation();
@@ -178,6 +188,7 @@ export default function PreventivoEditorPage() {
       setBaseline(JSON.stringify(parsed));
       setDirtyCalculation(false);
       setListinoModified(false);
+      setPriceProductIndex(Number.isInteger(parsed.listino?.product_index_riferimento) ? parsed.listino.product_index_riferimento : 0);
       setReadOnly(true);
       setError("");
     } catch {
@@ -195,7 +206,34 @@ export default function PreventivoEditorPage() {
       prodotti[index] = { ...prodotti[index], [key]: value };
       return { ...prev, prodotti };
     });
-    setDirtyCalculation(true);
+    if (!["gruppo_merceologico","materiale_prodotto","codice","descrizione"].includes(key))
+      setDirtyCalculation(true);
+  };
+  const addGroup = async (index: number) => {
+    setError("");
+    try {
+      const result = await createGroup.mutateAsync({ name: newGroupName.trim() });
+      await utils.productGroup.list.invalidate();
+      updateProduct(index,"gruppo_merceologico",result.name);
+      setNewGroupIndex(null);
+      setNewGroupName("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Impossibile creare il gruppo");
+    }
+  };
+  const copyQuote = async () => {
+    setError("");
+    setCopyMessage("");
+    try {
+      const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
+      if (listinoModified && String(doc.listino?.sconto_riferimento ?? "").trim())
+        computed.listino = buildListino(computed.listino ?? {}, computed, priceProductIndex);
+      const text = formatQuoteForCopy(computed);
+      await navigator.clipboard.writeText(text);
+      setCopyMessage("Dati del preventivo copiati. Puoi incollarli in un'email o documento.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Impossibile copiare il preventivo");
+    }
   };
   const preview = useMemo(() => {
     if (dirtyCalculation || isNew) {
@@ -207,6 +245,13 @@ export default function PreventivoEditorPage() {
     setError("");
     if (!doc.cliente?.trim()) return setError("Indicare il cliente");
     if (!Array.isArray(doc.prodotti) || doc.prodotti.length === 0) return setError("Inserire almeno un prodotto");
+    for (let i = 0; i < doc.prodotti.length; i++) {
+      const p = doc.prodotti[i];
+      if (!String(p.gruppo_merceologico ?? "").trim())
+        return setError("Indicare un gruppo merceologico per il prodotto " + (i+1));
+      if (!["ferro","ottone","inox"].includes(String(p.materiale_prodotto ?? "")))
+        return setError("Indicare ferro, ottone o inox per il prodotto " + (i+1));
+    }
     if (!isNew && !changed) return setError("Nessuna modifica rilevata");
     if (create.isPending || revise.isPending) return;
     try {
@@ -251,7 +296,11 @@ export default function PreventivoEditorPage() {
           <Link to="/preventivi" className="p-2 border rounded"><ArrowLeft size={16}/></Link>
           <h1 className="text-2xl font-bold">{isNew ? "Nuovo preventivo una tantum" : "Preventivo #" + numericId + " — rev. " + (data?.rev ?? 1)}</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <button type="button" onClick={copyQuote}
+            className="border border-emerald-600 text-emerald-700 px-4 py-2 rounded flex gap-2 items-center">
+            <Copy size={16}/> Copia per email / documento
+          </button>
           {locked ? <button className="bg-emerald-600 text-white px-4 py-2 rounded flex gap-2" onClick={() => setReadOnly(false)}><Pencil size={16}/> Modifica</button>
           : <>
               <button type="button" className="border px-4 py-2 rounded flex gap-2" onClick={() => { try { setDoc(calculateQuote(doc)); setDirtyCalculation(false); setError(""); } catch(e) { setError(e instanceof Error ? e.message : "Errore ricalcolo"); } }}><Calculator size={16}/> Ricalcola</button>
@@ -259,6 +308,7 @@ export default function PreventivoEditorPage() {
             </>}
         </div>
       </div>
+      {copyMessage && <div role="status" className="text-sm bg-emerald-50 border border-emerald-200 text-emerald-900 rounded p-3">{copyMessage}</div>}
       {error && <div role="alert" className="border border-red-400 bg-red-50 p-3 rounded text-red-800">{error}</div>}
       {!isNew && <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 p-3 rounded">
         Ogni modifica salva una nuova revisione; la versione originale non viene sovrascritta. I calcoli storici sono preservati finché non modifichi i dati economici.
@@ -323,6 +373,37 @@ export default function PreventivoEditorPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <label className="flex flex-col text-sm gap-1"><span>Codice articolo</span><input className="border p-2 rounded disabled:bg-slate-100" disabled={locked} value={p.codice??""} onChange={e=>updateProduct(index,"codice",e.target.value)}/></label>
             <label className="flex flex-col text-sm gap-1 md:col-span-2"><span>Descrizione *</span><input className="border p-2 rounded disabled:bg-slate-100" disabled={locked} value={p.descrizione??""} onChange={e=>updateProduct(index,"descrizione",e.target.value)}/></label>
+            <div className="flex flex-col text-sm gap-1 md:col-span-2">
+              <label htmlFor={"group-"+index} className="font-medium">Gruppo merceologico *</label>
+              <select id={"group-"+index} disabled={locked} className="border rounded p-2 disabled:bg-slate-100"
+                value={p.gruppo_merceologico ?? ""} onChange={e=>updateProduct(index,"gruppo_merceologico",e.target.value)}>
+                <option value="">Seleziona un gruppo esistente</option>
+                {(groupsQuery.data ?? []).map(g=><option key={g.id} value={g.name}>{g.name}</option>)}
+                {p.gruppo_merceologico && !(groupsQuery.data ?? []).some(g=>g.name === p.gruppo_merceologico) &&
+                  <option value={p.gruppo_merceologico}>{p.gruppo_merceologico} (non presente nel catalogo)</option>}
+              </select>
+              {!locked && (newGroupIndex === index
+                ? <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <input aria-label="Nome nuovo gruppo merceologico" autoFocus maxLength={120} className="border rounded p-2 flex-1 min-w-32"
+                      value={newGroupName} placeholder="Es. Bandelle a T" onChange={e=>setNewGroupName(e.target.value)}
+                      onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();void addGroup(index);}}}/>
+                    <button type="button" disabled={createGroup.isPending || newGroupName.trim().length<2}
+                      className="px-3 py-2 rounded bg-emerald-600 text-white disabled:opacity-50" onClick={()=>void addGroup(index)}>Crea e seleziona</button>
+                    <button type="button" className="border rounded px-3 py-2" onClick={()=>setNewGroupIndex(null)}>Annulla</button>
+                  </div>
+                : <button type="button" className="text-left text-emerald-700 underline text-xs mt-1"
+                    onClick={()=>{setNewGroupName("");setNewGroupIndex(index);}}>+ Crea un nuovo gruppo merceologico</button>)}
+            </div>
+            <label className="flex flex-col text-sm gap-1">
+              <span className="font-medium">Materiale prodotto *</span>
+              <select className="border rounded p-2 disabled:bg-slate-100" disabled={locked}
+                value={p.materiale_prodotto ?? ""} onChange={e=>updateProduct(index,"materiale_prodotto",e.target.value)}>
+                <option value="">Seleziona materiale</option>
+                <option value="ferro">Ferro</option>
+                <option value="ottone">Ottone</option>
+                <option value="inox">Inox</option>
+              </select>
+            </label>
             {fields.map(f=><label key={f.key} className="flex flex-col text-sm gap-1">
               <span>{f.label}</span>
               <input type="number" step={f.step??"any"} className="border p-2 rounded disabled:bg-slate-100"
