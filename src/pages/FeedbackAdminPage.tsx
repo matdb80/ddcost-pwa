@@ -81,6 +81,8 @@ export default function FeedbackAdminPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [severityFilter, setSeverityFilter] = useState("");
+  const [exportFilter, setExportFilter] = useState("");
+  const [exportMessage, setExportMessage] = useState("");
   const [search, setSearch] = useState("");
   const [detailId, setDetailId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -94,6 +96,7 @@ export default function FeedbackAdminPage() {
     status: (statusFilter || undefined) as "nuova" | "da_pianificare" | "in_lavorazione" | "risolta_collaudo" | "rilasciata" | "duplicata" | "non_riproducibile" | undefined,
     type: (typeFilter || undefined) as "bug" | "miglioramento" | "nuova_funzione" | undefined,
     severity: (severityFilter || undefined) as "normale" | "bloccante" | undefined,
+    exported: (exportFilter || undefined) as "no" | "yes" | undefined,
     search: search || undefined,
   });
   const detailQuery = trpc.feedback.getById.useQuery(
@@ -119,6 +122,7 @@ export default function FeedbackAdminPage() {
   });
 
   const exportMutation = trpc.feedback.export.useMutation();
+  const recordExportMutation = trpc.feedback.recordExport.useMutation();
 
   if (isLoading) {
     return (
@@ -158,15 +162,28 @@ export default function FeedbackAdminPage() {
   };
 
   const handleExport = async (format: "markdown" | "json") => {
-    const ids = selectedIds.size > 0 ? Array.from(selectedIds) : undefined;
-    const result = await exportMutation.mutateAsync({ ids, format });
-    const blob = new Blob([result.content], { type: format === "json" ? "application/json" : "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `segnalazioni.${format === "json" ? "json" : "md"}`;
-    a.click();
-    URL.revokeObjectURL(url);
+    setExportMessage("");
+    try {
+      const ids = selectedIds.size > 0 ? Array.from(selectedIds) : undefined;
+      // With no manual selection, only tickets never exported are downloaded.
+      const result = await exportMutation.mutateAsync({ ids, format });
+      const blob = new Blob([result.content], { type: format === "json" ? "application/json" : "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `segnalazioni-${new Date().toISOString().slice(0,10)}.${format === "json" ? "json" : "md"}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      // Mark export *after* initiating download; does not imply ChatGPT has received it.
+      await recordExportMutation.mutateAsync({ ids: result.ids, batchId: crypto.randomUUID(), format });
+      await Promise.all([utils.feedback.listAdmin.invalidate(), utils.feedback.getStats.invalidate(), utils.feedback.getById.invalidate()]);
+      setSelectedIds(new Set());
+      setExportMessage(`Esportati ${result.ids.length} ticket. Scaricare non conferma l'invio a ChatGPT.`);
+    } catch (err) {
+      setExportMessage(err instanceof Error ? err.message : "Errore nell'esportazione.");
+    }
   };
 
   const handleUpdateStatus = (id: number, status: string) => {
@@ -186,19 +203,24 @@ export default function FeedbackAdminPage() {
             <Settings className="w-4 h-4 mr-1" />
             Soglia: {threshold}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => handleExport("markdown")}>
+          <Button variant="outline" size="sm" disabled={exportMutation.isPending || recordExportMutation.isPending} onClick={() => handleExport("markdown")}>
             <FileText className="w-4 h-4 mr-1" />
             Esporta MD
           </Button>
-          <Button variant="outline" size="sm" onClick={() => handleExport("json")}>
+          <Button variant="outline" size="sm" disabled={exportMutation.isPending || recordExportMutation.isPending} onClick={() => handleExport("json")}>
             <Download className="w-4 h-4 mr-1" />
             Esporta JSON
           </Button>
         </div>
       </div>
 
+      <p className="text-xs text-slate-600">
+        Senza selezione, Esporta invia al download solo ticket <b>mai esportati</b>. Per riesportare un ticket già trattato, selezionalo manualmente. La registrazione indica il download, non la consegna a ChatGPT.
+      </p>
+      {exportMessage && <p role="status" className="border border-slate-200 rounded p-3 text-sm">{exportMessage}</p>}
+
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <p className="text-sm text-slate-500">Totale segnalazioni</p>
           <p className="text-2xl font-bold text-slate-800">{stats?.total ?? 0}</p>
@@ -220,6 +242,11 @@ export default function FeedbackAdminPage() {
           <p className="text-sm text-slate-500">Bug bloccanti</p>
           <p className="text-2xl font-bold text-red-600">{stats?.blocking ?? 0}</p>
         </div>
+        <button type="button" onClick={() => { setExportFilter("no"); setPage(1); }} className="text-left bg-amber-50 rounded-xl border border-amber-200 p-4 hover:border-amber-400">
+          <p className="text-sm text-amber-800">Mai esportate — da comunicare</p>
+          <p className="text-2xl font-bold text-amber-900">{stats?.neverExported ?? 0}</p>
+          <p className="text-xs text-amber-700">Mostra soltanto queste</p>
+        </button>
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <p className="text-sm text-slate-500">Selezionati</p>
           <p className="text-2xl font-bold text-slate-800">{selectedIds.size}</p>
@@ -228,7 +255,7 @@ export default function FeedbackAdminPage() {
 
       {/* Filters */}
       <div className="bg-white rounded-xl border border-slate-200 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
@@ -270,7 +297,15 @@ export default function FeedbackAdminPage() {
               <SelectItem value="bloccante">Bloccante</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={() => { setStatusFilter(""); setTypeFilter(""); setSeverityFilter(""); setSearch(""); setPage(1); }}>
+          <Select value={exportFilter || "all"} onValueChange={(v) => { setExportFilter(v === "all" ? "" : v); setPage(1); }}>
+            <SelectTrigger><SelectValue placeholder="Esportazione" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tutte le segnalazioni</SelectItem>
+              <SelectItem value="no">Mai esportate</SelectItem>
+              <SelectItem value="yes">Già esportate</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" onClick={() => { setStatusFilter(""); setTypeFilter(""); setSeverityFilter(""); setExportFilter(""); setSearch(""); setPage(1); }}>
             <RefreshCw className="w-4 h-4 mr-1" />
             Reset
           </Button>
@@ -296,6 +331,7 @@ export default function FeedbackAdminPage() {
               <TableHead>Tipo</TableHead>
               <TableHead>Gravità</TableHead>
               <TableHead>Stato</TableHead>
+              <TableHead>Export a ChatGPT</TableHead>
               <TableHead>Utente</TableHead>
               <TableHead>Data</TableHead>
               <TableHead className="w-10" />
@@ -304,7 +340,7 @@ export default function FeedbackAdminPage() {
           <TableBody>
             {listQuery.isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8">
+                <TableCell colSpan={10} className="text-center py-8">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600 mx-auto" />
                 </TableCell>
               </TableRow>
@@ -316,7 +352,7 @@ export default function FeedbackAdminPage() {
               </TableRow>
             ) : (
               listQuery.data?.items.map((item) => (
-                <TableRow key={item.id} className="cursor-pointer hover:bg-slate-50" onClick={() => setDetailId(item.id)}>
+                <TableRow key={item.id} className={`cursor-pointer hover:bg-slate-50 ${!item.exportedAt ? "bg-amber-50/70" : ""}` } onClick={() => setDetailId(item.id)}>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                       checked={selectedIds.has(item.id)}
@@ -345,6 +381,11 @@ export default function FeedbackAdminPage() {
                     <Badge className={`${statusColors[item.status] ?? "bg-slate-100"} text-xs`}>
                       {statusLabels[item.status] ?? item.status}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {item.exportedAt
+                      ? <span className="text-xs text-slate-500" title={new Date(item.exportedAt).toLocaleString("it-IT")}>Già esportata</span>
+                      : <span className="text-xs font-semibold text-amber-800">MAI ESPORTATA</span>}
                   </TableCell>
                   <TableCell className="text-sm text-slate-600">{item.userName ?? "N/D"}</TableCell>
                   <TableCell className="text-sm text-slate-400">
@@ -399,6 +440,7 @@ export default function FeedbackAdminPage() {
                 <div><span className="text-slate-500">Data:</span> {new Date(detailQuery.data.ticket.createdAt).toLocaleString("it-IT")}</div>
                 <div><span className="text-slate-500">Pagina:</span> {detailQuery.data.ticket.pageRoute ?? "N/D"}</div>
                 <div><span className="text-slate-500">Build:</span> {detailQuery.data.ticket.buildVersion ?? "N/D"}</div>
+                <div><span className="text-slate-500">Esportazione:</span> {detailQuery.data.ticket.exportedAt ? "Già esportata il " + new Date(detailQuery.data.ticket.exportedAt).toLocaleString("it-IT") : "MAI ESPORTATA"}</div>
                 {detailQuery.data.ticket.cycleId && (
                   <div><span className="text-slate-500">Ciclo:</span> {detailQuery.data.ticket.cycleId} {detailQuery.data.ticket.cycleRev ? `(rev ${detailQuery.data.ticket.cycleRev})` : ""}</div>
                 )}
