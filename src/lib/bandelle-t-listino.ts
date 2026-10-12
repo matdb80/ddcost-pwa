@@ -95,9 +95,13 @@ export function quoteBandellaT(r: TRequest): TResponse {
     throw new Error("Per questo collo e lotto il listino non pubblica un prezzo: richiedere quotazione manuale.");
   let code = row.code ?? "";
   if (r.kind === "standard") {
-    code = r.position === "centrale" ? row.centralCode ?? "" : row.decentralizedCode ?? "";
-    if (!code)
-      throw new Error("Occhio decentrato standard non codificato per questo collo. Selezionare 'decentrato a misura'.");
+    // Position is descriptive: the decentralized eye uses the identical price tier.
+    // For collars without an explicit decentralized SKU in the sheet, use the
+    // central SKU as a PRICE REFERENCE only and warn before ordering.
+    code = r.position === "centrale"
+      ? row.centralCode ?? ""
+      : row.decentralizedCode ?? row.centralCode ?? "";
+    if (!code) throw new Error("Codice di riferimento non disponibile per questo collo");
   }
   const additions: TResponse["additions"] = [];
   if (r.diameterOther) additions.push({ description:"Occhio diverso da Ø12", euro:3 });
@@ -106,6 +110,8 @@ export function quoteBandellaT(r: TRequest): TResponse {
   if (r.overlap) additions.push({ description:"Applicazione sormonto", euro:r.kind === "zanca" ? 2 : 2.5 });
   const notes: string[] = [];
   if (r.kind === "standard") notes.push(r.position === "centrale" ? "Posizionamento centrale Z=2 mm." : "Decentratura standard Z=6 mm.");
+  if (r.kind === "standard" && r.position === "decentrato" && !row.decentralizedCode)
+    notes.push("Prezzo e codice di riferimento del centrale. Confermare il codice esatto per l'occhio decentrato prima dell'ordine.");
   if (r.kind === "misura") notes.push("Posizionamento dell'occhio a disegno; completare codice variabile e quote prima dell'ordine.");
   if (r.kind === "zanca") {
     notes.push("Zanca a filo "+r.zancaLength+" mm. Verificare a disegno la zancatura e il codice variabile.");
