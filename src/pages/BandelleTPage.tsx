@@ -1,7 +1,7 @@
 import Layout from "@/components/Layout";
 import { useState } from "react";
 import { Calculator, Copy } from "lucide-react";
-import { quoteBandellaT, type TKind, type TPosition, type TRequest, type TResponse } from "@/lib/bandelle-t-listino";
+import { quoteBandellaT, type TKind, type TPosition, type TRequest, type TResponse, PRICES } from "@/lib/bandelle-t-listino";
 
 const AMBITI: Array<{ id: TKind; title: string; desc: string; img: string }> = [
   { id:"standard", title:"Occhio standard", desc:"Occhio centrale o decentrato con posizionamento standard", img:"/images/occhio standard.png" },
@@ -11,7 +11,7 @@ const AMBITI: Array<{ id: TKind; title: string; desc: string; img: string }> = [
 const initial: TRequest = {
   kind:"standard", quantity:20, collar:55, position:"centrale",
   diameterOther:false, reverseOffset:false, overlap:false,
-  zancaLength:35, reinforcedApproved:false,
+  zancaLength:35,
 };
 const prices3 = (n:number) => n.toLocaleString("it-IT",{minimumFractionDigits:3,maximumFractionDigits:3});
 const prices2 = (n:number) => n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -22,6 +22,15 @@ export default function BandelleTPage() {
   const [message,setMessage] = useState("");
   const set = <K extends keyof TRequest>(key:K,value:TRequest[K]) => {
     setReq(prev=>({...prev,[key]:value}));
+    setResponse(null);
+    setMessage("");
+  };
+  const selectKind = (kind: TKind) => {
+    setReq(prev => ({
+      ...prev,
+      kind,
+      collar: PRICES[kind].some(row => row.collo === prev.collar) ? prev.collar : PRICES[kind][0].collo,
+    }));
     setResponse(null);
     setMessage("");
   };
@@ -42,7 +51,7 @@ export default function BandelleTPage() {
       "Tipologia: "+AMBITI.find(a=>a.id===req.kind)?.title,
       "Codice: "+response.code,
       "Lotto: "+req.quantity+" pz",
-      "Collo: "+req.collar+" mm (listino "+response.size+" mm)",
+      "Collo selezionato: "+response.size+" mm",
       "Prezzo base: "+prices3(response.base)+" €/pz",
       ...response.additions.map(a=>a.description+": "+prices2(a.euro)+" €/pz"),
       "Prezzo netto unitario: "+prices3(response.unit)+" €/pz",
@@ -59,7 +68,7 @@ export default function BandelleTPage() {
         <p className="text-sm text-slate-500">Lama 16 cm · Tabelle originali del file XLSM · Aggiornamento prezzi indicato nel foglio: +4,5% dal 01/03/2026, già incluso.</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {AMBITI.map(a=><button type="button" key={a.id} onClick={()=>set("kind",a.id)}
+        {AMBITI.map(a=><button type="button" key={a.id} onClick={()=>selectKind(a.id)}
           className={"text-left p-4 rounded-xl border-2 transition-all "+(req.kind===a.id?"border-emerald-500 bg-emerald-50":"border-slate-200 bg-white hover:border-emerald-300")}>
           <div className="h-24 bg-white rounded-lg border border-slate-100 mb-3 flex items-center justify-center overflow-hidden">
             <img src={a.img} alt={a.title} className="max-h-full max-w-full object-contain" />
@@ -75,9 +84,11 @@ export default function BandelleTPage() {
             <input type="number" min="4" max="100" step="1" className="border rounded p-2" value={req.quantity}
               onChange={e=>set("quantity",Number(e.target.value))}/>
           </label>
-          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Collo D richiesto (mm)
-            <input type="number" min="1" step="0.1" className="border rounded p-2" value={req.collar}
-              onChange={e=>set("collar",Number(e.target.value))}/>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Collo D (mm) — misura di listino
+            <select className="border rounded p-2" value={req.collar}
+              onChange={e=>set("collar",Number(e.target.value))}>
+              {PRICES[req.kind].map(row=><option key={row.collo} value={row.collo}>{row.collo} mm</option>)}
+            </select>
           </label>
           {req.kind==="standard"&&<label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Posizione occhio standard
             <select className="border rounded p-2" value={req.position} onChange={e=>set("position",e.target.value as TPosition)}>
@@ -85,9 +96,11 @@ export default function BandelleTPage() {
               <option value="decentrato">Decentrato (Z=6 mm)</option>
             </select>
           </label>}
-          {req.kind==="zanca"&&<label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Lunghezza zanca a filo (mm)
-            <input type="number" min="1" step="0.1" className="border rounded p-2" value={req.zancaLength}
-              onChange={e=>set("zancaLength",Number(e.target.value))}/>
+          {req.kind==="zanca"&&<label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Lunghezza zanca a filo (mm) — da 15 a 35
+            <select className="border rounded p-2" value={req.zancaLength}
+              onChange={e=>set("zancaLength",Number(e.target.value))}>
+              {Array.from({length:21},(_,i)=>i+15).map(n=><option key={n} value={n}>{n} mm</option>)}
+            </select>
           </label>}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
@@ -95,14 +108,7 @@ export default function BandelleTPage() {
           <label className="flex gap-2 items-center"><input type="checkbox" checked={req.overlap} onChange={e=>set("overlap",e.target.checked)}/>Applicazione sormonto (+{req.kind==="zanca"?"2,00":"2,50"} €/pz)</label>
           {req.kind==="standard" && req.position==="decentrato"&&
             <label className="flex gap-2 items-center"><input type="checkbox" checked={req.reverseOffset} onChange={e=>set("reverseOffset",e.target.checked)}/>Decentratura al contrario (+1,00 €/pz)</label>}
-          {req.kind==="zanca" && req.zancaLength>35 &&
-            <label className="flex gap-2 items-center"><input type="checkbox" checked={req.reinforcedApproved} onChange={e=>set("reinforcedApproved",e.target.checked)}/>
-              Rinforzo/spessore maggiorato valutato e confermato (+2,00 €/pz)
-            </label>}
         </div>
-        {req.kind==="zanca"&&req.zancaLength>35&&<p className="text-amber-800 text-sm">
-          Per zanche superiori a 35 mm il foglio prescrive una verifica tecnica: l'eventuale supplemento di 2 € si applica solo se necessario e confermato.
-        </p>}
         {req.kind==="misura"&&<p className="text-slate-600 text-sm">Posizione occhio a disegno. Prima dell'ordine occorre definire le quote e completare il codice variabile.</p>}
         <div className="flex gap-3 flex-wrap">
           <button type="button" onClick={calculate} className="bg-emerald-600 text-white rounded px-4 py-2 font-semibold hover:bg-emerald-700">Calcola prezzo</button>
@@ -116,7 +122,7 @@ export default function BandelleTPage() {
         </div>
         <dl className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
           <div><dt className="text-slate-500">Codice listino</dt><dd className="font-mono font-semibold">{response.code}</dd></div>
-          <div><dt className="text-slate-500">Collo tabellato</dt><dd className="font-semibold">{response.size} mm</dd></div>
+          <div><dt className="text-slate-500">Collo selezionato</dt><dd className="font-semibold">{response.size} mm</dd></div>
           <div><dt className="text-slate-500">Fascia lotto</dt><dd className="font-semibold">{response.tier} pz</dd></div>
           <div><dt className="text-slate-500">Prezzo base</dt><dd className="font-semibold">{prices3(response.base)} €/pz</dd></div>
           <div><dt className="text-slate-500">Supplementi complessivi</dt><dd className="font-semibold">{prices2(response.additions.reduce((s,a)=>s+a.euro,0))} €/pz</dd></div>
