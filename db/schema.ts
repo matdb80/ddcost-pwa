@@ -45,7 +45,8 @@ export const cycles = mysqlTable("cycles", {
   lot: varchar("lot", { length: 100 }),
   standardCost: decimal("standardCost", { precision: 30, scale: 18 }),
   minimumPrice: decimal("minimumPrice", { precision: 30, scale: 18 }),
-  dataJson: text("dataJson"),
+  // Supports complex cycles with 40+ detailed rows; preserve all original JSON fields.
+  dataJson: mediumtext("dataJson"),
   deleted: tinyint("deleted", { unsigned: true }).default(0),
   deletedAt: timestamp("deletedAt"),
 });
