@@ -50,6 +50,8 @@ export interface RigaCiclo {
   note: string;
   /** Index of parent row when this is a detail expansion */
   parent_idx?: number | null;
+  /** New assemblies only: derive this row cost recursively from its components. Legacy parent_idx rows remain unchanged. */
+  assembly_auto?: boolean;
   /** Whether this row contributes to cost (default true for most categories) */
   considera?: boolean | null;
 }
