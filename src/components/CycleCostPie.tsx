@@ -50,7 +50,7 @@ export default function CycleCostPie({cycle}: {cycle: CicloEditorModel}) {
                   label={({percent})=>pct((percent ?? 0)*100)+"%"}>
                   {slices.map(x=><Cell key={x.name} fill={x.color}/>)}
                 </Pie>
-                <Tooltip formatter={(value:number|string|undefined)=>"€ "+eur(Number(value??0))}/>
+                <Tooltip formatter={(value)=>"€ "+eur(Number(value))}/>
               </PieChart>
             </ResponsiveContainer>
           </div>
