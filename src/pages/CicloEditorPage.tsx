@@ -524,33 +524,17 @@ export default function CicloEditorPage() {
           <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
             <h2 className="text-sm font-semibold text-slate-700">Righe di Lavorazione ({model.righe.length})</h2>
             {(!isReadOnly || isNew) && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!window.confirm("Aggiungere 10 righe vuote al ciclo? Saranno inserite in fondo e potrai compilarle o eliminarle prima del salvataggio.")) return;
-                    setModel(prev=>({...prev,righe:[...prev.righe,...Array.from({length:10},()=>emptyRiga())]}));
-                    setSimulationExcluded(new Set());
-                    setHasRecalculated(false);
-                    setLastRecalculatedSignature(null);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 border border-emerald-500 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-50"
-                >
-                  <Plus className="h-4 w-4" />
-                  Aggiungi 10 righe
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openRigaDialog()}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
-                >
-                  <Plus className="h-4 w-4" />
-                  Aggiungi Riga
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => openRigaDialog()}
+                className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
+              >
+                <Plus className="h-4 w-4" />
+                Aggiungi Riga
+              </button>
             )}
           </div>
-          <p className="mb-3 text-xs text-slate-500">Sono supportati cicli con oltre 40 righe; il contatore mostra tutte le righe, comprese quelle annidate negli assiemi. Per salvare le modifiche economiche premi Ricalcola.</p>
+          <p className="mb-3 text-xs text-slate-500">Aggiungi una riga alla volta, senza limite a 10. Il contatore include anche i componenti degli assiemi. Per salvare le modifiche economiche premi Ricalcola.</p>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <p className="text-xs text-slate-600">
               {isReadOnly && !isNew
