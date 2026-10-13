@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { emptyRiga, emptyCicloEditorModel, type RigaCiclo } from "@/types/cycle";
-import { attachToAssembly, childrenOf, detachFromAssembly, orderedHierarchy, removeLeaf, swapRows } from "./cycle-hierarchy";
+import { emptyRiga, emptyCicloEditorModel, parseCycleRow, serializeCycleDataJson, type RigaCiclo } from "@/types/cycle";
+import { attachToAssembly, appendChildToAssembly, canAddChild, childrenOf, detachFromAssembly, orderedHierarchy, removeLeaf, swapRows } from "./cycle-hierarchy";
 import { ricalcolaCiclo, calcolaBreakdown, costoRigaGerarchico } from "./cycle-calculator";
 
 const row=(desc:string,unit:number,nr=1):RigaCiclo=>({
@@ -71,6 +71,37 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    const b=ricalcolaCiclo({...cycle,righe:r.map((v,i)=>i===1?{...v,considera:false}:v)});
    expect(b.costo_standard).toBe(0);
    expect(b.simulazioni[0].attrezzaggio_pz).toBe(0);
+ });
+ it("adds a direct component by + and keeps cost, parent and independent rows after a reload",()=>{
+   const old=[row("Assembly",0),row("Other row",3)];
+   const original=JSON.stringify(old);
+   const added=appendChildToAssembly(old,0,{...row("Child L2",2),codice_articolo:"P-002"});
+   expect(JSON.stringify(old)).toBe(original);
+   expect(added[0].assembly_auto).toBe(true);
+   expect(added[2].parent_idx).toBe(0);
+   const loaded=ricalcolaCiclo(make(added));
+   const reopened=parseCycleRow({code:"C",lot:"100",
+      dataJson:JSON.stringify(serializeCycleDataJson(loaded))});
+   expect(orderedHierarchy(reopened.righe).map(v=>v.depth)).toEqual([1,2,1]);
+   expect(reopened.righe[2].codice_articolo).toBe("P-002");
+   expect(reopened.costo_standard).toBe(5);
+ });
+ it("can add a nested operation through level 3 and 4, but never level 5",()=>{
+   let rows=[row("Root",0)];
+   rows=appendChildToAssembly(rows,0,row("Level 2",0));
+   rows=appendChildToAssembly(rows,1,row("Level 3",0));
+   rows=appendChildToAssembly(rows,2,{...row("Level 4 operation",0),categoria:"LAVORAZIONE INTERNA" as const,colpi_min:2});
+   expect(orderedHierarchy(rows).map(x=>x.depth)).toEqual([1,2,3,4]);
+   expect(canAddChild(rows,3)).toBe(false);
+   expect(()=>appendChildToAssembly(rows,3,row("Level 5",1))).toThrow(/quarto livello/);
+   expect(ricalcolaCiclo(make(rows)).costo_standard).toBeCloseTo(0.175);
+ });
+ it("never converts historical detail expansion into calculated assembly",()=>{
+   const historical=[{...row("Old manual assembly",8),categoria:"COMPONENTE/ASSIEME" as const},
+     {...row("Old expansion",15),parent_idx:0}];
+   expect(canAddChild(historical,0)).toBe(false);
+   expect(()=>appendChildToAssembly(historical,0,row("New child",3))).toThrow();
+   expect(ricalcolaCiclo(make(historical)).costo_standard).toBe(8);
  });
  it("reorders and deletes without leaving dangling parent indexes",()=>{
    let r=attachToAssembly([row("A",1),row("B",2),row("C",3)],2,1);
