@@ -191,7 +191,7 @@ export function calcolaBreakdown(ciclo: CicloEditorModel): Breakdown {
 export function calcolaAttrezzaggioTotale(ciclo: CicloEditorModel): number {
   const clm = ciclo.costo_lavoro_min;
   if (!ciclo.righe.some(r=>r.assembly_auto)) {
-    return ciclo.righe.reduce((sum, r) => sum + calcolaAttrezzaggioRiga(r, clm), 0);
+    return ciclo.righe.reduce((sum, r) => sum + (r.considera === false ? 0 : calcolaAttrezzaggioRiga(r, clm)), 0);
   }
   const walk = (i:number,level:number):number => {
     const row=ciclo.righe[i];
