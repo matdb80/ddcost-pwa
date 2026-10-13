@@ -3,6 +3,7 @@ import { eq, desc, sql, count, and } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { cycles } from "@db/schema";
+import { requireCurrentRevision } from "./cycle-version-guard";
 
 /**
  * No-op guard at the API boundary. Compare the selected original revision
@@ -314,12 +315,7 @@ export const cycleRouter = createRouter({
       // CRITICAL: never merge an older revision's rows over newer assembly
       // children. This was the regression when users reopened the root after
       // creating an assieme and then added an unrelated line.
-      if (latest.id !== source.id) {
-        throw new Error(
-          "Hai aperto una revisione precedente del ciclo. Nessun dato è stato salvato. " +
-          "Riapri la revisione più recente (rev. " + (latest.rev ?? 1) + ") per modificare le righe."
-        );
-      }
+      requireCurrentRevision(source.id, latest.id, latest.rev ?? 1);
 
       const newRev = (latest.rev ?? 1) + 1;
 
