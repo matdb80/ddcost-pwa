@@ -14,6 +14,7 @@ import { migrateStagingCycles } from "./staging-cycle-migration";
 import { migrateStagingFeedback } from "./staging-feedback-migration";
 import { migrateStagingFeedbackExports } from "./staging-feedback-export-migration";
 import { migrateStagingProductGroups } from "./staging-product-group-migration";
+import { migrateStagingCycleCapacity } from "./staging-cycle-capacity-migration";
 import { downloadBackup } from "./backup";
 import { previewLegacyImport, commitLegacyImport } from "./legacy-import";
 
@@ -60,6 +61,10 @@ if (env.isProduction) {
 
   if (process.env.DDCOST_STAGING_MIGRATE_PRODUCT_GROUPS === "1") {
     await migrateStagingProductGroups();
+  }
+
+  if (process.env.DDCOST_STAGING_MIGRATE_CYCLE_CAPACITY === "1") {
+    await migrateStagingCycleCapacity();
   }
 
   if (process.env.DB_DIAGNOSTICS === "1") {
