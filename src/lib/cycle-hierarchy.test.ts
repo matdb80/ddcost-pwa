@@ -56,6 +56,22 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    expect(ricalcolaCiclo(cycle).costo_standard).toBe(11);
    expect(JSON.stringify(cycle)).toBe(snapshot);
  });
+ it("recalculates setup cost by lot inside assemblies; excluding it sets setup to zero",()=>{
+   let r=[row("Assembly",0),{
+     ...row("Internal work",0),
+     categoria:"LAVORAZIONE INTERNA" as const,
+     colpi_min:2,attrezzaggio_min:20,lotto_voce:0,
+   }];
+   r=attachToAssembly(r,1,0);
+   const cycle=make(r);
+   const a=ricalcolaCiclo(cycle);
+   expect(a.costo_standard).toBeCloseTo(0.175+0.07,10);
+   expect(a.simulazioni[0].costo_standard).toBeCloseTo(0.175+0.28,10);
+   expect(a.simulazioni[0].attrezzaggio_pz).toBeCloseTo(0.28,10);
+   const b=ricalcolaCiclo({...cycle,righe:r.map((v,i)=>i===1?{...v,considera:false}:v)});
+   expect(b.costo_standard).toBe(0);
+   expect(b.simulazioni[0].attrezzaggio_pz).toBe(0);
+ });
  it("reorders and deletes without leaving dangling parent indexes",()=>{
    let r=attachToAssembly([row("A",1),row("B",2),row("C",3)],2,1);
    r=swapRows(r,0,1);
