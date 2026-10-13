@@ -10,7 +10,6 @@ import {
   ArrowDown,
   Save,
   Calculator,
-  Copy,
   Pencil,
   X,
   EyeOff,
