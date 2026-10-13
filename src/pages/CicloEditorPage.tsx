@@ -28,7 +28,8 @@ import {
   serializeCycleDataJson,
 } from "@/types/cycle";
 import { ricalcolaCiclo, calcolaCostoRiga, costoRigaGerarchico } from "@/lib/cycle-calculator";
-import { attachToAssembly, appendChildToAssembly, canAddChild, detachFromAssembly, orderedHierarchy, removeLeaf, swapRows, childrenOf } from "@/lib/cycle-hierarchy";
+import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, detachFromAssembly, orderedHierarchy, removeLeaf, moveRowAmongSiblings, childrenOf } from "@/lib/cycle-hierarchy";
+import { calculateSaleMargins, parseMarketPrice } from "@/lib/cycle-price-margins";
 
 /** Canonical snapshot of cost-related inputs; legacy JSON lotto is numeric, DB lot is text. */
 function economicSignature(m: CicloEditorModel): string {
@@ -40,6 +41,17 @@ function economicSignature(m: CicloEditorModel): string {
     lotto: m.lotto === "" ? null : Number(m.lotto),
     lotti: (m.lotti_personalizzati ?? m.simulazioni.map(s => s.lotto)).map(Number),
   });
+}
+
+const LEVEL_BACKGROUNDS: Record<number,string> = {
+  1: "bg-sky-50/60",
+  2: "bg-emerald-50/70",
+  3: "bg-violet-50/60",
+  4: "bg-amber-50/60",
+};
+
+function formatMarginPercent(v:number) {
+  return v.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2}) + "%";
 }
 
 function formatMoney(v: number) {
@@ -72,6 +84,8 @@ export default function CicloEditorPage() {
   const [simulationExcluded, setSimulationExcluded] = useState<Set<number>>(new Set());
   const [draggingIndex, setDraggingIndex] = useState<number|null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number|null>(null);
+  // Pricing simulation is read-only and never enters a cycle revision or backup.
+  const [marketPriceInput, setMarketPriceInput] = useState("");
 
   const getCycle = trpc.cycle.get.useQuery(
     { id: numericId! },
@@ -159,7 +173,9 @@ export default function CicloEditorPage() {
   }, [model, simulationExcluded]);
 
   const treeOrder = useMemo(() => orderedHierarchy(model.righe), [model.righe]);
-  const hasHierarchy = model.righe.some(r=>r.parent_idx!=null);
+  const marketPrice = parseMarketPrice(marketPriceInput);
+  const marketMargins = marketPrice === null ? null : calculateSaleMargins(marketPrice,simulatedModel.costo_standard,simulatedModel.full_cost);
+  const minimumMargins = calculateSaleMargins(simulatedModel.prezzo_minimo,simulatedModel.costo_standard,simulatedModel.full_cost);
 
   const toggleSimulation = (i:number) => {
     const r=model.righe[i];
@@ -291,13 +307,14 @@ export default function CicloEditorPage() {
 
   const moveRiga = (index: number, direction: -1 | 1) => {
     if (isReadOnly && !isNew) return;
-    if (hasHierarchy) return; // avoid visually misleading cross-level ordering
-    const next=index+direction;
-    if(next<0||next>=model.righe.length)return;
-    setModel(prev=>({...prev,righe:swapRows(prev.righe,index,next)}));
-    setSimulationExcluded(new Set());
-    setHasRecalculated(false);
-    setLastRecalculatedSignature(null);
+    try {
+      const moved=moveRowAmongSiblings(model.righe,index,direction);
+      if(moved===model.righe)return;
+      setModel(prev=>({...prev,righe:moved}));
+      setSimulationExcluded(new Set());
+      setHasRecalculated(false);
+      setLastRecalculatedSignature(null);
+    } catch(err) {alert(err instanceof Error?err.message:"Impossibile spostare la riga");}
   };
 
   const handleRicalcola = () => {
@@ -626,8 +643,8 @@ export default function CicloEditorPage() {
               Per i cicli storici, il ricalcolo simulato può differire dai valori memorizzati.
             </div>
           )}
-          {hasHierarchy && !isReadOnly && (
-            <p className="mb-3 text-xs text-slate-500">Con assiemi presenti, i pulsanti su/giù sono disabilitati per evitare spostamenti involontari fra livelli.</p>
+          {(!isReadOnly || isNew) && (
+            <p className="mb-3 text-xs text-slate-500">Le frecce spostano una riga tra le righe dello stesso gruppo e livello, senza modificarne i collegamenti. Per cambiare assieme usa il trascinamento o il comando Sgancia.</p>
           )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -691,7 +708,7 @@ export default function CicloEditorPage() {
                         handleDropAssemble(src,i);
                       }}
                       onDragEnd={()=>{setDraggingIndex(null);setDragOverIndex(null);}}
-                      className={"border-b border-slate-100 "+(simulationExcluded.has(i)?"bg-amber-50 opacity-70 ":dragOverIndex===i?"bg-emerald-100 ":"hover:bg-slate-50 ")+(canEdit?"cursor-grab ":"")}
+                      className={"border-b border-slate-100 transition-colors hover:brightness-[0.98] "+(simulationExcluded.has(i)?"bg-amber-100/60 opacity-70 ":dragOverIndex===i?"bg-emerald-100 ":LEVEL_BACKGROUNDS[depth]??"bg-slate-50/50 ")+(canEdit?"cursor-grab ":"")}
                       onClick={()=>{if(canEdit && draggingIndex===null)openRigaDialog(i);}}
                     >
                       <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
@@ -737,12 +754,14 @@ export default function CicloEditorPage() {
                                 className="p-1.5 text-blue-700 hover:bg-blue-50 rounded">
                                 <CornerDownRight className="h-4 w-4 rotate-180"/>
                               </button>}
-                            <button type="button" disabled={hasHierarchy} title={hasHierarchy?"Non disponibile con assiemi":"Sposta su"}
+                            <button type="button" disabled={adjacentSibling(model.righe,i,-1) === null}
+                              aria-label="Sposta riga su nello stesso gruppo" title="Sposta sopra la riga precedente dello stesso livello e assieme"
                               onClick={e=>{e.stopPropagation();moveRiga(i,-1);}}
-                              className="p-1 hover:bg-slate-100 rounded disabled:opacity-25"><ArrowUp className="h-3 w-3"/></button>
-                            <button type="button" disabled={hasHierarchy} title={hasHierarchy?"Non disponibile con assiemi":"Sposta giù"}
+                              className="p-1 hover:bg-white/60 rounded disabled:opacity-25 disabled:cursor-not-allowed"><ArrowUp className="h-3 w-3"/></button>
+                            <button type="button" disabled={adjacentSibling(model.righe,i,1) === null}
+                              aria-label="Sposta riga giù nello stesso gruppo" title="Sposta sotto la riga successiva dello stesso livello e assieme"
                               onClick={e=>{e.stopPropagation();moveRiga(i,1);}}
-                              className="p-1 hover:bg-slate-100 rounded disabled:opacity-25"><ArrowDown className="h-3 w-3"/></button>
+                              className="p-1 hover:bg-white/60 rounded disabled:opacity-25 disabled:cursor-not-allowed"><ArrowDown className="h-3 w-3"/></button>
                             <button type="button" title="Elimina riga"
                               onClick={e=>{e.stopPropagation();deleteRiga(i);}}
                               className="p-1 hover:bg-red-50 text-red-500 rounded"><Trash2 className="h-3 w-3"/></button>
@@ -787,10 +806,66 @@ export default function CicloEditorPage() {
                 <span className="text-slate-500">Full Cost</span>
                 <span className="font-mono">{formatMoney(simulatedModel.full_cost)}</span>
               </div>
-              <div className="flex justify-between font-semibold text-slate-800">
+              <div className="flex justify-between items-center gap-2 font-semibold text-slate-800">
                 <span>Prezzo Minimo</span>
-                <span className="font-mono">{formatMoney(simulatedModel.prezzo_minimo)}</span>
+                <div className="relative group">
+                  <button type="button" className="font-mono tabular-nums underline decoration-dotted underline-offset-4 cursor-help rounded focus-visible:outline focus-visible:outline-emerald-600"
+                    aria-label="Prezzo minimo: mostra il calcolo del margine netto"
+                    aria-describedby="minimum-margin-formula"
+                    title="Passa sopra o seleziona per vedere la formula del margine netto">
+                    {formatMoney(simulatedModel.prezzo_minimo)}
+                  </button>
+                  <div id="minimum-margin-formula" role="tooltip"
+                    className="pointer-events-none invisible group-hover:visible group-focus-within:visible absolute right-0 bottom-full mb-2 z-20 w-72 max-w-[calc(100vw-3rem)] rounded-lg bg-slate-900 text-white shadow-lg p-3 text-xs font-normal leading-relaxed">
+                    <strong>Calcolo margine netto sul prezzo minimo</strong>
+                    {minimumMargins ? <>
+                      <div className="mt-2">Prezzo minimo: € {formatMoney(simulatedModel.prezzo_minimo)}</div>
+                      <div>Full cost (con spese generali): € {formatMoney(simulatedModel.full_cost)}</div>
+                      <div>Differenza: € {formatMoney(minimumMargins.netEuro)}</div>
+                      <div className="mt-1 font-semibold">Margine netto: {formatMarginPercent(minimumMargins.netPercent)}</div>
+                      <div className="mt-2 border-t border-slate-600 pt-2 text-slate-300">
+                        Formula: (prezzo minimo − full cost) / prezzo minimo × 100
+                      </div>
+                    </> : <p>Prezzo minimo non positivo: margine non calcolabile.</p>}
+                  </div>
+                </div>
               </div>
+            </div>
+            <div className="mt-5 pt-4 border-t border-slate-200">
+              <label htmlFor="market-price" className="block text-sm font-semibold text-slate-800">
+                Prezzo imposto dal mercato (€ / pezzo)
+              </label>
+              <p className="mt-1 mb-2 text-xs text-slate-500">Inserisci un prezzo ipotetico. Il confronto non modifica il ciclo né i suoi costi.</p>
+              <input id="market-price" type="text" inputMode="decimal" placeholder="Es. 12,50"
+                value={marketPriceInput} onChange={e=>setMarketPriceInput(e.target.value)}
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
+              {marketPriceInput.trim() && !marketMargins && (
+                <p role="alert" className="mt-2 text-xs text-amber-800">Inserisci un prezzo positivo, ad esempio 12,50 (massimo quattro decimali).</p>
+              )}
+              {marketMargins && (
+                <div className="mt-3 space-y-3" aria-live="polite">
+                  <div className="rounded-lg bg-emerald-50/70 border border-emerald-100 p-3">
+                    <div className="flex justify-between items-baseline gap-2">
+                      <span className="font-medium text-sm">Margine lordo</span>
+                      <strong className={marketMargins.grossPercent<0?"text-red-700":"text-emerald-800"}>{formatMarginPercent(marketMargins.grossPercent)}</strong>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-600">€ {formatMoney(marketMargins.grossEuro)} · prima delle spese generali</div>
+                    <div className="text-xs text-slate-500">(Prezzo − costo standard) / prezzo × 100</div>
+                  </div>
+                  <div className="rounded-lg bg-sky-50/70 border border-sky-100 p-3">
+                    <div className="flex justify-between items-baseline gap-2">
+                      <span className="font-medium text-sm">Margine netto</span>
+                      <strong className={marketMargins.netPercent<0?"text-red-700":"text-sky-800"}>{formatMarginPercent(marketMargins.netPercent)}</strong>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-600">€ {formatMoney(marketMargins.netEuro)} · dopo spese generali</div>
+                    <div className="text-xs text-slate-500">(Prezzo − full cost) / prezzo × 100</div>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Spese generali incluse nel full cost: € {formatMoney(marketMargins.overheadEuro)}.
+                    Margine netto industriale prima di imposte e oneri finanziari.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
