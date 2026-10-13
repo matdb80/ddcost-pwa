@@ -126,6 +126,29 @@ export function swapRows(rows:RigaCiclo[], a:number,b:number):RigaCiclo[] {
   });
 }
 
+/** Get the nearest previous/next sibling. Same level alone is not enough:
+ * they must have the same direct parent, otherwise moving could change group.
+ * The UI uses physical indices, while tree display is derived from parent_idx.
+ */
+export function adjacentSibling(rows:RigaCiclo[], index:number, direction:-1|1):number|null {
+  if (!rows[index]) return null;
+  const parent=rows[index].parent_idx??null;
+  const siblings=rows.flatMap((r,i)=>r.parent_idx==null&&parent===null || r.parent_idx===parent&&parent!==null ? [i] : []);
+  const at=siblings.indexOf(index);
+  if(at<0) return null;
+  return siblings[at+direction]??null;
+}
+
+export function moveRowAmongSiblings(rows:RigaCiclo[],index:number,direction:-1|1):RigaCiclo[] {
+  const neighbor=adjacentSibling(rows,index,direction);
+  if(neighbor===null)return rows;
+  // Swap row identities and rewrite every parent reference, including whole
+  // subtrees. This changes presentation order, NEVER membership or prices.
+  const moved=swapRows(rows,index,neighbor);
+  for(let i=0;i<moved.length;i++)if(moved[i].parent_idx!=null)rowDepth(moved,i);
+  return moved;
+}
+
 export function removeLeaf(rows:RigaCiclo[],index:number):RigaCiclo[] {
   if (childrenOf(rows,index).length) throw new Error("Prima sgancia o elimina i componenti dell'assieme");
   return rows.filter((_,i)=>i!==index).map(r=>({
