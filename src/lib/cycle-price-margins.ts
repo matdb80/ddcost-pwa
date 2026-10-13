@@ -22,7 +22,7 @@ export function calculateSaleMargins(price:number,directCost:number,fullCost:num
 /** Accept 12.50 and Italian 12,50; reject grouping separators/ambiguous inputs. */
 export function parseMarketPrice(raw:string):number|null {
   const text=raw.trim();
-  if(!/^\\d+(?:[.,]\\d{1,4})?$/.test(text))return null;
+  if(!/^\d+(?:[.,]\d{1,4})?$/.test(text))return null;
   const n=Number(text.replace(",","."));
   return Number.isFinite(n)&&n>0?n:null;
 }
