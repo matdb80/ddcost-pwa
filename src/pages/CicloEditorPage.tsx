@@ -514,7 +514,7 @@ export default function CicloEditorPage() {
 
         {/* Righe */}
         <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
             <h2 className="text-sm font-semibold text-slate-700">Righe di Lavorazione</h2>
             {(!isReadOnly || isNew) && (
               <button
@@ -526,82 +526,140 @@ export default function CicloEditorPage() {
               </button>
             )}
           </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <p className="text-xs text-slate-600">
+              {isReadOnly && !isNew
+                ? "Usa l'icona occhio per simulare l'esclusione di una riga senza creare una revisione."
+                : "Per creare un assieme, trascina una riga sull'altra (destinazione: COMPONENTE o COMPONENTE/ASSIEME). Massimo 4 livelli."}
+            </p>
+            {simulationExcluded.size > 0 && (
+              <button type="button" onClick={() => setSimulationExcluded(new Set())}
+                className="flex items-center gap-1.5 rounded-md bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-200">
+                <RotateCcw className="h-3.5 w-3.5" />
+                Ripristina tutte le righe ({simulationExcluded.size})
+              </button>
+            )}
+          </div>
+          {simulationExcluded.size > 0 && (
+            <div role="status" className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <strong>Simulazione veloce attiva.</strong> I costi e le simulazioni qui visualizzati sono provvisori.
+              Nessuna esclusione né costo simulato verrà salvato; disattivando le icone si ripristinano i dati originali.
+              Per i cicli storici, il ricalcolo simulato può differire dai valori memorizzati.
+            </div>
+          )}
+          {hasHierarchy && !isReadOnly && (
+            <p className="mb-3 text-xs text-slate-500">Con assiemi presenti, i pulsanti su/giù sono disabilitati per evitare spostamenti involontari fra livelli.</p>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="text-left px-3 py-2 font-medium text-slate-600">#</th>
+                  <th className="text-left px-3 py-2 font-medium text-slate-600"># / Livello</th>
                   <th className="text-left px-3 py-2 font-medium text-slate-600">Categoria</th>
                   <th className="text-left px-3 py-2 font-medium text-slate-600">Codice</th>
                   <th className="text-left px-3 py-2 font-medium text-slate-600">Descrizione</th>
                   <th className="text-right px-3 py-2 font-medium text-slate-600">Nr</th>
                   <th className="text-right px-3 py-2 font-medium text-slate-600">Costo</th>
-                  {(!isReadOnly || isNew) && (
-                    <th className="text-center px-3 py-2 font-medium text-slate-600 w-24">Azioni</th>
-                  )}
+                  <th className="text-center px-3 py-2 font-medium text-slate-600">Simula / Azioni</th>
                 </tr>
               </thead>
               <tbody>
                 {model.righe.length === 0 && (
                   <tr>
-                    <td
-                      colSpan={!isReadOnly || isNew ? 7 : 6}
-                      className="px-3 py-6 text-center text-slate-400"
-                    >
+                    <td colSpan={7} className="px-3 py-6 text-center text-slate-400">
                       Nessuna riga. Clicca "Aggiungi Riga".
                     </td>
                   </tr>
                 )}
-                {model.righe.map((r, i) => {
-                  const costo = calcolaCostoRiga(r, model.costo_lavoro_min, model.lotto);
-
+                {treeOrder.map(({index:i,depth}) => {
+                  const r = model.righe[i];
+                  const displayed=simulatedModel.righe;
+                  const parentIndex=r.parent_idx;
+                  const inAssembly = r.assembly_auto || (parentIndex!=null && model.righe[parentIndex]?.assembly_auto===true);
+                  // If a parent is temporarily disabled, the entire subtree is ignored.
+                  let disabledAncestor = false;
+                  let ancestor = parentIndex;
+                  const checked = new Set<number>();
+                  while(ancestor!=null && !checked.has(ancestor)) {
+                    checked.add(ancestor);
+                    if(simulationExcluded.has(ancestor)) disabledAncestor = true;
+                    ancestor=model.righe[ancestor]?.parent_idx;
+                  }
+                  const cost = (simulationExcluded.has(i) || disabledAncestor)
+                    ? 0
+                    : inAssembly
+                      ? costoRigaGerarchico(displayed,i,simulatedModel.costo_lavoro_min,simulatedModel.lotto)
+                      : calcolaCostoRiga(displayed[i],simulatedModel.costo_lavoro_min,simulatedModel.lotto);
+                  const canSimulate = parentIndex==null || model.righe[parentIndex]?.assembly_auto === true;
+                  const canEdit = !isReadOnly || isNew;
                   return (
                     <tr
                       key={i}
-                      className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
-                      onClick={() => openRigaDialog(i)}
+                      draggable={canEdit}
+                      onDragStart={(e)=>{
+                        if(!canEdit)return;
+                        e.dataTransfer.effectAllowed="move";
+                        e.dataTransfer.setData("text/plain",String(i));
+                        setDraggingIndex(i);
+                      }}
+                      onDragOver={(e)=>{if(canEdit && draggingIndex!==null && draggingIndex!==i){
+                        e.preventDefault();e.dataTransfer.dropEffect="move";setDragOverIndex(i);
+                      }}}
+                      onDrop={(e)=>{
+                        e.preventDefault();e.stopPropagation();
+                        const src=Number(e.dataTransfer.getData("text/plain"));
+                        if(!Number.isInteger(src) || src<0 || src>=model.righe.length)return;
+                        handleDropAssemble(src,i);
+                      }}
+                      onDragEnd={()=>{setDraggingIndex(null);setDragOverIndex(null);}}
+                      className={"border-b border-slate-100 "+(simulationExcluded.has(i)?"bg-amber-50 opacity-70 ":dragOverIndex===i?"bg-emerald-100 ":"hover:bg-slate-50 ")+(canEdit?"cursor-grab ":"")}
+                      onClick={()=>{if(canEdit && draggingIndex===null)openRigaDialog(i);}}
                     >
-                      <td className="px-3 py-2 text-slate-500">{i + 1}</td>
-                      <td className="px-3 py-2 text-xs">{r.categoria}</td>
+                      <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1" style={{paddingLeft:Math.max(0,depth-1)*15}}>
+                          {canEdit && <GripVertical className="w-3 h-3 text-slate-400" aria-hidden="true"/>}
+                          {depth>1&&<CornerDownRight className="w-3 h-3 text-emerald-600" aria-hidden="true"/>}
+                          {i+1} {depth>0&&<span className="text-xs">L{depth}</span>}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {r.categoria}{r.assembly_auto&&<span className="block font-semibold text-emerald-700">Assieme automatico</span>}
+                      </td>
                       <td className="px-3 py-2 text-xs">{r.codice_articolo}</td>
                       <td className="px-3 py-2 text-xs max-w-xs truncate">{r.descrizione}</td>
                       <td className="px-3 py-2 text-right text-xs">{r.nr_componenti}</td>
-                      <td className="px-3 py-2 text-right text-xs font-mono">
-                        {formatMoney(costo)}
+                      <td className={"px-3 py-2 text-right text-xs font-mono "+(cost===0&&simulationExcluded.size?"text-amber-700":"")}>
+                        {formatMoney(cost)}
                       </td>
-                      {(!isReadOnly || isNew) && (
-                        <td className="px-3 py-2">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                moveRiga(i, -1);
-                              }}
-                              className="p-1 hover:bg-slate-100 rounded"
-                            >
-                              <ArrowUp className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                moveRiga(i, 1);
-                              }}
-                              className="p-1 hover:bg-slate-100 rounded"
-                            >
-                              <ArrowDown className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteRiga(i);
-                              }}
-                              className="p-1 hover:bg-red-50 text-red-500 rounded"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
-                        </td>
-                      )}
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-center gap-1">
+                          <button type="button"
+                            onClick={e=>{e.stopPropagation();toggleSimulation(i);}}
+                            disabled={!canSimulate}
+                            aria-label={simulationExcluded.has(i)?"Riattiva riga nel calcolo":"Escludi riga costo dal calcolo"}
+                            title={!canSimulate?"Dettaglio storico non conteggiato separatamente":simulationExcluded.has(i)?"Riattiva il costo della riga":"Escludi riga costo dal calcolo (solo simulazione)"}
+                            className={"p-1.5 rounded disabled:opacity-30 "+(simulationExcluded.has(i)?"bg-amber-200 text-amber-900":"text-slate-500 hover:bg-amber-100")}>
+                            {simulationExcluded.has(i)?<EyeOff className="h-4 w-4"/>:<Eye className="h-4 w-4"/>}
+                          </button>
+                          {canEdit && <>
+                            {parentIndex!=null &&
+                              <button type="button" title="Sgancia dal gruppo e porta al livello 1"
+                                onClick={e=>{e.stopPropagation();detachRiga(i);}}
+                                className="p-1.5 text-blue-700 hover:bg-blue-50 rounded">
+                                <CornerDownRight className="h-4 w-4 rotate-180"/>
+                              </button>}
+                            <button type="button" disabled={hasHierarchy} title={hasHierarchy?"Non disponibile con assiemi":"Sposta su"}
+                              onClick={e=>{e.stopPropagation();moveRiga(i,-1);}}
+                              className="p-1 hover:bg-slate-100 rounded disabled:opacity-25"><ArrowUp className="h-3 w-3"/></button>
+                            <button type="button" disabled={hasHierarchy} title={hasHierarchy?"Non disponibile con assiemi":"Sposta giù"}
+                              onClick={e=>{e.stopPropagation();moveRiga(i,1);}}
+                              className="p-1 hover:bg-slate-100 rounded disabled:opacity-25"><ArrowDown className="h-3 w-3"/></button>
+                            <button type="button" title="Elimina riga"
+                              onClick={e=>{e.stopPropagation();deleteRiga(i);}}
+                              className="p-1 hover:bg-red-50 text-red-500 rounded"><Trash2 className="h-3 w-3"/></button>
+                          </>}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -615,7 +673,7 @@ export default function CicloEditorPage() {
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <h2 className="text-sm font-semibold text-slate-700 mb-4">Breakdown Costi</h2>
             <div className="space-y-2">
-              {Object.entries(model.breakdown).map(([cat, val]) => (
+              {Object.entries(simulatedModel.breakdown).map(([cat, val]) => (
                 <div key={cat} className="flex justify-between text-sm">
                   <span className="text-slate-500">{cat}</span>
                   <span className="font-mono">{formatMoney(val)}</span>
@@ -623,7 +681,7 @@ export default function CicloEditorPage() {
               ))}
               <div className="border-t pt-2 flex justify-between font-semibold text-slate-800">
                 <span>Totale</span>
-                <span className="font-mono">{formatMoney(model.costo_standard)}</span>
+                <span className="font-mono">{formatMoney(simulatedModel.costo_standard)}</span>
               </div>
             </div>
           </div>
@@ -633,15 +691,15 @@ export default function CicloEditorPage() {
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Costo Standard</span>
-                <span className="font-mono">{formatMoney(model.costo_standard)}</span>
+                <span className="font-mono">{formatMoney(simulatedModel.costo_standard)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Full Cost</span>
-                <span className="font-mono">{formatMoney(model.full_cost)}</span>
+                <span className="font-mono">{formatMoney(simulatedModel.full_cost)}</span>
               </div>
               <div className="flex justify-between font-semibold text-slate-800">
                 <span>Prezzo Minimo</span>
-                <span className="font-mono">{formatMoney(model.prezzo_minimo)}</span>
+                <span className="font-mono">{formatMoney(simulatedModel.prezzo_minimo)}</span>
               </div>
             </div>
           </div>
@@ -709,7 +767,7 @@ export default function CicloEditorPage() {
                 </tr>
               </thead>
               <tbody>
-                {model.simulazioni.map((s, i) => (
+                {simulatedModel.simulazioni.map((s, i) => (
                   <tr key={i} className="border-b border-slate-100">
                     <td className="px-3 py-2">{s.lotto}</td>
                     <td className="px-3 py-2 text-right font-mono">{formatMoney(s.costo_standard)}</td>
