@@ -28,7 +28,7 @@ import {
   serializeCycleDataJson,
 } from "@/types/cycle";
 import { ricalcolaCiclo, calcolaCostoRiga, costoRigaGerarchico } from "@/lib/cycle-calculator";
-import { attachToAssembly, detachFromAssembly, orderedHierarchy, removeLeaf, swapRows, childrenOf } from "@/lib/cycle-hierarchy";
+import { attachToAssembly, appendChildToAssembly, canAddChild, detachFromAssembly, orderedHierarchy, removeLeaf, swapRows, childrenOf } from "@/lib/cycle-hierarchy";
 
 /** Canonical snapshot of cost-related inputs; legacy JSON lotto is numeric, DB lot is text. */
 function economicSignature(m: CicloEditorModel): string {
@@ -66,6 +66,8 @@ export default function CicloEditorPage() {
   const [rigaIndex, setRigaIndex] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [overwriteStep, setOverwriteStep] = useState(false);
+  const [newChildParent, setNewChildParent] = useState<number | null>(null);
   const [isReadOnly, setIsReadOnly] = useState(!isNew);
   const [simulationExcluded, setSimulationExcluded] = useState<Set<number>>(new Set());
   const [draggingIndex, setDraggingIndex] = useState<number|null>(null);
@@ -86,6 +88,16 @@ export default function CicloEditorPage() {
   const createCycle = trpc.cycle.create.useMutation({
     onSuccess: () => navigate("/cicli"),
     onError: (err) => alert(`Errore creazione: ${err.message}`),
+  });
+
+  const overwriteLatest = trpc.cycle.overwriteLatest.useMutation({
+    onSuccess: async (result) => {
+      setSaveDialogOpen(false);
+      setOverwriteStep(false);
+      await getCycle.refetch();
+      alert("Revisione " + result.rev + " sovrascritta definitivamente. Nessuna nuova revisione creata.");
+    },
+    onError: (err) => alert("Sovrascrittura non eseguita: " + err.message),
   });
 
   const createRevision = trpc.cycle.createRevision.useMutation({
@@ -205,14 +217,28 @@ export default function CicloEditorPage() {
     setRigaEdit({ ...rigaEdit, [field]: value });
   };
 
-  const openRigaDialog = (index?: number) => {
+  const openRigaDialog = (index?: number, childParent?: number) => {
     if (isReadOnly && !isNew) return;
-    if (index !== undefined) {
-      setRigaEdit({ ...model.righe[index] });
-      setRigaIndex(index);
-    } else {
+    if (childParent !== undefined) {
+      if (!canAddChild(model.righe,childParent)) {
+        alert("Non puoi aggiungere componenti: solo assiemi compatibili e massimo quattro livelli.");
+        return;
+      }
+      const parent = model.righe[childParent];
+      if(!parent.assembly_auto && Number(parent.costo_unitario)>0 &&
+         !window.confirm("La riga diventerà un assieme automatico: il costo manuale della riga principale sarà conservato, ma escluso dal totale. Proseguire?")) return;
+      setNewChildParent(childParent);
       setRigaEdit(emptyRiga());
       setRigaIndex(null);
+    } else {
+      setNewChildParent(null);
+      if (index !== undefined) {
+        setRigaEdit({ ...model.righe[index] });
+        setRigaIndex(index);
+      } else {
+        setRigaEdit(emptyRiga());
+        setRigaIndex(null);
+      }
     }
     setDialogOpen(true);
   };
@@ -224,15 +250,29 @@ export default function CicloEditorPage() {
       alert("Per un assieme calcolato dai componenti la categoria deve rimanere COMPONENTE/ASSIEME. Sgancia prima i componenti.");
       return;
     }
-    setModel((prev) => {
-      const righe = [...prev.righe];
-      if (rigaIndex !== null) {
-        righe[rigaIndex] = rigaEdit;
-      } else {
-        righe.push(rigaEdit);
+    if (newChildParent !== null) {
+      try {
+        const righe=appendChildToAssembly(model.righe,newChildParent,rigaEdit);
+        setModel(prev=>({...prev,righe}));
+      } catch (err) {
+        alert(err instanceof Error?err.message:"Errore inserimento componente");
+        return;
       }
-      return { ...prev, righe };
-    });
+    } else {
+      setModel((prev) => {
+        const righe = [...prev.righe];
+        if (rigaIndex !== null) {
+          righe[rigaIndex] = rigaEdit;
+        } else {
+          righe.push(rigaEdit);
+        }
+        return { ...prev, righe };
+      });
+    }
+    setHasRecalculated(false);
+    setLastRecalculatedSignature(null);
+    setSimulationExcluded(new Set());
+    setNewChildParent(null);
     setDialogOpen(false);
   };
 
@@ -286,12 +326,13 @@ export default function CicloEditorPage() {
         alert("Nessuna modifica rilevata: revisione non creata.");
         return;
       }
+      setOverwriteStep(false);
       setSaveDialogOpen(true);
     }
   };
 
-  const confirmSaveRevision = () => {
-    if (!numericId || !getCycle.data || createRevision.isPending) return;
+  const confirmSaveRevision = (mode: "revision" | "overwrite") => {
+    if (!numericId || !getCycle.data || createRevision.isPending || overwriteLatest.isPending) return;
     if (!isModified) {
       setSaveDialogOpen(false);
       alert("Nessuna modifica rilevata: revisione non creata.");
@@ -338,7 +379,7 @@ export default function CicloEditorPage() {
       minimumPrice = String(getCycle.data?.minimumPrice ?? model.prezzo_minimo);
     }
 
-    createRevision.mutate({
+    const common = {
       sourceId: numericId,
       rootId: model.rootId ?? numericId,
       code: model.codice,
@@ -348,7 +389,17 @@ export default function CicloEditorPage() {
       standardCost,
       minimumPrice,
       dataJson,
-    });
+    };
+    if (mode === "overwrite") {
+      if (!overwriteStep) return;
+      overwriteLatest.mutate({
+        ...common,
+        expectedDataJson: originalDbDataJson,
+        confirmation: "SOVRASCRIVI DEFINITIVAMENTE",
+      });
+    } else {
+      createRevision.mutate(common);
+    }
   };
 
   const enableEdit = () => {
@@ -440,7 +491,7 @@ export default function CicloEditorPage() {
                 </button>
                 <button
                   onClick={handleSave}
-                  disabled={!isNew && (!isModified || createRevision.isPending)}
+                  disabled={!isNew && (!isModified || createRevision.isPending || overwriteLatest.isPending)}
                   title={!isNew && !isModified ? "Nessuna modifica da salvare" : "Salva"}
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -648,6 +699,16 @@ export default function CicloEditorPage() {
                           {canEdit && <GripVertical className="w-3 h-3 text-slate-400" aria-hidden="true"/>}
                           {depth>1&&<CornerDownRight className="w-3 h-3 text-emerald-600" aria-hidden="true"/>}
                           {i+1} {depth>0&&<span className="text-xs">L{depth}</span>}
+                          {canEdit && canAddChild(model.righe,i) && (
+                            <button type="button" draggable={false}
+                              aria-label={"Aggiungi componente o lavorazione al livello " + (depth+1)}
+                              title={"Aggiungi direttamente al livello " + (depth+1) + " dell'assieme"}
+                              onPointerDown={e=>e.stopPropagation()}
+                              onDragStart={e=>e.preventDefault()}
+                              onClick={e=>{e.stopPropagation();openRigaDialog(undefined,i);}}
+                              className="ml-1 inline-flex rounded-full bg-emerald-100 text-emerald-800 hover:bg-emerald-200 p-1 border border-emerald-300"
+                            ><Plus className="h-3.5 w-3.5"/></button>
+                          )}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-xs">
