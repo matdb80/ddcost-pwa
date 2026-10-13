@@ -590,7 +590,7 @@ export default function CicloEditorPage() {
                     : inAssembly
                       ? costoRigaGerarchico(displayed,i,simulatedModel.costo_lavoro_min,simulatedModel.lotto)
                       : calcolaCostoRiga(displayed[i],simulatedModel.costo_lavoro_min,simulatedModel.lotto);
-                  const canSimulate = parentIndex==null || model.righe[parentIndex]?.assembly_auto === true;
+                  const canSimulate = (parentIndex==null || model.righe[parentIndex]?.assembly_auto === true) && r.considera !== false && (r.categoria !== "SPESA ATTREZZATURA DEDICATA" || r.considera === true);
                   const canEdit = !isReadOnly || isNew;
                   return (
                     <tr
@@ -637,7 +637,7 @@ export default function CicloEditorPage() {
                             onClick={e=>{e.stopPropagation();toggleSimulation(i);}}
                             disabled={!canSimulate}
                             aria-label={simulationExcluded.has(i)?"Riattiva riga nel calcolo":"Escludi riga costo dal calcolo"}
-                            title={!canSimulate?"Dettaglio storico non conteggiato separatamente":simulationExcluded.has(i)?"Riattiva il costo della riga":"Escludi riga costo dal calcolo (solo simulazione)"}
+                            title={!canSimulate?"Riga già esclusa o dettaglio storico non conteggiato separatamente":simulationExcluded.has(i)?"Riattiva il costo della riga":"Escludi riga costo dal calcolo (solo simulazione)"}
                             className={"p-1.5 rounded disabled:opacity-30 "+(simulationExcluded.has(i)?"bg-amber-200 text-amber-900":"text-slate-500 hover:bg-amber-100")}>
                             {simulationExcluded.has(i)?<EyeOff className="h-4 w-4"/>:<Eye className="h-4 w-4"/>}
                           </button>
@@ -997,7 +997,7 @@ export default function CicloEditorPage() {
                   />
                 </div>
                 )}
-                {(rigaEdit.categoria !== "LAVORAZIONE INTERNA") && (
+                {(rigaEdit.categoria !== "LAVORAZIONE INTERNA" && !rigaEdit.assembly_auto) && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     Costo Unitario €
@@ -1012,6 +1012,12 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {rigaEdit.assembly_auto && (
+                  <div className="col-span-2 md:col-span-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                    Costo assieme calcolato automaticamente dalla somma dei componenti (fino a 4 livelli).
+                    Il costo unitario manuale precedente viene mantenuto nello storico ma non sommato.
+                  </div>
                 )}
                 {(false) && (
                 <div>
