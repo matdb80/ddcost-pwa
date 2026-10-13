@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyRiga, emptyCicloEditorModel, parseCycleRow, serializeCycleDataJson, type RigaCiclo } from "@/types/cycle";
-import { attachToAssembly, appendChildToAssembly, canAddChild, childrenOf, detachFromAssembly, orderedHierarchy, removeLeaf, swapRows } from "./cycle-hierarchy";
+import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, childrenOf, detachFromAssembly, orderedHierarchy, removeLeaf, moveRowAmongSiblings, swapRows } from "./cycle-hierarchy";
 import { ricalcolaCiclo, calcolaBreakdown, costoRigaGerarchico } from "./cycle-calculator";
 
 const row=(desc:string,unit:number,nr=1):RigaCiclo=>({
@@ -102,6 +102,43 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    expect(canAddChild(historical,0)).toBe(false);
    expect(()=>appendChildToAssembly(historical,0,row("New child",3))).toThrow();
    expect(ricalcolaCiclo(make(historical)).costo_standard).toBe(8);
+ });
+ it("enables up/down arrows among siblings even with four-level hierarchies",()=>{
+   let rows=[
+     {...row("Main",0),codice_articolo:"ROOT"},
+     {...row("Other root",2),codice_articolo:"OTHER"},
+     {...row("Child A",3),codice_articolo:"A"},
+     {...row("Child B",4),codice_articolo:"B"},
+     {...row("Under B",5),codice_articolo:"NEST"},
+   ];
+   rows=attachToAssembly(rows,2,0);
+   rows=attachToAssembly(rows,3,0);
+   rows=attachToAssembly(rows,4,3);
+   const original=JSON.stringify(rows);
+   expect(adjacentSibling(rows,3,-1)).toBe(2);
+   expect(adjacentSibling(rows,3,1)).toBeNull();
+   expect(adjacentSibling(rows,1,-1)).toBe(0);
+   const before=ricalcolaCiclo(make(rows)).costo_standard;
+   const moved=moveRowAmongSiblings(rows,3,-1);
+   const order=orderedHierarchy(moved).map(x=>moved[x.index].codice_articolo);
+   expect(order).toEqual(["ROOT","B","NEST","A","OTHER"]);
+   expect(moved[4].parent_idx).toBe(2);
+   expect(orderedHierarchy(moved).map(x=>x.depth)).toEqual([1,2,3,2,1]);
+   expect(ricalcolaCiclo(make(moved)).costo_standard).toBe(before);
+   expect(JSON.stringify(rows)).toBe(original);
+   expect(moveRowAmongSiblings(rows,2,-1)).toBe(rows); // first child
+   expect(moveRowAmongSiblings(rows,1,1)).toBe(rows); // last root
+ });
+ it("moves top-level items while preserving child references",()=>{
+   let rows=[
+     {...row("A",0),codice_articolo:"A"},
+     {...row("B",0),codice_articolo:"B"},
+     {...row("C",1),codice_articolo:"C"},
+   ];
+   rows=attachToAssembly(rows,2,0);
+   const moved=moveRowAmongSiblings(rows,1,-1);
+   expect(orderedHierarchy(moved).map(x=>moved[x.index].codice_articolo)).toEqual(["B","A","C"]);
+   expect(moved[2].parent_idx).toBe(1);
  });
  it("reorders and deletes without leaving dangling parent indexes",()=>{
    let r=attachToAssembly([row("A",1),row("B",2),row("C",3)],2,1);
