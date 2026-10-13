@@ -210,6 +210,89 @@ export const cycleRouter = createRouter({
       return { ok: true };
     }),
 
+  /** Explicit destructive overwrite after a second user confirmation.
+   * Only for the latest, owned, non-deleted revision.
+   * Compare-and-swap blocks replacement of data changed since the editor opened.
+   * No new revision is created and no older revision is modified.
+   */
+  overwriteLatest: authedQuery
+    .input(z.object({
+      sourceId:z.number().int().positive(),
+      rootId:z.number().int().positive(),
+      expectedDataJson:z.string().nullable(),
+      confirmation:z.literal("SOVRASCRIVI DEFINITIVAMENTE"),
+      code:z.string().optional(),
+      description:z.string().optional(),
+      client:z.string().optional(),
+      lot:z.string().optional(),
+      standardCost:z.string().optional(),
+      minimumPrice:z.string().optional(),
+      dataJson:z.string(),
+    }))
+    .mutation(async ({ ctx,input }) => {
+      let parsed: unknown;
+      try { parsed=JSON.parse(input.dataJson); }
+      catch { throw new Error("Impossibile salvare: JSON del ciclo non valido"); }
+      if (!parsed || typeof parsed!=="object" || Array.isArray(parsed) ||
+          !Array.isArray((parsed as {righe?:unknown}).righe)) {
+        throw new Error("Impossibile salvare: righe del ciclo mancanti");
+      }
+      const db=getDb();
+      return db.transaction(async tx=>{
+        const found=await tx.select().from(cycles).where(and(
+          eq(cycles.id,input.sourceId),
+          eq(cycles.userId,ctx.user.id),
+          eq(cycles.deleted,0)
+        )).limit(1);
+        const source=found[0];
+        if (!source || (source.rootId ?? source.id)!==input.rootId)
+          throw new Error("Ciclo inesistente o non autorizzato: sovrascrittura annullata");
+        const newest=await tx.select({id:cycles.id,rev:cycles.rev})
+          .from(cycles).where(and(
+            eq(cycles.rootId,input.rootId),
+            eq(cycles.userId,ctx.user.id),
+            eq(cycles.deleted,0)
+          )).orderBy(desc(cycles.rev),desc(cycles.id)).limit(1);
+        const latest=newest[0] ?? {id:source.id,rev:source.rev};
+        requireCurrentRevision(source.id,latest.id,latest.rev??1);
+        if(source.dataJson!==input.expectedDataJson)
+          throw new Error("Questo ciclo è cambiato dopo l'apertura. Aggiorna la pagina: nessuna sovrascrittura eseguita.");
+
+        const proposed:CycleContent={
+          code:input.code??source.code,
+          description:input.description??source.description,
+          client:input.client??source.client,
+          lot:input.lot??source.lot,
+          standardCost:input.standardCost??source.standardCost,
+          minimumPrice:input.minimumPrice??source.minimumPrice,
+          dataJson:input.dataJson,
+        };
+        if(sameCycleContent(source,proposed))
+          throw new Error("Nessuna modifica da sovrascrivere.");
+        // CAS in SQL: even simultaneous saves cannot silently clobber
+        // an intervening update. SHA2 is case/byte sensitive unlike
+        // collated MEDIUMTEXT equality.
+        const digest=await import("node:crypto").then(c=>c.createHash("sha256")
+          .update(input.expectedDataJson??"","utf8").digest("hex"));
+        const unchanged=input.expectedDataJson===null
+          ? sql`${cycles.dataJson} IS NULL`
+          : sql`SHA2(${cycles.dataJson},256) = ${digest}`;
+        const result=await tx.update(cycles).set({
+          code:proposed.code,description:proposed.description,
+          client:proposed.client,lot:proposed.lot,
+          standardCost:proposed.standardCost,minimumPrice:proposed.minimumPrice,
+          dataJson:proposed.dataJson,
+        }).where(and(
+          eq(cycles.id,source.id),eq(cycles.userId,ctx.user.id),
+          eq(cycles.deleted,0),unchanged,
+          sql`${cycles.code} <=> ${source.code}`,
+        ));
+        if(result[0].affectedRows!==1)
+          throw new Error("Un altro aggiornamento è intervenuto. Nessun dato sovrascritto.");
+        return {id:source.id,rev:source.rev??1,overwritten:true};
+      });
+    }),
+
   /** Soft-delete: mark with dedicated columns (never touch dataJson) */
   delete: authedQuery
     .input(z.object({ id: z.number() }))
