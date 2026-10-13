@@ -408,8 +408,6 @@ export default function CicloEditorPage() {
                 Rev. {model.rev}
               </span>
             )}
-            <h1 className="hidden">
-            </h1>
             {hasChanges && (
               <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
                 Modificato
