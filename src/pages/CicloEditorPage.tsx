@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams, useLocation } from "react-router";
 import { trpc } from "@/providers/trpc";
 import Layout from "@/components/Layout";
+import CycleCostPie from "@/components/CycleCostPie";
 import {
   ArrowLeft,
   Plus,
@@ -772,6 +773,7 @@ export default function CicloEditorPage() {
                 <span className="font-mono">{formatMoney(simulatedModel.costo_standard)}</span>
               </div>
             </div>
+            <CycleCostPie cycle={simulatedModel}/>
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 p-6">
