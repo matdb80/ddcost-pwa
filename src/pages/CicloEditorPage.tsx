@@ -125,7 +125,7 @@ export default function CicloEditorPage() {
   // Ephemeral simulation: never modify model or dataJson. Switching all rows
   // back on restores the exact original values without creating a revision.
   const simulatedModel = useMemo(() => {
-    if (simulationExcluded.size===0) return model;
+    if (simulationExcluded.size===0 && !model.righe.some(r=>r.assembly_auto)) return model;
     return ricalcolaCiclo({
       ...model,
       righe:model.righe.map((r,i)=>simulationExcluded.has(i)?{...r,considera:false}:r),
@@ -367,6 +367,13 @@ export default function CicloEditorPage() {
             >
               Ricalcola ora
             </button>
+          </div>
+        )}
+
+        {!isReadOnly && model.righe.some(r=>r.assembly_auto) && !hasRecalculated && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">
+            I costi degli assiemi sono aggiornati in anteprima. Per memorizzare una nuova revisione,
+            verifica il risultato e premi <strong>Ricalcola</strong> prima di <strong>Salva</strong>.
           </div>
         )}
 
