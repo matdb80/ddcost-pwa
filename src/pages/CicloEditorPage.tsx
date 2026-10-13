@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams, useLocation } from "react-router";
 import { trpc } from "@/providers/trpc";
 import Layout from "@/components/Layout";
@@ -13,6 +13,11 @@ import {
   Copy,
   Pencil,
   X,
+  EyeOff,
+  Eye,
+  GripVertical,
+  CornerDownRight,
+  RotateCcw,
 } from "lucide-react";
 import type { RigaCiclo, CicloEditorModel } from "@/types/cycle";
 import {
@@ -22,7 +27,8 @@ import {
   parseCycleRow,
   serializeCycleDataJson,
 } from "@/types/cycle";
-import { ricalcolaCiclo, calcolaCostoRiga } from "@/lib/cycle-calculator";
+import { ricalcolaCiclo, calcolaCostoRiga, costoRigaGerarchico } from "@/lib/cycle-calculator";
+import { attachToAssembly, detachFromAssembly, orderedHierarchy, removeLeaf, swapRows, childrenOf } from "@/lib/cycle-hierarchy";
 
 /** Canonical snapshot of cost-related inputs; legacy JSON lotto is numeric, DB lot is text. */
 function economicSignature(m: CicloEditorModel): string {
@@ -61,6 +67,9 @@ export default function CicloEditorPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [isReadOnly, setIsReadOnly] = useState(!isNew);
+  const [simulationExcluded, setSimulationExcluded] = useState<Set<number>>(new Set());
+  const [draggingIndex, setDraggingIndex] = useState<number|null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number|null>(null);
 
   const getCycle = trpc.cycle.get.useQuery(
     { id: numericId! },
@@ -93,6 +102,9 @@ export default function CicloEditorPage() {
       setLastRecalculatedSignature(null);
       setHasChanges(false);
       setIsReadOnly(true);
+      setSimulationExcluded(new Set());
+      setDraggingIndex(null);
+      setDragOverIndex(null);
     }
   }, [getCycle.data]);
 
@@ -110,6 +122,59 @@ export default function CicloEditorPage() {
   // Compute synchronously from the loaded baseline, not from delayed state.
   const isModified = isNew || (originalJson.length > 0 &&
     JSON.stringify(serializeCycleDataJson(model)) !== originalJson);
+  // Ephemeral simulation: never modify model or dataJson. Switching all rows
+  // back on restores the exact original values without creating a revision.
+  const simulatedModel = useMemo(() => {
+    if (simulationExcluded.size===0) return model;
+    return ricalcolaCiclo({
+      ...model,
+      righe:model.righe.map((r,i)=>simulationExcluded.has(i)?{...r,considera:false}:r),
+    });
+  }, [model, simulationExcluded]);
+
+  const treeOrder = useMemo(() => orderedHierarchy(model.righe), [model.righe]);
+  const hasHierarchy = model.righe.some(r=>r.parent_idx!=null);
+
+  const toggleSimulation = (i:number) => {
+    const r=model.righe[i];
+    // Legacy detail-only rows have never affected top-level cost; exclusion
+    // must not misleadingly claim it changes a saved assembly's price.
+    if (r.parent_idx!=null && !model.righe[r.parent_idx]?.assembly_auto) return;
+    setSimulationExcluded(old=>{
+      const next=new Set(old);
+      if(next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  };
+
+  const handleDropAssemble = (source:number,target:number) => {
+    setDraggingIndex(null);
+    setDragOverIndex(null);
+    if(isReadOnly && !isNew) return;
+    try {
+      const parent=model.righe[target];
+      if (parent && !parent.assembly_auto && Number(parent.costo_unitario)>0) {
+        if(!window.confirm("Creando l'assieme, il prezzo manuale della riga di destinazione resterà memorizzato ma NON sarà sommato ai componenti. Confermare?")) return;
+      }
+      const changedRows=attachToAssembly(model.righe,source,target);
+      setModel(prev=>({...prev,righe:changedRows}));
+      setHasRecalculated(false);
+      setLastRecalculatedSignature(null);
+      setSimulationExcluded(new Set());
+    } catch(err) {
+      window.alert(err instanceof Error?err.message:"Trascinamento non consentito");
+    }
+  };
+
+  const detachRiga = (i:number) => {
+    const next=detachFromAssembly(model.righe,i);
+    if(next===model.righe)return;
+    setModel(prev=>({...prev,righe:next}));
+    setHasRecalculated(false);
+    setLastRecalculatedSignature(null);
+    setSimulationExcluded(new Set());
+  };
+
 
   const handleChange = <K extends keyof typeof model>(
     field: K,
@@ -140,6 +205,11 @@ export default function CicloEditorPage() {
 
   const saveRiga = () => {
     if (!rigaEdit) return;
+    if(rigaIndex!=null && model.righe[rigaIndex]?.assembly_auto &&
+       rigaEdit.categoria!=="COMPONENTE/ASSIEME") {
+      alert("Per un assieme calcolato dai componenti la categoria deve rimanere COMPONENTE/ASSIEME. Sgancia prima i componenti.");
+      return;
+    }
     setModel((prev) => {
       const righe = [...prev.righe];
       if (rigaIndex !== null) {
@@ -154,26 +224,30 @@ export default function CicloEditorPage() {
 
   const deleteRiga = (index: number) => {
     if (isReadOnly && !isNew) return;
+    if (childrenOf(model.righe,index).length) {
+      alert("Questa riga contiene componenti. Sgancia i componenti prima di eliminarla.");
+      return;
+    }
     if (!confirm("Eliminare questa riga?")) return;
-    setModel((prev) => ({
-      ...prev,
-      righe: prev.righe.filter((_, i) => i !== index),
-    }));
+    setModel(prev=>({...prev,righe:removeLeaf(prev.righe,index)}));
+    setSimulationExcluded(new Set());
+    setHasRecalculated(false);
+    setLastRecalculatedSignature(null);
   };
 
   const moveRiga = (index: number, direction: -1 | 1) => {
     if (isReadOnly && !isNew) return;
-    const newIndex = index + direction;
-    if (newIndex < 0 || newIndex >= model.righe.length) return;
-    setModel((prev) => {
-      const righe = [...prev.righe];
-      const [item] = righe.splice(index, 1);
-      righe.splice(newIndex, 0, item);
-      return { ...prev, righe };
-    });
+    if (hasHierarchy) return; // avoid visually misleading cross-level ordering
+    const next=index+direction;
+    if(next<0||next>=model.righe.length)return;
+    setModel(prev=>({...prev,righe:swapRows(prev.righe,index,next)}));
+    setSimulationExcluded(new Set());
+    setHasRecalculated(false);
+    setLastRecalculatedSignature(null);
   };
 
   const handleRicalcola = () => {
+    setSimulationExcluded(new Set());
     setLastRecalculatedSignature(economicSignature(model));
     setModel((prev) => ricalcolaCiclo(prev));
     setHasRecalculated(true);
