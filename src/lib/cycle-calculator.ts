@@ -107,6 +107,33 @@ export function calcolaCostoRiga(r: RigaCiclo, costoLavoroMin: number, lotto: nu
   }
 }
 
+/** Price per final item of an auto-assembly, using its direct and nested components.
+ * Legacy detail expansions (parent_idx only) remain excluded from regular totals.
+ */
+export function costoRigaGerarchico(righe: RigaCiclo[], index: number, clm:number, lotto:number|string):number {
+  const active=new Set<number>();
+  function evalAt(i:number,depth:number):number {
+    if(depth>4) throw new Error("Assieme oltre quattro livelli");
+    if(active.has(i)) throw new Error("Ciclo di parentela negli assiemi");
+    const r=righe[i];
+    if(!r) throw new Error("Riga assieme non trovata");
+    if(r.considera === false) return 0;
+    active.add(i);
+    try {
+      if(r.assembly_auto === true) {
+        if(r.categoria!=="COMPONENTE/ASSIEME") throw new Error("Categoria assieme non coerente");
+        const children=righe.flatMap((c,k)=>c.parent_idx===i?[k]:[]);
+        const amount=children.reduce((sum,k)=>sum+evalAt(k,depth+1),0);
+        return amount * (Number(r.nr_componenti)||0);
+      }
+      // Omit parent_idx only for computing the raw detail value, not for
+      // top-level accounting; the caller decides which rows are top level.
+      return calcolaCostoRiga({...r,parent_idx:null},clm,lotto);
+    } finally { active.delete(i); }
+  }
+  return evalAt(index,1);
+}
+
 /** Tooling cost for a single row (in €, not per-piece) */
 export function calcolaAttrezzaggioRiga(r: RigaCiclo, costoLavoroMin: number): number {
   if (r.categoria === "LAVORAZIONE INTERNA" && r.attrezzaggio_min > 0) {
@@ -123,7 +150,10 @@ export function calcolaBreakdown(ciclo: CicloEditorModel): Breakdown {
   for (const r of ciclo.righe) {
     if (!isRigaConsiderata(r)) continue;
 
-    const costo = calcolaCostoRiga(r, clm, lotto);
+    const index = ciclo.righe.indexOf(r);
+    const costo = r.assembly_auto
+      ? costoRigaGerarchico(ciclo.righe,index,clm,lotto)
+      : calcolaCostoRiga(r, clm, lotto);
     switch (r.categoria) {
       case "COMPONENTE":
         bd.COMPONENTE += costo;
@@ -160,7 +190,19 @@ export function calcolaBreakdown(ciclo: CicloEditorModel): Breakdown {
 
 export function calcolaAttrezzaggioTotale(ciclo: CicloEditorModel): number {
   const clm = ciclo.costo_lavoro_min;
-  return ciclo.righe.reduce((sum, r) => sum + calcolaAttrezzaggioRiga(r, clm), 0);
+  if (!ciclo.righe.some(r=>r.assembly_auto)) {
+    return ciclo.righe.reduce((sum, r) => sum + calcolaAttrezzaggioRiga(r, clm), 0);
+  }
+  const walk = (i:number,level:number):number => {
+    const row=ciclo.righe[i];
+    if(level>4 || !row || row.considera===false) return 0;
+    if(row.assembly_auto) {
+      return (Number(row.nr_componenti)||0) * ciclo.righe
+        .reduce((sum,child,k)=>sum+(child.parent_idx===i?walk(k,level+1):0),0);
+    }
+    return calcolaAttrezzaggioRiga(row,clm);
+  };
+  return ciclo.righe.reduce((sum,r,i)=>sum+(r.parent_idx==null?walk(i,1):0),0);
 }
 
 export function calcolaCostoStandard(bd: Breakdown): number {
@@ -184,6 +226,20 @@ export function calcolaSimulazioni(ciclo: CicloEditorModel): SimulazioneLotto[] 
   const clm = ciclo.costo_lavoro_min;
   const attrezzaggioTotale = calcolaAttrezzaggioTotale(ciclo);
 
+  // Do not change the original historical lot simulator for cycles with no
+  // auto-assembly. Only new explicit assemblies use the recursive breakdown.
+  if (ciclo.righe.some(r=>r.assembly_auto)) {
+    return lotti.map((lotto)=>{
+      const bd=calcolaBreakdown({...ciclo,lotto:String(lotto)});
+      const costoStandard=calcolaCostoStandard(bd);
+      const fullCost=calcolaFullCost(costoStandard,ciclo.ricarico_spese);
+      return {
+        lotto, breakdown:bd, costo_standard:costoStandard, full_cost:fullCost,
+        prezzo_minimo:calcolaPrezzoMinimo(fullCost,ciclo.margine_minimo),
+        attrezzaggio_pz:lotto>0?attrezzaggioTotale/lotto:0,
+      };
+    });
+  }
   return lotti.map((lotto) => {
     const bd = emptyBreakdown();
 
