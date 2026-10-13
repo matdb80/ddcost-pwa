@@ -78,6 +78,34 @@ export function attachToAssembly(rows:RigaCiclo[], source:number, target:number)
   return next;
 }
 
+/** A single + control can create direct children without drag/drop.
+ * Accept only up to four levels; don't reinterpret old detail groups.
+ */
+export function canAddChild(rows:RigaCiclo[], parentIndex:number): boolean {
+  const parent = rows[parentIndex];
+  if (!parent || !["COMPONENTE","COMPONENTE/ASSIEME"].includes(parent.categoria)) return false;
+  try {
+    if (rowDepth(rows,parentIndex) >= MAX_ASSEMBLY_LEVELS) return false;
+    if (parent.parent_idx != null && !rows[parent.parent_idx]?.assembly_auto) return false;
+    if (!parent.assembly_auto && childrenOf(rows,parentIndex).length > 0) return false;
+    return true;
+  } catch { return false; }
+}
+
+export function appendChildToAssembly(rows:RigaCiclo[],parentIndex:number,child:RigaCiclo):RigaCiclo[] {
+  if (!canAddChild(rows,parentIndex))
+    throw new Error("Impossibile aggiungere un componente: assieme non valido o già al quarto livello");
+  if (child.parent_idx != null || child.assembly_auto)
+    throw new Error("Un nuovo componente non può avere parentela o assiemi preesistenti");
+  const next=rows.map(r=>({...r}));
+  next[parentIndex].categoria="COMPONENTE/ASSIEME";
+  next[parentIndex].assembly_auto=true;
+  next.push({...child,parent_idx:parentIndex});
+  if(rowDepth(next,next.length-1)>MAX_ASSEMBLY_LEVELS)
+    throw new Error("Gerarchia oltre i quattro livelli");
+  return next;
+}
+
 export function detachFromAssembly(rows:RigaCiclo[], index:number): RigaCiclo[] {
   if (!rows[index] || rows[index].parent_idx == null) return rows;
   const next=rows.map(r=>({...r}));
