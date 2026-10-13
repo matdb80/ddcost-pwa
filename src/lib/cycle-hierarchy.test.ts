@@ -64,7 +64,7 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    expect(r[2].parent_idx).toBeNull();
    r=attachToAssembly(r,2,0);
    expect(childrenOf(r,0)).toEqual([2]);
-   expect(()=>removeLeaf(r,0)).toThrow(/Sgancia/);
+   expect(()=>removeLeaf(r,0)).toThrow(/sgancia/i);
    const after=removeLeaf(r,1);
    expect(after[1].parent_idx).toBe(0);
  });
