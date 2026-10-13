@@ -888,12 +888,20 @@ export default function CicloEditorPage() {
             <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold">
-                  {rigaIndex !== null ? "Modifica Riga" : "Nuova Riga"}
+                  {newChildParent !== null
+                    ? "Nuovo componente/lavorazione — livello " + ((treeOrder.find(v=>v.index===newChildParent)?.depth ?? 1) + 1)
+                    : rigaIndex !== null ? "Modifica Riga" : "Nuova Riga"}
                 </h3>
-                <button onClick={() => setDialogOpen(false)}>
+                <button onClick={() => {setDialogOpen(false);setNewChildParent(null);}}>
                   <X className="h-5 w-5 text-slate-400" />
                 </button>
               </div>
+              {newChildParent !== null && (
+                <p className="mb-3 text-sm bg-emerald-50 border border-emerald-200 rounded p-3">
+                  La nuova riga sarà collegata a <strong>{model.righe[newChildParent]?.descrizione || model.righe[newChildParent]?.codice_articolo || "Assieme " + (newChildParent+1)}</strong>.
+                  Puoi scegliere una categoria componente o lavorazione; sarà conteggiata all'interno dell'assieme.
+                </p>
+              )}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="col-span-2 md:col-span-3">
                   <label className="block text-xs font-medium text-slate-500 mb-1">Categoria</label>
@@ -1153,7 +1161,7 @@ export default function CicloEditorPage() {
               </div>
               <div className="flex justify-end gap-2 mt-6">
                 <button
-                  onClick={() => setDialogOpen(false)}
+                  onClick={() => {setDialogOpen(false);setNewChildParent(null);}}
                   className="px-4 py-2 border border-slate-200 rounded-lg text-sm hover:bg-slate-50"
                 >
                   Annulla
@@ -1169,32 +1177,60 @@ export default function CicloEditorPage() {
           </div>
         )}
 
-        {/* Save Revision Dialog */}
+        {/* Choose a revision or use the second, destructive confirmation. */}
         {saveDialogOpen && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <div role="dialog" aria-modal="true" aria-labelledby="cycle-save-choice"
+              className="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl">
               <div className="flex items-center gap-2 mb-4">
-                <Copy className="h-5 w-5 text-emerald-600" />
-                <h3 className="text-lg font-semibold">Crea Nuova Revisione</h3>
+                <Save className={"h-5 w-5 " + (overwriteStep?"text-red-700":"text-emerald-700")}/>
+                <h3 id="cycle-save-choice" className="text-lg font-semibold">
+                  {overwriteStep?"Conferma sovrascrittura definitiva":"Vuoi creare una nuova revisione?"}
+                </h3>
               </div>
-              <p className="text-sm text-slate-600 mb-6">
-                Verrà creata una nuova revisione del ciclo. La revisione precedente (rev. {model.rev}) rimarrà invariata.
-              </p>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setSaveDialogOpen(false)}
-                  className="px-4 py-2 border border-slate-200 rounded-lg text-sm hover:bg-slate-50"
-                >
-                  Annulla
-                </button>
-                <button
-                  onClick={confirmSaveRevision}
-                  disabled={!isModified || createRevision.isPending}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Crea Revisione
-                </button>
-              </div>
+              {overwriteStep ? (
+                <>
+                  <p className="text-sm text-red-900 bg-red-50 border border-red-200 rounded p-3 mb-4">
+                    <strong>Attenzione: operazione definitiva.</strong> Stai per sovrascrivere
+                    la revisione <strong>{model.rev}</strong> del ciclo <strong>{model.codice}</strong>.
+                    I dati precedenti di questa revisione saranno sostituiti, senza
+                    crearne una nuova. L'operazione non può essere annullata nell'applicazione.
+                  </p>
+                  <p className="text-sm text-slate-600 mb-5">Confermi la sovrascrittura della revisione attuale?</p>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button type="button" onClick={()=>setOverwriteStep(false)}
+                      className="px-4 py-2 border rounded-lg text-sm hover:bg-slate-50">Indietro</button>
+                    <button type="button" onClick={()=>{setSaveDialogOpen(false);setOverwriteStep(false);}}
+                      className="px-4 py-2 border rounded-lg text-sm">Annulla</button>
+                    <button type="button" onClick={()=>confirmSaveRevision("overwrite")}
+                      disabled={!isModified || overwriteLatest.isPending || createRevision.isPending}
+                      className="px-4 py-2 bg-red-700 text-white rounded-lg text-sm font-semibold hover:bg-red-800 disabled:opacity-40">
+                      Confermo: sovrascrivi definitivamente
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-600 mb-5">
+                    <strong>Sì:</strong> crea una nuova revisione e conserva la rev. {model.rev}.
+                    <strong> No:</strong> passa a una seconda conferma per sovrascrivere
+                    definitivamente la revisione attuale, senza crearne un'altra.
+                  </p>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button type="button" onClick={()=>setSaveDialogOpen(false)}
+                      className="px-4 py-2 border rounded-lg text-sm hover:bg-slate-50">Annulla</button>
+                    <button type="button" onClick={()=>setOverwriteStep(true)}
+                      className="px-4 py-2 border border-red-300 text-red-800 rounded-lg text-sm hover:bg-red-50">
+                      No, sovrascrivi
+                    </button>
+                    <button type="button" onClick={()=>confirmSaveRevision("revision")}
+                      disabled={!isModified || createRevision.isPending || overwriteLatest.isPending}
+                      className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-40">
+                      Sì, nuova revisione
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
