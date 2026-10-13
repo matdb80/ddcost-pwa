@@ -17,6 +17,7 @@
  */
 import type { CicloEditorModel, RigaCiclo } from "@/types/cycle";
 import { calcolaCostoRiga } from "@/lib/cycle-calculator";
+import { rowDepth } from "@/lib/cycle-hierarchy";
 
 export type PieCostBucket = "terzisti" | "interne" | "fornitori";
 
@@ -43,7 +44,15 @@ export function calculateCyclePieCosts(cycle: CicloEditorModel): CyclePieCosts {
     esclusiAttrezzatura: 0,
   };
   const righe = cycle.righe;
-  const visited = new Set<number>();
+  // Validate also rows excluded in a temporary simulation. A disabled parent
+  // must not make its valid descendants look like broken references.
+  for (let i = 0; i < righe.length; i++) {
+    if (righe[i].parent_idx != null) {
+      const p = righe[i].parent_idx;
+      if (!Number.isInteger(p) || p! < 0 || p! >= righe.length) throw new Error("Riferimento componente non valido");
+      rowDepth(righe,i);
+    }
+  }
 
   const visit = (index: number, multiplier: number, depth: number, stack: Set<number>): void => {
     if (depth > 4 || stack.has(index)) throw new Error("Gerarchia degli assiemi non valida");
@@ -59,8 +68,6 @@ export function calculateCyclePieCosts(cycle: CicloEditorModel): CyclePieCosts {
       nextStack.add(index);
       for (let i = 0; i < righe.length; i++) {
         if (righe[i].parent_idx === index) {
-          if (visited.has(i)) throw new Error("Componente referenziato più volte");
-          visited.add(i);
           visit(i, multiplier * n, depth + 1, nextStack);
         }
       }
@@ -85,13 +92,9 @@ export function calculateCyclePieCosts(cycle: CicloEditorModel): CyclePieCosts {
 
   for (let index = 0; index < righe.length; index++) {
     if (righe[index].parent_idx == null) {
-      visited.add(index);
       visit(index, 1, 1, new Set());
     }
   }
-  // If a row has a broken reference, don't show a deceptively complete pie.
-  if (righe.some((r, i) => r.parent_idx != null && !visited.has(i)))
-    throw new Error("Riferimento componente non valido nel ciclo");
 
   return {
     ...sums,
