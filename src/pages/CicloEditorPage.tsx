@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation } from "react-router";
 import { trpc } from "@/providers/trpc";
 import Layout from "@/components/Layout";
 import CycleCostPie from "@/components/CycleCostPie";
+import CostReductionBreakdown from "@/components/CostReductionBreakdown";
 import {
   ArrowLeft,
   Plus,
@@ -138,6 +139,7 @@ export default function CicloEditorPage() {
       setSimulationExcluded(new Set());
       setDraggingIndex(null);
       setDragOverIndex(null);
+      setMarketPriceInput("");
     }
   }, [getCycle.data]);
 
@@ -782,18 +784,7 @@ export default function CicloEditorPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <h2 className="text-sm font-semibold text-slate-700 mb-4">Breakdown Costi</h2>
-            <div className="space-y-2">
-              {Object.entries(simulatedModel.breakdown).map(([cat, val]) => (
-                <div key={cat} className="flex justify-between text-sm">
-                  <span className="text-slate-500">{cat}</span>
-                  <span className="font-mono">{formatMoney(val)}</span>
-                </div>
-              ))}
-              <div className="border-t pt-2 flex justify-between font-semibold text-slate-800">
-                <span>Totale</span>
-                <span className="font-mono">{formatMoney(simulatedModel.costo_standard)}</span>
-              </div>
-            </div>
+            <CostReductionBreakdown cycle={simulatedModel} marketPrice={marketPrice}/>
             <CycleCostPie cycle={simulatedModel}/>
           </div>
 
