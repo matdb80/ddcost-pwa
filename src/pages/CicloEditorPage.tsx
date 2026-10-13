@@ -76,17 +76,24 @@ export default function CicloEditorPage() {
     { enabled: !isNew && !!numericId }
   );
 
+  // A historical revision is read-only archive, not a safe base for editing.
+  // Automatically open the latest revision (including when opening the root URL).
+  const latestRevision = trpc.cycle.latestForSource.useQuery(
+    { id: numericId! },
+    { enabled: !isNew && !!numericId }
+  );
+
   const createCycle = trpc.cycle.create.useMutation({
     onSuccess: () => navigate("/cicli"),
     onError: (err) => alert(`Errore creazione: ${err.message}`),
   });
 
   const createRevision = trpc.cycle.createRevision.useMutation({
-    onSuccess: () => {
+    onSuccess: (result) => {
       setHasChanges(false);
       setSaveDialogOpen(false);
-      alert("Nuova revisione creata con successo.");
-      navigate("/cicli");
+      alert("Nuova revisione " + result.rev + " creata con successo. Ora stai visualizzando la versione aggiornata.");
+      navigate("/cicli/" + result.id, { replace: true });
     },
     onError: (err) => alert(`Errore revisione: ${err.message}`),
   });
@@ -107,6 +114,13 @@ export default function CicloEditorPage() {
       setDragOverIndex(null);
     }
   }, [getCycle.data]);
+
+  useEffect(() => {
+    const latest = latestRevision.data;
+    if (!isNew && latest && numericId && latest.id !== numericId && isReadOnly) {
+      navigate("/cicli/" + latest.id, { replace: true });
+    }
+  }, [latestRevision.data, numericId, isNew, isReadOnly, navigate]);
 
   // Track changes by comparing serialized JSON
   useEffect(() => {
@@ -378,7 +392,7 @@ export default function CicloEditorPage() {
         )}
 
         {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="sticky top-0 z-30 -mx-2 px-3 py-3 rounded-xl border border-slate-200 bg-white/95 shadow-sm backdrop-blur flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate("/cicli")}
@@ -388,6 +402,13 @@ export default function CicloEditorPage() {
             </button>
             <h1 className="text-2xl font-bold text-slate-800">
               {isNew ? "Nuovo Ciclo Standard" : `Ciclo: ${model.codice}`}
+            </h1>
+            {!isNew && model.rev != null && (
+              <span className="text-xs rounded bg-slate-100 text-slate-600 px-2 py-1">
+                Rev. {model.rev}
+              </span>
+            )}
+            <h1 className="hidden">
             </h1>
             {hasChanges && (
               <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
