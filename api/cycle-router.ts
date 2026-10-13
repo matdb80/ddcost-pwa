@@ -130,6 +130,31 @@ export const cycleRouter = createRouter({
       return rows[0] ?? null;
     }),
 
+  /** Return the latest live revision for an opened cycle; editors must not
+   * accidentally start changes from a historical root or earlier revision. */
+  latestForSource: authedQuery
+    .input(z.object({ id: z.number().int().positive() }))
+    .query(async ({ ctx, input }) => {
+      const db = getDb();
+      const source = await db.select({
+        id: cycles.id, rootId: cycles.rootId, rev: cycles.rev,
+      }).from(cycles).where(and(
+        eq(cycles.id, input.id),
+        eq(cycles.userId, ctx.user.id),
+        eq(cycles.deleted, 0)
+      )).limit(1);
+      if (!source[0]) return null;
+      const rootId = source[0].rootId ?? source[0].id;
+      const rows = await db.select({
+        id: cycles.id, rev: cycles.rev,
+      }).from(cycles).where(and(
+        eq(cycles.rootId, rootId),
+        eq(cycles.userId, ctx.user.id),
+        eq(cycles.deleted, 0),
+      )).orderBy(desc(cycles.rev),desc(cycles.id)).limit(1);
+      return rows[0] ?? { id: source[0].id, rev: source[0].rev };
+    }),
+
   create: authedQuery
     .input(
       z.object({
@@ -284,6 +309,16 @@ export const cycleRouter = createRouter({
         } else {
           throw new Error("Cycle not found");
         }
+      }
+
+      // CRITICAL: never merge an older revision's rows over newer assembly
+      // children. This was the regression when users reopened the root after
+      // creating an assieme and then added an unrelated line.
+      if (latest.id !== source.id) {
+        throw new Error(
+          "Hai aperto una revisione precedente del ciclo. Nessun dato è stato salvato. " +
+          "Riapri la revisione più recente (rev. " + (latest.rev ?? 1) + ") per modificare le righe."
+        );
       }
 
       const newRev = (latest.rev ?? 1) + 1;
