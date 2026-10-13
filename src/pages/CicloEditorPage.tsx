@@ -29,7 +29,7 @@ import {
 } from "@/types/cycle";
 import { ricalcolaCiclo, calcolaCostoRiga, costoRigaGerarchico } from "@/lib/cycle-calculator";
 import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, detachFromAssembly, orderedHierarchy, removeLeaf, moveRowAmongSiblings, childrenOf } from "@/lib/cycle-hierarchy";
-import { calculateSaleMargins, parseMarketPrice } from "@/lib/cycle-price-margins";
+import { calculateSaleMargins, explainSalePrice, parseMarketPrice } from "@/lib/cycle-price-margins";
 
 /** Canonical snapshot of cost-related inputs; legacy JSON lotto is numeric, DB lot is text. */
 function economicSignature(m: CicloEditorModel): string {
@@ -175,7 +175,9 @@ export default function CicloEditorPage() {
   const treeOrder = useMemo(() => orderedHierarchy(model.righe), [model.righe]);
   const marketPrice = parseMarketPrice(marketPriceInput);
   const marketMargins = marketPrice === null ? null : calculateSaleMargins(marketPrice,simulatedModel.costo_standard,simulatedModel.full_cost);
+  const marketExplanation = marketPrice === null ? null : explainSalePrice(marketPrice,simulatedModel.costo_standard,simulatedModel.full_cost);
   const minimumMargins = calculateSaleMargins(simulatedModel.prezzo_minimo,simulatedModel.costo_standard,simulatedModel.full_cost);
+  const minimumExplanation = explainSalePrice(simulatedModel.prezzo_minimo,simulatedModel.costo_standard,simulatedModel.full_cost);
 
   const toggleSimulation = (i:number) => {
     const r=model.righe[i];
@@ -823,6 +825,11 @@ export default function CicloEditorPage() {
                       <div>Full cost (con spese generali): € {formatMoney(simulatedModel.full_cost)}</div>
                       <div>Differenza: € {formatMoney(minimumMargins.netEuro)}</div>
                       <div className="mt-1 font-semibold">Margine netto: {formatMarginPercent(minimumMargins.netPercent)}</div>
+                      {minimumExplanation && (
+                        <p className="mt-2 border-t border-slate-600 pt-2 text-white">
+                          {minimumExplanation.message}
+                        </p>
+                      )}
                       <div className="mt-2 border-t border-slate-600 pt-2 text-slate-300">
                         Formula: (prezzo minimo − full cost) / prezzo minimo × 100
                       </div>
@@ -860,6 +867,21 @@ export default function CicloEditorPage() {
                     <div className="mt-1 text-xs text-slate-600">€ {formatMoney(marketMargins.netEuro)} · dopo spese generali</div>
                     <div className="text-xs text-slate-500">(Prezzo − full cost) / prezzo × 100</div>
                   </div>
+                  {marketExplanation && (
+                    <div role="status" className={
+                      "rounded-lg border px-4 py-3 text-sm "+
+                      (marketExplanation.scenario === "below-direct" || marketExplanation.scenario === "inconsistent"
+                        ? "bg-red-50 border-red-200 text-red-950"
+                        : marketExplanation.scenario === "partial-overhead" || marketExplanation.scenario === "direct-only"
+                          ? "bg-amber-50 border-amber-200 text-amber-950"
+                          : marketExplanation.scenario === "breakeven"
+                            ? "bg-slate-50 border-slate-200 text-slate-800"
+                            : "bg-emerald-50 border-emerald-200 text-emerald-950")
+                    }>
+                      <p className="font-semibold">In parole semplici: {marketExplanation.title}</p>
+                      <p className="mt-1 leading-relaxed">{marketExplanation.message}</p>
+                    </div>
+                  )}
                   <p className="text-xs text-slate-500">
                     Spese generali incluse nel full cost: € {formatMoney(marketMargins.overheadEuro)}.
                     Margine netto industriale prima di imposte e oneri finanziari.
