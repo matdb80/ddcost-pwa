@@ -75,7 +75,7 @@ export function explainSalePrice(price: number, directCost: number, fullCost: nu
       overheadCoveragePercent:overhead>tolerance?0:null,
     };
   }
-  if(Math.abs(price-directCost)<=tolerance) {
+  if(overhead > tolerance && Math.abs(price-directCost)<=tolerance) {
     return {
       scenario:"direct-only",title:"Copri solo il costo industriale",
       message:overhead>tolerance
