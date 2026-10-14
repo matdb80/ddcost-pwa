@@ -439,7 +439,7 @@ export default function CicloEditorPage() {
 
   return (
     <Layout>
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="w-full max-w-screen-2xl mx-auto space-y-6">
         {/* Unrecalculated warning */}
         {!isNew && !isReadOnly && !hasRecalculated && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800 flex items-center justify-between">
