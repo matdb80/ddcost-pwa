@@ -290,7 +290,7 @@ export default function PreventivoEditorPage() {
   if (!isNew && !data) return <Layout><p>Preventivo non trovato.</p><Link to="/preventivi">Torna all'elenco</Link></Layout>;
   const locked = readOnly && !isNew;
   return <Layout>
-    <div className="max-w-6xl mx-auto space-y-5 pb-10">
+    <div className="w-full max-w-screen-2xl mx-auto space-y-5 pb-10">
       {/* Sticky quote identity and actions share the same scroll container as the editor. */}
       <div className="sticky top-0 z-30 -mx-2 mb-4 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-md space-y-3 max-h-[60vh] overflow-y-auto">
       <div className="flex flex-wrap justify-between gap-3 items-center">
