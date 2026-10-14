@@ -23,7 +23,7 @@ describe("Una Tantum: quote-wide engineering and dual treatment allocation",()=>
       .toEqual([4,5,6]);
     expect(result.full_cost_totale).toBeCloseTo((10*4+20*5+30*6)*1.75);
     expect(result.totale_finale).toBeCloseTo(result.full_cost_totale/0.8);
-    expect(quote.prodotti[0].progettazione_tot).toBeUndefined(); // source untouched
+    expect(Object.prototype.hasOwnProperty.call(quote.prodotti[0],"progettazione_tot")).toBe(false); // source untouched
   });
   it("treatment in global mode is quote total / total pieces; inactive product costs are ignored",()=>{
     const quote={...blankQuote(), progettazione_totale_euro:120,
