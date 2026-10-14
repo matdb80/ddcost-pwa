@@ -201,7 +201,7 @@ export default function PreventivoEditorPage() {
   if (!isNew && isLoading) return <Layout><p>Caricamento preventivo...</p></Layout>;
   if (!isNew && !data) return <Layout><p>Preventivo non trovato.</p><Link to="/preventivi">Torna all'elenco</Link></Layout>;
   const locked = readOnly && !isNew;
-  const legacyCostModel = Number(doc.costi_comuni_versione) < 2;
+  const legacyCostModel = !(Number(doc.costi_comuni_versione) >= 2);
   const sharedTreatmentMode = doc.trattamenti_modalita === "globale" ? "globale" : "per_prodotto";
   const upgradeCosts = () => {
     if (locked) return;
@@ -213,7 +213,7 @@ export default function PreventivoEditorPage() {
     try {
       setDoc(migrateQuoteToSharedCosts(doc));
       setDirtyCalculation(true);
-      setListinoModified(true);
+      setListinoModified(Boolean(String(doc.listino?.sconto_riferimento ?? "").trim()));
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Conversione non riuscita");
