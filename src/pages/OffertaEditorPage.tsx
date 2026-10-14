@@ -127,7 +127,7 @@ export default function OffertaEditorPage() {
   if (!isNew && isLoading) return <Layout>Caricamento offerta...</Layout>;
   if (!isNew && !data) return <Layout><p>Offerta non trovata.</p><Link to="/offerte">Torna all'elenco</Link></Layout>;
   return <Layout>
-    <div className="max-w-6xl mx-auto space-y-5 pb-8">
+    <div className="w-full max-w-screen-2xl mx-auto space-y-5 pb-8">
       <div className="flex justify-between items-center gap-3 flex-wrap">
         <div className="flex gap-3 items-center">
           <Link to="/offerte" className="p-2 border rounded"><ArrowLeft size={16}/></Link>
