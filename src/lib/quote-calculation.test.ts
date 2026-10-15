@@ -70,7 +70,7 @@ describe("TKT-20261015-14060001: design cost by hours and hourly rate",()=>{
 
 describe("Una Tantum: quote-wide engineering and dual treatment allocation",()=>{
   it("allocates a single engineering amount over the total of 3 product quantities (not three times)",()=>{
-    const quote={...blankQuote(),progettazione_totale_euro:120,prodotti:[
+    const quote={...blankQuote(),progettazione_ore:2,costo_progettazione_ora:60,prodotti:[
       product(10,2),product(20,3),product(30,4),
     ]};
     const result=calculateQuote(quote);
@@ -87,7 +87,7 @@ describe("Una Tantum: quote-wide engineering and dual treatment allocation",()=>
     expect(Object.prototype.hasOwnProperty.call(quote.prodotti[0],"progettazione_tot")).toBe(false); // source untouched
   });
   it("treatment in global mode is quote total / total pieces; inactive product costs are ignored",()=>{
-    const quote={...blankQuote(), progettazione_totale_euro:120,
+    const quote={...blankQuote(), progettazione_ore:2,costo_progettazione_ora:60,
       trattamenti_modalita:"globale",trattamenti_totale_euro:90,
       prodotti:[
         product(10,2,{trattamenti_cad:10}),
@@ -102,7 +102,7 @@ describe("Una Tantum: quote-wide engineering and dual treatment allocation",()=>
     expect(result.prodotti.map((p:Record<string,number>)=>p.costo_primo_cad)).toEqual([5.5,6.5,7.5]);
   });
   it("per-product mode takes only each product €/piece treatment and ignores inactive global amount",()=>{
-    const quote={...blankQuote(), progettazione_totale_euro:120,
+    const quote={...blankQuote(), progettazione_ore:2,costo_progettazione_ora:60,
       trattamenti_modalita:"per_prodotto",trattamenti_totale_euro:900,
       prodotti:[
         product(10,2,{trattamenti_cad:2}),
@@ -115,7 +115,7 @@ describe("Una Tantum: quote-wide engineering and dual treatment allocation",()=>
     expect(result.prodotti.map((p:Record<string,number>)=>p.costo_primo_cad)).toEqual([6,6,6]);
   });
   it("changing the number of pieces reallocates shared amounts without changing their totals",()=>{
-    const quote={...blankQuote(), progettazione_totale_euro:120,
+    const quote={...blankQuote(), progettazione_ore:2,costo_progettazione_ora:60,
       trattamenti_modalita:"globale",trattamenti_totale_euro:90,
       prodotti:[product(10,1),product(20,1),product(30,1)]};
     const first=calculateQuote(quote);
@@ -131,7 +131,7 @@ describe("Una Tantum: quote-wide engineering and dual treatment allocation",()=>
     }
   });
   it("uses allocated common costs within full cost and margin even with different overheads",()=>{
-    const quote={...blankQuote(), progettazione_totale_euro:60,trattamenti_modalita:"globale",trattamenti_totale_euro:60,
+    const quote={...blankQuote(), progettazione_ore:1,costo_progettazione_ora:60,trattamenti_modalita:"globale",trattamenti_totale_euro:60,
       prodotti:[product(10,2,{ricarico_spese:0.5,margine:0.1}),product(20,3,{ricarico_spese:1,margine:0.2})]};
     const result=calculateQuote(quote);
     expect(result.prodotti[0].costo_primo_cad).toBeCloseTo(6);
@@ -141,7 +141,7 @@ describe("Una Tantum: quote-wide engineering and dual treatment allocation",()=>
     expect(result.margine_netto_complessivo_valore).toBeCloseTo(result.totale_finale-result.full_cost_totale);
   });
   it("honors manual selling prices and global target quadratura after allocation",()=>{
-    const quote={...blankQuote(), progettazione_totale_euro:30,trattamenti_modalita:"globale",trattamenti_totale_euro:10,
+    const quote={...blankQuote(), progettazione_ore:0.5,costo_progettazione_ora:60,trattamenti_modalita:"globale",trattamenti_totale_euro:10,
       target_totale:200,
       prodotti:[product(10,1,{prezzo_manuale:5,quadrabile:false}),product(10,1,{quadrabile:true})]};
     const result=calculateQuote(quote);
@@ -190,7 +190,7 @@ describe("Una Tantum: quote-wide engineering and dual treatment allocation",()=>
   it("does not accept absent or invalid quantities or negative global costs",()=>{
     expect(()=>calculateQuote({...blankQuote(),prodotti:[]})).toThrow("almeno un prodotto");
     expect(()=>calculateQuote({...blankQuote(),prodotti:[product(0,1)]})).toThrow("maggiore di zero");
-    expect(()=>calculateQuote({...blankQuote(),progettazione_totale_euro:-1})).toThrow("numeri non negativi");
+    expect(()=>calculateQuote({...blankQuote(),progettazione_ore:-1})).toThrow("numeri non negativi");
     expect(()=>calculateQuote({...blankQuote(),trattamenti_modalita:"globale",trattamenti_totale_euro:-1})).toThrow("numeri non negativi");
   });
   it("quotes converted to the new model are not mutated by another conversion",()=>{
