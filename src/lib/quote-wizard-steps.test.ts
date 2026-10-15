@@ -51,6 +51,31 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     expect(calc.prodotti[0].progettazione_tot).toBe(100);
     expect(calc.prodotti[0].trattamenti_tot).toBe(40);
   });
+  it("weight costing is a separate guided path; a hidden known €/piece value cannot mislead",()=>{
+    const q=blankQuote();
+    q.prodotti[0].costo_materiale_noto=false;
+    q.prodotti[0].materiale_prodotto="ferro";
+    const steps=buildQuoteWizardSteps(q);
+    expect(steps.some(s=>s.id==="p:0:materiale_cad")).toBe(false);
+    const fields=steps.filter(s=>s.index===0).map(s=>s.field);
+    for(const key of ["costo_materiale_noto","lunghezza_mm","larghezza_mm","spessore_mm","costo_materiale_kg"])
+      expect(fields).toContain(key);
+    const lengthStep=steps.find(s=>s.id==="p:0:lunghezza_mm")!;
+    expect(quoteWizardStepError(lengthStep,q)).toMatch(/maggiore di zero/);
+    q.prodotti[0].lunghezza_mm=100;
+    q.prodotti[0].larghezza_mm=50;
+    q.prodotti[0].spessore_mm=2;
+    q.prodotti[0].costo_materiale_kg=2;
+    expect(quoteWizardStepError(lengthStep,q)).toBe(null);
+    const costStep=steps.find(s=>s.id==="p:0:costo_materiale_kg")!;
+    expect(quoteWizardStepError(costStep,q)).toBe(null);
+    const result=calculateQuote(q);
+    expect(result.prodotti[0].materiale_calcolato_cad).toBeCloseTo(0.157);
+    q.prodotti[0].costo_materiale_noto=true;
+    const known=buildQuoteWizardSteps(q);
+    expect(known.some(s=>s.id==="p:0:materiale_cad")).toBe(true);
+    expect(known.some(s=>s.id==="p:0:lunghezza_mm")).toBe(false);
+  });
   it("historical quotes keep their own editable costing fields until explicit upgrade",()=>{
     const q={...blankQuote(),costi_comuni_versione:undefined};
     const legacy=buildQuoteWizardSteps(q);
