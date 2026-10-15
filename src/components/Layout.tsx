@@ -35,7 +35,7 @@ function initialSidebarCollapsed(): boolean {
     window.matchMedia("(max-width: 767px)").matches;
 }
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default function Layout({ children, mobileWizard = false }: { children: React.ReactNode; mobileWizard?: boolean }) {
   const { user, logout } = useAuth({ redirectOnUnauthenticated: true });
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(initialSidebarCollapsed);
@@ -75,7 +75,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <aside
         id="ddcost-sidebar"
         aria-label="Navigazione principale"
-        className={`shrink-0 bg-slate-900 text-white flex flex-col transition-[width] duration-200 ease-in-out ${collapsed ? "w-16" : "w-64"}`}
+        className={`shrink-0 bg-slate-900 text-white flex flex-col transition-[width] duration-200 ease-in-out ${mobileWizard ? "hidden" : collapsed ? "w-16" : "w-64"}`}
       >
         <div className={`border-b border-slate-700 ${collapsed ? "p-2" : "px-4 py-5"}`}>
           <div className={`flex ${collapsed ? "flex-col items-center gap-1" : "items-center justify-between gap-2"}`}>
@@ -155,7 +155,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Main area grows when the sidebar is compact. */}
       <main className="min-w-0 flex-1 flex flex-col overflow-hidden">
-        <header className="h-14 shrink-0 bg-white border-b border-slate-200 flex items-center px-4 md:px-6 justify-between gap-2">
+        <header className={`h-14 shrink-0 bg-white border-b border-slate-200 items-center px-4 md:px-6 justify-between gap-2 ${mobileWizard ? "hidden" : "flex"}`}>
           <h2 className="text-base md:text-lg font-semibold text-slate-800 truncate">
             {navItems.find(n => n.path === location.pathname ||
               (n.path !== "/" && location.pathname.startsWith(n.path + "/")))?.label ||
@@ -163,7 +163,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </h2>
           <div className="text-xs text-slate-400 shrink-0">v2.0 PWA</div>
         </header>
-        <div className="min-w-0 flex-1 overflow-auto p-3 md:p-6">{children}</div>
+        <div className={`min-w-0 flex-1 overflow-auto ${mobileWizard ? "p-3 md:p-5" : "p-3 md:p-6"}`}>{children}</div>
       </main>
 
       <FloatingFeedbackButton />
