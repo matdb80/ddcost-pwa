@@ -235,11 +235,12 @@ export default function PreventivoEditorPage() {
       if (!["ferro","ottone","inox"].includes(String(p.materiale_prodotto ?? "")))
         return setError("Indicare ferro, ottone o inox per il prodotto " + (i+1));
     }
-    if (!isNew && !changed) return setError("Nessuna modifica rilevata");
-    if (create.isPending || revise.isPending) return;
+    if (!isNew && !changed && !isSavedDraft) return setError("Nessuna modifica rilevata");
+    if (create.isPending || revise.isPending || finalizeDraftMutation.isPending || draftSaving) return;
     try {
       const computed = dirtyCalculation || isNew ? calculateQuote(doc) : doc;
       if (listinoModified) computed.listino = buildListino(computed.listino ?? {}, computed, priceProductIndex);
+      computed.stato_preventivo="completo";
       const json = JSON.stringify(computed);
       if (!isNew && originalJson === json) return setError("Nessuna modifica rilevata");
       const payload = {
@@ -255,15 +256,22 @@ export default function PreventivoEditorPage() {
         summary: String(computed.summary ?? ""),
         dataJson: json,
       };
-      if (isNew) {
-        const result = await create.mutateAsync({
-          ...payload,
-          targetTotal: payload.targetTotal ?? undefined,
+      if(draftIdRef.current!==null){
+        const result=await finalizeDraftMutation.mutateAsync({
+          draftId:draftIdRef.current,...payload,
         });
-        navigate("/preventivi/" + result.id);
-      } else {
-        const result = await revise.mutateAsync({ sourceId: numericId, ...payload });
-        navigate("/preventivi/" + result.id);
+        allowLeaveRef.current=true;
+        await utils.quote.list.invalidate();
+        navigate("/preventivi/"+result.id,{replace:true});
+        await utils.quote.get.invalidate({id:result.id});
+      }else if(isNew){
+        const result=await create.mutateAsync({...payload,targetTotal:payload.targetTotal??undefined});
+        allowLeaveRef.current=true;
+        navigate("/preventivi/"+result.id);
+      }else{
+        const result=await revise.mutateAsync({sourceId:numericId,...payload});
+        allowLeaveRef.current=true;
+        navigate("/preventivi/"+result.id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Salvataggio fallito");
@@ -309,7 +317,14 @@ export default function PreventivoEditorPage() {
           {locked ? <button className="bg-emerald-600 text-white px-4 py-2 rounded flex gap-2" onClick={() => setReadOnly(false)}><Pencil size={16}/> Modifica</button>
           : <>
               <button type="button" className="border px-4 py-2 rounded flex gap-2" onClick={() => { try { setDoc(calculateQuote(doc)); setDirtyCalculation(false); setError(""); } catch(e) { setError(e instanceof Error ? e.message : "Errore ricalcolo"); } }}><Calculator size={16}/> Ricalcola</button>
-              <button type="button" disabled={create.isPending || revise.isPending || (!isNew && !changed)} className="bg-emerald-600 disabled:opacity-40 text-white px-4 py-2 rounded flex gap-2" onClick={save}><Save size={16}/> {isNew ? "Salva preventivo" : "Salva nuova revisione"}</button>
+              <button type="button" disabled={draftSaving || !unsavedChanges} onClick={()=>void saveDraftOnly()}
+                className="rounded border border-emerald-600 px-4 py-2 font-medium text-emerald-700 disabled:opacity-40">
+                {draftSaving?"Salvataggio...":"Salva bozza"}
+              </button>
+              <button type="button" disabled={create.isPending || revise.isPending || finalizeDraftMutation.isPending || draftSaving || (!isNew && !changed && !isSavedDraft)}
+                className="bg-emerald-600 disabled:opacity-40 text-white px-4 py-2 rounded flex gap-2" onClick={()=>void save()}>
+                <Save size={16}/> {isSavedDraft?"Completa preventivo":isNew?"Salva preventivo":"Salva nuova revisione"}
+              </button>
             </>}
         </div>
       </div>
@@ -328,10 +343,13 @@ export default function PreventivoEditorPage() {
         </label>
       </section>
       </div>
+      {draftMessage && <div role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{draftMessage}</div>}
       {copyMessage && <div role="status" className="text-sm bg-emerald-50 border border-emerald-200 text-emerald-900 rounded p-3">{copyMessage}</div>}
       {error && <div role="alert" className="border border-red-400 bg-red-50 p-3 rounded text-red-800">{error}</div>}
       {!isNew && <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 p-3 rounded">
-        Ogni modifica salva una nuova revisione; la versione originale non viene sovrascritta. I calcoli storici sono preservati finché non modifichi i dati economici.
+        {isSavedDraft
+          ? "BOZZA: puoi completare i campi mancanti oppure salvarla ancora. Solo «Completa preventivo» applica le verifiche obbligatorie e rende il documento definitivo."
+          : "Ogni modifica salva una nuova revisione; la versione originale non viene sovrascritta. I calcoli storici sono preservati finché non modifichi i dati economici."}
       </div>}
       {legacyCostModel ? (
         <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
