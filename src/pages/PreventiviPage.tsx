@@ -3,13 +3,7 @@ import { trpc } from "@/providers/trpc";
 import { useState } from "react";
 import { Link } from "react-router";
 import { Plus, Search } from "lucide-react";
-
-/** Status is stored in the document JSON to preserve the existing DB schema. */
-function isDraft(dataJson:string|null):boolean {
-  if(!dataJson)return false;
-  try { return JSON.parse(dataJson).stato_preventivo==="bozza"; }
-  catch { return false; }
-}
+import {quoteIsDraft} from "@/lib/quote-draft-state";
 
 export default function PreventiviPage() {
   const [search, setSearch] = useState("");
@@ -59,15 +53,15 @@ export default function PreventiviPage() {
                     <Link className="text-emerald-700 hover:underline" to={`/preventivi/${q.id}`}>
                       {q.client || "(senza cliente)"}
                     </Link>
-                    {isDraft(q.dataJson) && <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Bozza</span>}
+                    {quoteIsDraft(q.dataJson) && <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Bozza</span>}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{q.reference}</td>
                   <td className="px-4 py-3 text-slate-500">{q.rev}</td>
                   <td className="px-4 py-3 text-right font-mono text-slate-700">
-                    {isDraft(q.dataJson) ? "Da completare" : (q.totalFinal != null ? `€ ${Number(q.totalFinal).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "-")}
+                    {quoteIsDraft(q.dataJson) ? "Da completare" : (q.totalFinal != null ? `€ ${Number(q.totalFinal).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "-")}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <Link className="text-emerald-700 hover:underline" to={`/preventivi/${q.id}`}>{isDraft(q.dataJson) ? "Riprendi bozza" : "Apri / Modifica"}</Link>
+                    <Link className="text-emerald-700 hover:underline" to={`/preventivi/${q.id}`}>{quoteIsDraft(q.dataJson) ? "Riprendi bozza" : "Apri / Modifica"}</Link>
                   </td>
                 </tr>
               ))}
