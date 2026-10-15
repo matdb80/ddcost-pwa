@@ -4,6 +4,13 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { Plus, Search } from "lucide-react";
 
+/** Status is stored in the document JSON to preserve the existing DB schema. */
+function isDraft(dataJson:string|null):boolean {
+  if(!dataJson)return false;
+  try { return JSON.parse(dataJson).stato_preventivo==="bozza"; }
+  catch { return false; }
+}
+
 export default function PreventiviPage() {
   const [search, setSearch] = useState("");
   const { data: quotes } = trpc.quote.list.useQuery({ search, limit: 100 });
@@ -48,14 +55,19 @@ export default function PreventiviPage() {
               {quotes?.map((q) => (
                 <tr key={q.id} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="px-4 py-3 text-slate-500">{q.id}</td>
-                  <td className="px-4 py-3 font-medium text-slate-800"><Link className="text-emerald-700 hover:underline" to={`/preventivi/${q.id}`}>{q.client || "(senza cliente)"}</Link></td>
+                  <td className="px-4 py-3 font-medium text-slate-800">
+                    <Link className="text-emerald-700 hover:underline" to={`/preventivi/${q.id}`}>
+                      {q.client || "(senza cliente)"}
+                    </Link>
+                    {isDraft(q.dataJson) && <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Bozza</span>}
+                  </td>
                   <td className="px-4 py-3 text-slate-600">{q.reference}</td>
                   <td className="px-4 py-3 text-slate-500">{q.rev}</td>
                   <td className="px-4 py-3 text-right font-mono text-slate-700">
-                    {q.totalFinal != null ? `€ ${Number(q.totalFinal).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "-"}
+                    {isDraft(q.dataJson) ? "Da completare" : (q.totalFinal != null ? `€ ${Number(q.totalFinal).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "-")}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <Link className="text-emerald-700 hover:underline" to={`/preventivi/${q.id}`}>Apri / Modifica</Link>
+                    <Link className="text-emerald-700 hover:underline" to={`/preventivi/${q.id}`}>{isDraft(q.dataJson) ? "Riprendi bozza" : "Apri / Modifica"}</Link>
                   </td>
                 </tr>
               ))}
