@@ -1,0 +1,77 @@
+import {describe,expect,it} from "vitest";
+import {blankProduct,blankQuote,calculateQuote} from "./quote-calculation";
+import {buildQuoteWizardSteps,quoteWizardStepError} from "./quote-wizard-steps";
+
+describe("Una Tantum mobile wizard step sequencing",()=>{
+  it("has one main field per step and short phone path by default",()=>{
+    const steps=buildQuoteWizardSteps(blankQuote());
+    expect(steps[0].id).toBe("cliente");
+    expect(steps.at(-1)?.id).toBe("riepilogo");
+    expect(steps.filter(x=>x.kind==="number").every(x=>typeof x.field==="string")).toBe(true);
+    expect(steps.filter(x=>x.index===0).map(x=>x.field))
+      .toContain("quantita");
+    expect(steps.some(x=>x.field==="target_totale")).toBe(false);
+    expect(steps.some(x=>x.field==="ricarico_spese")).toBe(false);
+    expect(steps.some(x=>x.field==="progettazione_ore")).toBe(true);
+    expect(steps.some(x=>x.field==="costo_progettazione_ora")).toBe(true);
+  });
+  it("lets the user access optional complete-editor values without losing basic fields",()=>{
+    const basic=buildQuoteWizardSteps(blankQuote());
+    const full=buildQuoteWizardSteps(blankQuote(),true);
+    expect(full.length).toBeGreaterThan(basic.length);
+    for(const s of basic)expect(full.some(x=>x.id===s.id)).toBe(true);
+    for(const id of ["target_totale","listino_prodotto","listino_sconto","note_cliente",
+      "note_generali","note_fornitori","p:0:margine","p:0:prezzo_manuale",
+      "p:0:quadrabile","p:0:attrezzaggi_h","p:0:costo_lavoro"])
+      expect(full.some(s=>s.id===id)).toBe(true);
+  });
+  it("supports three products, each with its own group, material and amount",()=>{
+    const quote={...blankQuote(),prodotti:[blankProduct(),blankProduct(),blankProduct()]};
+    const steps=buildQuoteWizardSteps(quote);
+    expect(steps.filter(x=>x.field==="quantita")).toHaveLength(3);
+    expect(steps.filter(x=>x.field==="gruppo_merceologico")).toHaveLength(3);
+    expect(steps.filter(x=>x.field==="materiale_prodotto")).toHaveLength(3);
+    expect(steps.filter(x=>x.id.endsWith(":done"))).toHaveLength(3);
+    expect(steps.some(x=>x.id==="p:2:descrizione")).toBe(true);
+  });
+  it("treatments branch changes and never requires duplicate global and line treatment inputs",()=>{
+    const q=blankQuote();
+    const per=buildQuoteWizardSteps(q);
+    expect(per.some(x=>x.id==="p:0:trattamenti_cad")).toBe(true);
+    expect(per.some(x=>x.id==="trattamenti_totale_euro")).toBe(false);
+    q.trattamenti_modalita="globale";
+    const all=buildQuoteWizardSteps(q);
+    expect(all.some(x=>x.id==="p:0:trattamenti_cad")).toBe(false);
+    expect(all.some(x=>x.id==="trattamenti_totale_euro")).toBe(true);
+    q.prodotti[0].quantita=5;
+    q.progettazione_ore=2;
+    q.costo_progettazione_ora=50;
+    q.trattamenti_totale_euro=40;
+    const calc=calculateQuote(q);
+    expect(calc.prodotti[0].progettazione_tot).toBe(100);
+    expect(calc.prodotti[0].trattamenti_tot).toBe(40);
+  });
+  it("historical quotes keep their own editable costing fields until explicit upgrade",()=>{
+    const q={...blankQuote(),costi_comuni_versione:undefined};
+    const legacy=buildQuoteWizardSteps(q);
+    expect(legacy.some(x=>x.id==="p:0:progettazione_h")).toBe(true);
+    expect(legacy.some(x=>x.id==="p:0:costo_progettazione")).toBe(true);
+    expect(legacy.some(x=>x.id==="progettazione_ore")).toBe(false);
+    const v2=buildQuoteWizardSteps({...q,costi_comuni_versione:2});
+    expect(v2.some(x=>x.id==="progettazione_totale_euro")).toBe(true);
+    expect(v2.some(x=>x.id==="p:0:progettazione_h")).toBe(false);
+  });
+  it("prevents moving beyond required values but lets the user save incomplete drafts",()=>{
+    const q=blankQuote();
+    const required=buildQuoteWizardSteps(q).filter(x=>x.required);
+    expect(required.map(x=>x.field)).toEqual(expect.arrayContaining(["cliente","descrizione","gruppo_merceologico","materiale_prodotto","quantita"]));
+    expect(quoteWizardStepError(required[0],q)).toMatch(/obbligatorio/);
+    q.cliente="Cliente Test";
+    expect(quoteWizardStepError(required[0],q)).toBe(null);
+    const qty=required.find(x=>x.field==="quantita")!;
+    q.prodotti[0].quantita=0;
+    expect(quoteWizardStepError(qty,q)).toMatch(/maggiore di zero/);
+    q.prodotti[0].quantita=20;
+    expect(quoteWizardStepError(qty,q)).toBe(null);
+  });
+});
