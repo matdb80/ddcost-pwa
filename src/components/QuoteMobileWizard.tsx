@@ -162,6 +162,11 @@ export default function QuoteMobileWizard(props:Props){
               <div><dt className="text-slate-500">Prezzo €/pz</dt><dd className="font-semibold">{hasPreview?euro(preview?.prodotti?.[productIndex]?.prezzo_netto_unitario_finale):"—"}</dd></div>
               <div><dt className="text-slate-500">Totale prodotto</dt><dd className="font-semibold">{hasPreview?"€ "+euro(preview?.prodotti?.[productIndex]?.totale_finale):"—"}</dd></div>
             </dl>
+            {product.costo_materiale_noto===false &&
+              <p className="text-xs text-slate-600">
+                Costo materiale calcolato da peso: {hasPreview?"€ "+euro(preview?.prodotti?.[productIndex]?.materiale_calcolato_cad):"da completare"} /pz.
+                Il calcolo usa il peso teorico del grezzo rettangolare.
+              </p>}
             {!locked && <div className="grid grid-cols-2 gap-2">
               <button type="button" onClick={addAnotherProduct}
                 className={actionClass+" border border-emerald-700 text-emerald-800"}><Plus size={17}/> Altro prodotto</button>
@@ -264,7 +269,9 @@ export default function QuoteMobileWizard(props:Props){
           <label className="flex min-h-14 items-center gap-3 rounded-xl border border-slate-200 p-3 text-base">
             <input type="checkbox" disabled={locked} checked={value!==false}
               onChange={e=>updateValue(e.target.checked)} className="h-5 w-5 accent-emerald-600"/>
-            Sì, il prezzo può essere rettificato
+            {field==="costo_materiale_noto"
+              ?"Sì, conosco il costo del materiale per pezzo"
+              :"Sì, il prezzo può essere rettificato"}
           </label>
         ):current.kind==="number" && current.numeric?(
           <QuoteNumericInput key={current.id} id="wizard-input" className={inputClass}
