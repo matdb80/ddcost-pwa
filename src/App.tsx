@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router'
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
 import { useAuth } from "@/hooks/useAuth"
 import Home from './pages/Home'
 import Login from "./pages/Login"
@@ -33,25 +33,27 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// A data router allows robust navigation blocking for unsaved quote drafts,
+// including internal links and the browser Back/Forward buttons.
+const router = createBrowserRouter([
+  {path:"/", element:<ProtectedRoute><Home /></ProtectedRoute>},
+  {path:"/login", element:<Login />},
+  {path:"/cicli", element:<ProtectedRoute><CicliPage /></ProtectedRoute>},
+  {path:"/cicli/new", element:<ProtectedRoute><CicloEditorPage /></ProtectedRoute>},
+  {path:"/cicli/:id", element:<ProtectedRoute><CicloEditorPage /></ProtectedRoute>},
+  {path:"/bandelle-t", element:<ProtectedRoute><BandelleTPage /></ProtectedRoute>},
+  {path:"/bandelle-veneta", element:<ProtectedRoute><BandelleVenetaPage /></ProtectedRoute>},
+  {path:"/preventivi", element:<ProtectedRoute><PreventiviPage /></ProtectedRoute>},
+  {path:"/preventivi/new", element:<ProtectedRoute><PreventivoEditorPage /></ProtectedRoute>},
+  {path:"/preventivi/:id", element:<ProtectedRoute><PreventivoEditorPage /></ProtectedRoute>},
+  {path:"/offerte", element:<ProtectedRoute><OffertePage /></ProtectedRoute>},
+  {path:"/offerte/new", element:<ProtectedRoute><OffertaEditorPage /></ProtectedRoute>},
+  {path:"/offerte/:id", element:<ProtectedRoute><OffertaEditorPage /></ProtectedRoute>},
+  {path:"/importa-storico", element:<ProtectedRoute><ImportaStorico /></ProtectedRoute>},
+  {path:"/segnalazioni", element:<ProtectedRoute><FeedbackAdminPage /></ProtectedRoute>},
+  {path:"*", element:<NotFound />},
+]);
+
 export default function App() {
-  return (
-    <Routes>
-      <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/cicli" element={<ProtectedRoute><CicliPage /></ProtectedRoute>} />
-      <Route path="/cicli/new" element={<ProtectedRoute><CicloEditorPage /></ProtectedRoute>} />
-      <Route path="/cicli/:id" element={<ProtectedRoute><CicloEditorPage /></ProtectedRoute>} />
-      <Route path="/bandelle-t" element={<ProtectedRoute><BandelleTPage /></ProtectedRoute>} />
-      <Route path="/bandelle-veneta" element={<ProtectedRoute><BandelleVenetaPage /></ProtectedRoute>} />
-      <Route path="/preventivi" element={<ProtectedRoute><PreventiviPage /></ProtectedRoute>} />
-      <Route path="/preventivi/new" element={<ProtectedRoute><PreventivoEditorPage /></ProtectedRoute>} />
-      <Route path="/preventivi/:id" element={<ProtectedRoute><PreventivoEditorPage /></ProtectedRoute>} />
-      <Route path="/offerte" element={<ProtectedRoute><OffertePage /></ProtectedRoute>} />
-      <Route path="/offerte/new" element={<ProtectedRoute><OffertaEditorPage /></ProtectedRoute>} />
-      <Route path="/offerte/:id" element={<ProtectedRoute><OffertaEditorPage /></ProtectedRoute>} />
-      <Route path="/importa-storico" element={<ProtectedRoute><ImportaStorico /></ProtectedRoute>} />
-      <Route path="/segnalazioni" element={<ProtectedRoute><FeedbackAdminPage /></ProtectedRoute>} />
-      <Route path="*" element={<NotFound />} />
-    </Routes>
-  )
+  return <RouterProvider router={router}/>;
 }
