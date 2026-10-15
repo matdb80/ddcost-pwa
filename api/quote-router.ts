@@ -110,6 +110,130 @@ export const quoteRouter = createRouter({
       return { id };
     }),
 
+  /**
+   * Drafts are real DB records, not invalid finished quotes. Only this
+   * dedicated authenticated endpoint bypasses mandatory commercial fields.
+   * Existing completed revisions remain immutable; draft revisions may be
+   * updated in place until finalized.
+   */
+  saveDraft: authedQuery
+    .input(z.object({
+      sourceId: z.number().int().positive().optional(),
+      client: z.string().max(255).default(""),
+      reference: z.string().max(255).default(""),
+      dataJson: z.string().min(2).max(62000),
+    }))
+    .mutation(async ({ctx,input})=>{
+      let document:Record<string,unknown>;
+      try {
+        const parsed=JSON.parse(input.dataJson) as unknown;
+        if(!parsed || typeof parsed!=="object" || Array.isArray(parsed)) throw Error();
+        document=parsed as Record<string,unknown>;
+        if(!Array.isArray(document.prodotti) || !document.prodotti.length ||
+           document.prodotti.some(p=>!p || typeof p!=="object" || Array.isArray(p)))
+          throw Error();
+      } catch {
+        throw new Error("Bozza non valida: è richiesto almeno un prodotto, anche incompleto");
+      }
+      const db=getDb();
+      return db.transaction(async tx=>{
+        const source=input.sourceId
+          ? (await tx.select().from(quotes).where(and(
+              eq(quotes.id,input.sourceId),eq(quotes.userId,ctx.user.id)
+            )).limit(1))[0]
+          : null;
+        if(input.sourceId && !source)throw new Error("Preventivo originale non trovato o non autorizzato");
+        const rootId=source?.rootId ?? source?.id;
+        const latest=source ? (await tx.select({rev:quotes.rev}).from(quotes)
+          .where(and(eq(quotes.rootId,rootId!),eq(quotes.userId,ctx.user.id)))
+          .orderBy(desc(quotes.rev),desc(quotes.id)).limit(1))[0] : null;
+        const currentDraft=source && (()=>{
+          try {return (JSON.parse(source.dataJson ?? "{}") as Record<string,unknown>).stato_preventivo==="bozza";}
+          catch{return false;}
+        })();
+        const revision=currentDraft
+          ? Number(source.rev??1)
+          : source ? Math.max(Number(latest?.rev??1),Number(source.rev??1))+1 : 1;
+        const json=JSON.stringify({
+          ...document,stato_preventivo:"bozza",
+          ...(rootId ? {root_id:rootId} : {}),
+          rev:revision,
+        });
+        const common={
+          client:input.client,
+          reference:input.reference,
+          numProducts:(document.prodotti as unknown[]).length,
+          generalNotes:String(document.note_generali??""),
+          clientNotes:String(document.note_cliente??""),
+          supplierNotes:String(document.note_fornitori??""),
+          // A draft has no reliable totals until it is finalized.
+          totalBeforeRebalance:null,
+          totalFinal:null,
+          targetTotal:null,
+          summary:null,
+          dataJson:json,
+        };
+        if(currentDraft && source){
+          await tx.update(quotes).set(common).where(and(
+            eq(quotes.id,source.id),eq(quotes.userId,ctx.user.id)
+          ));
+          return {id:source.id,rev:revision,rootId:rootId!,isDraft:true};
+        }
+        const result=await tx.insert(quotes).values({
+          ...common,userId:ctx.user.id,rootId:rootId??null,rev:revision,
+        });
+        const id=Number(result[0].insertId);
+        if(!rootId){
+          await tx.update(quotes).set({rootId:id,dataJson:JSON.stringify({
+            ...document,stato_preventivo:"bozza",root_id:id,rev:revision,
+          })}).where(eq(quotes.id,id));
+        }
+        return {id,rev:revision,rootId:rootId??id,isDraft:true};
+      });
+    }),
+
+  /** On successful validation a draft becomes a real quote IN PLACE.
+   *  Historic completed revisions are never overwritten by this endpoint.
+   */
+  finalizeDraft: authedQuery
+    .input(z.object({
+      draftId:z.number().int().positive(),
+      client:z.string().min(1).max(255),
+      reference:z.string().max(255).optional(),
+      targetTotal:z.string().nullable().optional(),
+      totalBeforeRebalance:z.string().optional(),
+      totalFinal:z.string().optional(),
+      numProducts:z.number().int().positive().optional(),
+      generalNotes:z.string().optional(),
+      clientNotes:z.string().optional(),
+      supplierNotes:z.string().optional(),
+      summary:z.string().optional(),
+      dataJson:z.string().min(2).max(62000),
+    }))
+    .mutation(async({ctx,input})=>{
+      await validateQuoteClassifications(input.dataJson);
+      const db=getDb();
+      return db.transaction(async tx=>{
+        const source=(await tx.select().from(quotes).where(and(
+          eq(quotes.id,input.draftId),eq(quotes.userId,ctx.user.id)
+        )).limit(1))[0];
+        if(!source)throw new Error("Bozza non trovata");
+        let prior:Record<string,unknown>;
+        try{prior=JSON.parse(source.dataJson??"{}");}
+        catch{throw new Error("Bozza originale non leggibile");}
+        if(prior.stato_preventivo!=="bozza")
+          throw new Error("Il preventivo non è una bozza: utilizzare il salvataggio di revisione");
+        const doc=JSON.parse(input.dataJson) as Record<string,unknown>;
+        const {draftId,...changes}=input;
+        await tx.update(quotes).set({
+          ...changes,
+          dataJson:JSON.stringify({...doc,stato_preventivo:"completo",
+            root_id:source.rootId??source.id,rev:source.rev??1}),
+        }).where(and(eq(quotes.id,draftId),eq(quotes.userId,ctx.user.id)));
+        return {id:draftId,rev:source.rev??1,rootId:source.rootId??source.id};
+      });
+    }),
+
   update: authedQuery
     .input(
       z.object({
