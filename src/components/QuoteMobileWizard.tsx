@@ -125,8 +125,8 @@ export default function QuoteMobileWizard(props:Props){
           <p className="truncate text-sm font-medium">{isNew?"Nuovo preventivo":`Preventivo #${numericId}`}</p>
         </div>
         <button type="button" onClick={onDesktop} className="min-h-11 rounded-lg bg-slate-800 px-3 text-xs font-semibold"
-          title="Passa all'editor completo">
-          <Settings2 size={16} className="mx-auto mb-0.5"/> Editor
+          title="Disattiva visualizzazione cellulare e apri editor completo">
+          <Settings2 size={16} className="mx-auto mb-0.5"/> Vista completa
         </button>
       </div>
     </header>
@@ -299,7 +299,7 @@ export default function QuoteMobileWizard(props:Props){
       </button>}
     </div>
 
-    <nav aria-label="Navigazione guidata" className="sticky bottom-0 z-30 -mx-3 flex items-center gap-2 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-5px_24px_rgba(15,23,42,.1)] backdrop-blur">
+    <nav aria-label="Navigazione guidata" className="fixed bottom-0 left-0 right-0 z-30 flex items-center gap-2 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-5px_24px_rgba(15,23,42,.1)] backdrop-blur">
       <button type="button" onClick={previous} disabled={activeIndex===0}
         className={actionClass+" flex-1 border border-slate-300 text-slate-700 disabled:opacity-35"}>
         <ChevronLeft size={18}/> Indietro
