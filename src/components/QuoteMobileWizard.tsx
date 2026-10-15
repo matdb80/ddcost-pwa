@@ -5,9 +5,9 @@ import {
   Plus, Save, Settings2, Trash2,
 } from "lucide-react";
 import QuoteNumericInput from "@/components/QuoteNumericInput";
-import {blankProduct, type Product, type QuoteDocument} from "@/lib/quote-calculation";
+import {type Product, type QuoteDocument} from "@/lib/quote-calculation";
 import {
-  buildQuoteWizardSteps, quoteWizardStepError, type QuoteWizardStep,
+  buildQuoteWizardSteps, quoteWizardStepError,
 } from "@/lib/quote-wizard-steps";
 
 const euro=(value:unknown):string=>Number(value??0).toLocaleString("it-IT",{
@@ -81,7 +81,6 @@ export default function QuoteMobileWizard(props:Props){
     if(invalid){goto(invalid.id);setLocalError("Completa questo campo prima di salvare il preventivo.");return;}
     onSave();
   };
-  const isLegacy=Number(doc.costi_comuni_versione)<3;
   const productIndex=current.index;
   const product=productIndex===undefined?null:(doc.prodotti?.[productIndex] as Product|undefined);
   const field=current.field;
@@ -127,7 +126,7 @@ export default function QuoteMobileWizard(props:Props){
         </div>
         <button type="button" onClick={onDesktop} className="min-h-11 rounded-lg bg-slate-800 px-3 text-xs font-semibold"
           title="Passa all'editor completo">
-          <Settings2 size={16} className="mx-auto mb-0.5"/> Completa
+          <Settings2 size={16} className="mx-auto mb-0.5"/> Editor
         </button>
       </div>
     </header>
