@@ -1,10 +1,71 @@
 import { describe, expect, it } from "vitest";
 import {
-  blankProduct, blankQuote, calculateQuote, migrateQuoteToSharedCosts,
+  blankProduct, blankQuote, calculateQuote, migrateQuoteToSharedCosts, migrateQuoteToEngineeringHours,
 } from "./quote-calculation";
 
 const product=(quantity:number,materialPerPiece:number,extras:Record<string,unknown>={})=>({
   ...blankProduct(), quantita:quantity, materiale_cad:materialPerPiece, ...extras,
+});
+
+describe("TKT-20261015-14060001: design cost by hours and hourly rate",()=>{
+  it("calculates engineering once from shared hours × rate / all pieces",()=>{
+    const d={...blankQuote(),progettazione_ore:3,costo_progettazione_ora:45,
+      prodotti:[product(10,1),product(20,1),product(30,1)]};
+    const x=calculateQuote(d);
+    expect(x.costi_comuni_versione).toBe(3);
+    expect(x.costi_comuni_riepilogo.progettazione_ore).toBe(3);
+    expect(x.costi_comuni_riepilogo.costo_progettazione_ora).toBe(45);
+    expect(x.costi_comuni_riepilogo.progettazione_totale).toBe(135);
+    expect(x.costi_comuni_riepilogo.progettazione_cad).toBeCloseTo(2.25);
+    expect(x.prodotti.map((p:Record<string,number>)=>p.progettazione_tot)).toEqual([22.5,45,67.5]);
+    expect(x.prodotti.reduce((tot:number,p:Record<string,number>)=>tot+p.progettazione_tot,0)).toBeCloseTo(135);
+    expect(x.prodotti.map((p:Record<string,number>)=>p.costo_primo_cad)).toEqual([3.25,3.25,3.25]);
+    expect(d.progettazione_totale_euro).toBe(0); // only clone contains computed value
+  });
+  it("reallocates across changing quantities without multiplying common cost",()=>{
+    const d={...blankQuote(),progettazione_ore:2,costo_progettazione_ora:80,
+      trattamenti_modalita:"globale",trattamenti_totale_euro:90,
+      prodotti:[product(10,1),product(30,1)]};
+    const a=calculateQuote(d);
+    expect(a.costi_comuni_riepilogo.progettazione_cad).toBe(4);
+    expect(a.costi_comuni_riepilogo.trattamenti_globali_cad).toBe(2.25);
+    d.prodotti[1].quantita=70;
+    const b=calculateQuote(d);
+    expect(b.costi_comuni_riepilogo.progettazione_cad).toBe(2);
+    expect(b.costi_comuni_riepilogo.trattamenti_globali_cad).toBe(1.125);
+    expect(b.prodotti.reduce((n:number,p:Record<string,number>)=>n+p.progettazione_tot,0)).toBeCloseTo(160);
+    expect(b.prodotti.reduce((n:number,p:Record<string,number>)=>n+p.trattamenti_tot,0)).toBeCloseTo(90);
+  });
+  it("treats version 2 total engineering as historical, never silently recalc it from hours",()=>{
+    const old={...blankQuote(),costi_comuni_versione:2,
+      progettazione_totale_euro:123.45,progettazione_ore:999,costo_progettazione_ora:900,
+      prodotti:[product(10,1),product(20,1)]};
+    const before=JSON.stringify(old);
+    const historic=calculateQuote(old);
+    expect(historic.costi_comuni_riepilogo.progettazione_totale).toBe(123.45);
+    const next=migrateQuoteToEngineeringHours(old);
+    expect(next.costi_comuni_versione).toBe(3);
+    expect(next.progettazione_ore).toBe(1);
+    expect(next.costo_progettazione_ora).toBe(123.45);
+    expect(calculateQuote(next).costi_comuni_riepilogo.progettazione_totale).toBe(123.45);
+    expect(JSON.stringify(old)).toBe(before);
+  });
+  it("can convert version 1 cost to hours×rate without touching the original revision",()=>{
+    const legacy={...blankQuote(),costi_comuni_versione:undefined,
+      prodotti:[product(10,1,{progettazione_h:2,costo_progettazione:50}),
+        product(20,1,{progettazione_h:1,costo_progettazione:60})]};
+    const next=migrateQuoteToEngineeringHours(legacy);
+    expect(next.progettazione_ore).toBe(1);
+    expect(next.costo_progettazione_ora).toBe(160);
+    expect(next.trattamenti_modalita).toBe("per_prodotto");
+    expect(calculateQuote(next).costi_comuni_riepilogo.progettazione_totale).toBe(160);
+    expect(legacy.prodotti[0].progettazione_h).toBe(2);
+  });
+  it("rejects negative and non-finite engineering hours or rates without altering the source",()=>{
+    expect(()=>calculateQuote({...blankQuote(),progettazione_ore:-1})).toThrow("non negativi");
+    expect(()=>calculateQuote({...blankQuote(),costo_progettazione_ora:-1})).toThrow("non negativi");
+    expect(()=>calculateQuote({...blankQuote(),progettazione_ore:Infinity})).toThrow("non negativi");
+  });
 });
 
 describe("Una Tantum: quote-wide engineering and dual treatment allocation",()=>{
