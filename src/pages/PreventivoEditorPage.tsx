@@ -288,16 +288,44 @@ export default function PreventivoEditorPage() {
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Costo totale progettazione (€)</span>
-              <input type="number" min="0" step="0.01" value={doc.progettazione_totale_euro ?? 0}
-                disabled={locked} onChange={e=>update("progettazione_totale_euro",Number(e.target.value),true)}
-                className="w-full min-w-0 rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-100"/>
-              <span className="text-xs text-slate-500">
-                Ripartito su {preview?.costi_comuni_riepilogo?.quantita_totale ?? "—"} pezzi:
-                € {euroDetailed(preview?.costi_comuni_riepilogo?.progettazione_cad)} /pz.
-              </span>
-            </label>
+            {legacyEngineeringModel ? (
+              <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="font-medium">Progettazione totale € (modello precedente)</span>
+                  <QuoteNumericInput kind="euro" value={doc.progettazione_totale_euro ?? 0}
+                    disabled={locked} onChange={value=>update("progettazione_totale_euro",value,true)}
+                    className="w-full min-w-0 rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-100"/>
+                </label>
+                <p className="text-xs text-amber-950">
+                  Questa revisione conserva il costo diretto in euro. Per usare ore × tariffa
+                  converti esplicitamente al nuovo modello, senza sovrascrivere lo storico.
+                </p>
+                {!locked && <button type="button" onClick={upgradeCosts}
+                  className="rounded-lg bg-amber-800 px-3 py-2 text-sm font-semibold text-white">
+                  Converti progettazione in ore × tariffa
+                </button>}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="font-medium">Ore complessive di progettazione</span>
+                  <QuoteNumericInput kind="decimal" value={doc.progettazione_ore ?? 0}
+                    disabled={locked} onChange={value=>update("progettazione_ore",value,true)}
+                    className="w-full min-w-0 rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-100"/>
+                </label>
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="font-medium">Costo orario progettazione (€/h)</span>
+                  <QuoteNumericInput kind="euro" value={doc.costo_progettazione_ora ?? 50}
+                    disabled={locked} onChange={value=>update("costo_progettazione_ora",value,true)}
+                    className="w-full min-w-0 rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-100"/>
+                </label>
+                <p className="text-xs text-slate-600">
+                  Costo comune: <strong>€ {euro(preview?.costi_comuni_riepilogo?.progettazione_totale)}</strong>
+                  {" "}(ore × tariffa), diviso tra {preview?.costi_comuni_riepilogo?.quantita_totale ?? "—"} pezzi:
+                  <strong> € {euroDetailed(preview?.costi_comuni_riepilogo?.progettazione_cad)}/pz</strong>.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <label className="flex flex-col gap-1 text-sm" htmlFor="trattamenti-modalita">
                 <span className="font-medium">Come attribuire i trattamenti?</span>
