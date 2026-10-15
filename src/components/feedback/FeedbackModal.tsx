@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "react-router";
@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MessageSquare, X, Camera, CheckCircle, AlertTriangle } from "lucide-react";
+import { captureFeedbackScreenshot } from "@/lib/feedback-screenshot";
 
 interface FeedbackModalProps {
   open: boolean;
@@ -110,6 +111,8 @@ export default function FeedbackModal({ open, onOpenChange, cycleId, cycleRev }:
   const [description, setDescription] = useState("");
   const [screenshot, setScreenshot] = useState<{ mimeType: "image/webp" | "image/jpeg" | "image/png"; dataBase64: string; fileName: string } | null>(null);
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [captureState,setCaptureState] = useState<"idle"|"capturing"|"ready"|"unavailable"|"removed">("idle");
+  const manualScreenshotOverride=useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<{ success: boolean; ticketNumber?: string; message?: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -123,6 +126,8 @@ export default function FeedbackModal({ open, onOpenChange, cycleId, cycleRev }:
     setDescription("");
     setScreenshot(null);
     setScreenshotPreview(null);
+    setCaptureState("idle");
+    manualScreenshotOverride.current=false;
     setResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
@@ -132,9 +137,43 @@ export default function FeedbackModal({ open, onOpenChange, cycleId, cycleRev }:
     onOpenChange(false);
   }, [reset, onOpenChange]);
 
+  // Capture automatically on opening the report. Radix portals the dialog
+  // outside #root, so the screenshot contains the underlying page, not this
+  // form. If the browser cannot render the page, sending text still works.
+  useEffect(()=>{
+    if(!open)return;
+    let canceled=false;
+    manualScreenshotOverride.current=false;
+    setCaptureState("capturing");
+    const root=document.getElementById("root");
+    if(!root){
+      setCaptureState("unavailable");
+      return;
+    }
+    let timeoutId:ReturnType<typeof setTimeout>|undefined;
+    const timeout=new Promise<never>((_,reject)=>{
+      timeoutId=setTimeout(()=>reject(new Error("Acquisizione non disponibile")),8000);
+    });
+    void Promise.race([captureFeedbackScreenshot(root),timeout])
+      .then(file=>compressImage(file,300))
+      .then(compressed=>{
+        if(canceled || manualScreenshotOverride.current)return;
+        setScreenshot(compressed);
+        setScreenshotPreview(`data:${compressed.mimeType};base64,${compressed.dataBase64}`);
+        setCaptureState("ready");
+      })
+      .catch(()=>{
+        if(canceled || manualScreenshotOverride.current)return;
+        setCaptureState("unavailable");
+      })
+      .finally(()=>{if(timeoutId!==undefined)clearTimeout(timeoutId);});
+    return ()=>{canceled=true;if(timeoutId!==undefined)clearTimeout(timeoutId);};
+  },[open]);
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    manualScreenshotOverride.current=true;
 
     if (!file.type.startsWith("image/")) {
       setResult({ success: false, message: "Solo immagini sono accettate" });
@@ -145,8 +184,10 @@ export default function FeedbackModal({ open, onOpenChange, cycleId, cycleRev }:
       const compressed = await compressImage(file, 300);
       setScreenshot(compressed);
       setScreenshotPreview(`data:${compressed.mimeType};base64,${compressed.dataBase64}`);
+      setCaptureState("ready");
       setResult(null);
     } catch (err: any) {
+      setCaptureState("unavailable");
       setResult({ success: false, message: err.message || "Errore compressione immagine" });
     }
   };
@@ -266,7 +307,20 @@ export default function FeedbackModal({ open, onOpenChange, cycleId, cycleRev }:
             </div>
 
             <div className="space-y-1.5">
-              <Label>Screenshot (opzionale, max 300 KB)</Label>
+              <Label>Screenshot della pagina (automatico, opzionale, max 300 KB)</Label>
+              <p className="text-xs text-slate-600">
+                Quando apri questa segnalazione DDCost acquisisce la schermata corrente.
+                L'anteprima può contenere dati visibili nella pagina: controllala e,
+                se preferisci, rimuovila prima dell'invio.
+              </p>
+              {captureState==="capturing" && <p role="status" className="text-xs text-blue-700">Acquisizione automatica in corso...</p>}
+              {captureState==="ready" && <p role="status" className="text-xs text-emerald-700">Screenshot pronto: verrà allegato insieme alla segnalazione.</p>}
+              {captureState==="unavailable" && <p role="status" className="text-xs text-amber-700">
+                Screenshot automatico non disponibile in questo browser. Puoi inviare la segnalazione senza immagine o allegarla manualmente.
+              </p>}
+              {captureState==="removed" && <p role="status" className="text-xs text-slate-600">
+                Screenshot rimosso: la segnalazione sarà inviata senza immagine.
+              </p>
               <div className="flex items-center gap-2">
                 <input
                   ref={fileInputRef}
@@ -282,13 +336,15 @@ export default function FeedbackModal({ open, onOpenChange, cycleId, cycleRev }:
                   className="flex items-center gap-2"
                 >
                   <Camera className="w-4 h-4" />
-                  {screenshot ? "Cambia screenshot" : "Allega screenshot"}
+                  {screenshot ? "Sostituisci screenshot" : "Allega manualmente"}
                 </Button>
                 {screenshot && (
                   <button
                     onClick={() => {
+                      manualScreenshotOverride.current=true;
                       setScreenshot(null);
                       setScreenshotPreview(null);
+                      setCaptureState("removed");
                       if (fileInputRef.current) fileInputRef.current.value = "";
                     }}
                     className="text-red-500 hover:text-red-700"
@@ -317,7 +373,7 @@ export default function FeedbackModal({ open, onOpenChange, cycleId, cycleRev }:
               </Button>
               <Button
                 onClick={handleSubmit}
-                disabled={isSubmitting || !title.trim() || !description.trim()}
+                disabled={isSubmitting || captureState==="capturing" || !title.trim() || !description.trim()}
                 className="bg-emerald-600 hover:bg-emerald-700"
               >
                 {isSubmitting ? "Invio..." : "Invia segnalazione"}
