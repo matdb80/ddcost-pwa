@@ -47,6 +47,7 @@ export default function QuoteNumericInput({
 } & Omit<InputHTMLAttributes<HTMLInputElement>,
   "value"|"onChange"|"type"|"inputMode"|"step"|"min"|"max">) {
   const focused=useRef(false);
+  const edited=useRef(false);
   const [draft,setDraft]=useState(()=>formatQuoteNumeric(value,kind));
   useEffect(()=>{
     if(!focused.current)setDraft(formatQuoteNumeric(value,kind));
@@ -59,10 +60,11 @@ export default function QuoteNumericInput({
     disabled={disabled}
     className={className}
     value={draft}
-    onFocus={()=>{focused.current=true;}}
+    onFocus={()=>{focused.current=true;edited.current=false;}}
     onChange={event=>{
       const text=event.target.value;
       if(!validQuoteNumericDraft(text,kind))return;
+      edited.current=true;
       setDraft(text); // Don't replace an in-progress comma or erase the caret.
       const parsed=parseQuoteNumericDraft(text,kind);
       if(parsed!==null)onChange(parsed);
@@ -70,6 +72,10 @@ export default function QuoteNumericInput({
     }}
     onBlur={()=>{
       focused.current=false;
+      if(!edited.current){
+        setDraft(formatQuoteNumeric(value,kind));
+        return; // Never round historic values merely from focus/blur.
+      }
       const parsed=parseQuoteNumericDraft(draft,kind);
       const committed=parsed===null?(optional?null:0):roundQuoteNumeric(parsed,kind);
       onChange(committed);
