@@ -131,7 +131,7 @@ export default function OffertaEditorPage() {
       <div className="flex justify-between items-center gap-3 flex-wrap">
         <div className="flex gap-3 items-center">
           <Link to="/offerte" className="p-2 border rounded"><ArrowLeft size={16}/></Link>
-          <h1 className="font-bold text-2xl">{isNew ? "Nuova offerta commerciale" : "Offerta #" + numericId}</h1>
+          <h1 className="font-bold text-2xl">{isNew ? "Nuova offerta commerciale prodotti standard" : "Offerta #" + numericId}</h1>
         </div>
         {locked ? <button type="button" onClick={() => setReadOnly(false)} className="flex gap-2 bg-emerald-600 text-white rounded px-4 py-2"><Pencil size={16}/>Modifica</button>
         : <button type="button" disabled={create.isPending || update.isPending || (!isNew && !changed)} onClick={save} className="flex gap-2 bg-emerald-600 disabled:opacity-40 text-white rounded px-4 py-2"><Save size={16}/>Salva offerta</button>}
