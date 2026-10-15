@@ -11,7 +11,8 @@ export const blankProduct = (): Product => ({
 export const blankQuote = (): QuoteDocument => ({
   tipo: "Prezzo per articolo unatantum", cliente: "", riferimento_preventivo: "",
   titolo_preventivo: "Preventivo unatantum", prodotti: [blankProduct()],
-  costi_comuni_versione: 2, progettazione_totale_euro: 0,
+  costi_comuni_versione: 3, progettazione_ore: 0, costo_progettazione_ora: 50,
+  progettazione_totale_euro: 0,
   trattamenti_modalita: "per_prodotto", trattamenti_totale_euro: 0,
   target_totale: null, note_generali: "", note_cliente: "", note_fornitori: "", attachments: [],
 });
@@ -27,7 +28,16 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
   }, 0);
   // Historical documents (no schema marker) keep their original per-product
   // engineering costs until the user explicitly upgrades a new revision.
-  const sharedDesignCost = shared ? val(d.progettazione_totale_euro) : 0;
+  const engineeringByHours = Number(d.costi_comuni_versione) >= 3;
+  const engineeringHours = engineeringByHours ? Number(d.progettazione_ore) : 0;
+  const engineeringHourlyRate = engineeringByHours ? Number(d.costo_progettazione_ora) : 0;
+  if (engineeringByHours && (![engineeringHours, engineeringHourlyRate].every(Number.isFinite) ||
+      engineeringHours < 0 || engineeringHourlyRate < 0))
+    throw new Error("Ore e costo orario di progettazione devono essere numeri non negativi");
+  const sharedDesignCost = shared
+    ? (engineeringByHours ? engineeringHours * engineeringHourlyRate : val(d.progettazione_totale_euro))
+    : 0;
+  if (engineeringByHours) d.progettazione_totale_euro = sharedDesignCost;
   const sharedTreatmentCost = shared && treatmentMode === "globale" ? val(d.trattamenti_totale_euro) : 0;
   if (shared && (!Number.isFinite(Number(d.progettazione_totale_euro)) || sharedDesignCost < 0 ||
       (treatmentMode === "globale" && (!Number.isFinite(Number(d.trattamenti_totale_euro)) || sharedTreatmentCost < 0))))
@@ -95,6 +105,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
     d.costi_comuni_riepilogo = {
       quantita_totale: quantityTotal,
       progettazione_totale: sharedDesignCost,
+      ...(engineeringByHours ? {progettazione_ore: engineeringHours, costo_progettazione_ora: engineeringHourlyRate} : {}),
       progettazione_cad: engineeringPerPiece,
       trattamenti_modalita: treatmentMode,
       trattamenti_globali_totale: sharedTreatmentCost,
@@ -147,5 +158,24 @@ export function migrateQuoteToSharedCosts(document: QuoteDocument): QuoteDocumen
     delete p.progettazione_h;
     delete p.costo_progettazione;
   }
+  return d;
+}
+
+/**
+ * Explicit historical upgrade, only applied in a new revision after user
+ * confirmation. One hour at the old total amount reproduces its exact
+ * aggregate cost; the user MUST replace this provisional split with actual
+ * design hours and hourly rate if known. Never silently infer work hours.
+ */
+export function migrateQuoteToEngineeringHours(document: QuoteDocument): QuoteDocument {
+  if (Number(document.costi_comuni_versione) >= 3) return structuredClone(document);
+  const d=Number(document.costi_comuni_versione) >= 2
+    ? structuredClone(document) : migrateQuoteToSharedCosts(document);
+  const total=Number(d.progettazione_totale_euro ?? 0);
+  if(!Number.isFinite(total) || total<0)
+    throw new Error("Costo storico di progettazione non valido");
+  d.costi_comuni_versione=3;
+  d.progettazione_ore=total>0?1:0;
+  d.costo_progettazione_ora=total>0?total:50;
   return d;
 }
