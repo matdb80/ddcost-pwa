@@ -5,10 +5,8 @@ import {
   Wrench,
   Scissors,
   FileText,
-  Briefcase,
-  TrendingUp,
-  Database,
-  Globe,
+  Briefcase
+
 } from "lucide-react";
 
 const cards = [
@@ -46,7 +44,7 @@ const cards = [
   },
   {
     path: "/offerte",
-    title: "Offerte Commerciali",
+    title: "Offerte commerciali prodotti standard",
     desc: "Gestione offerte commerciali con ricarichi, sconti e marginalità",
     icon: Briefcase,
     color: "bg-rose-50 text-rose-700 border-rose-200",
@@ -86,35 +84,6 @@ export default function Home() {
           })}
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            <Globe className="w-4 h-4 text-emerald-600" />
-            Vantaggi della versione online
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600">
-            <div className="flex items-start gap-3">
-              <Database className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="font-medium text-slate-700">Dati sempre sincronizzati</p>
-                <p className="text-xs mt-0.5">Niente più conflitti di file su OneDrive. Tutti i tuoi dati sono sul cloud.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <TrendingUp className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="font-medium text-slate-700">Accesso da qualsiasi dispositivo</p>
-                <p className="text-xs mt-0.5">PC, tablet, smartphone. Basta un browser.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <Globe className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="font-medium text-slate-700">Aggiornamenti automatici</p>
-                <p className="text-xs mt-0.5">Non devi più scaricare e ricompilare. La app si aggiorna da sola.</p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </Layout>
   );
