@@ -20,7 +20,7 @@ describe("TKT-20261015-14060001: design cost by hours and hourly rate",()=>{
     expect(x.prodotti.map((p:Record<string,number>)=>p.progettazione_tot)).toEqual([22.5,45,67.5]);
     expect(x.prodotti.reduce((tot:number,p:Record<string,number>)=>tot+p.progettazione_tot,0)).toBeCloseTo(135);
     expect(x.prodotti.map((p:Record<string,number>)=>p.costo_primo_cad)).toEqual([3.25,3.25,3.25]);
-    expect(d.progettazione_totale_euro).toBe(0); // original draft retains zero, only clone gets 135
+    expect((d as Record<string,unknown>).progettazione_totale_euro).toBe(0); // original draft untouched
   });
   it("reallocates across changing quantities without multiplying common cost",()=>{
     const d={...blankQuote(),progettazione_ore:2,costo_progettazione_ora:80,
