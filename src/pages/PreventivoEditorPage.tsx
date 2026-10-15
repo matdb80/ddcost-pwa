@@ -60,11 +60,11 @@ const fields: Array<{key:string;label:string;shortLabel:string;kind:QuoteNumeric
   {key:"quantita",label:"Quantità (pezzi)",shortLabel:"Quantità",kind:"decimal"},
   {key:"materiale_cad",label:"Materiale €/pz",shortLabel:"Materiale €/pz",kind:"euro"},
   {key:"lavoro_h",label:"Lavorazione ore totali",shortLabel:"Ore lavorazione",kind:"decimal"},
+  {key:"trattamenti_cad",label:"Trattamenti €/pezzo",shortLabel:"Trattamenti €/pz",kind:"euro"},
   {key:"costo_lavoro",label:"Costo lavoro €/h",shortLabel:"Costo €/h",kind:"euro"},
   {key:"attrezzaggi_h",label:"Attrezzaggio ore totali",shortLabel:"Ore attrezzaggio",kind:"decimal"},
   {key:"ricarico_spese",label:"Spese generali (%)",shortLabel:"Spese gen. %",kind:"percent"},
   {key:"margine",label:"Margine (%)",shortLabel:"Margine %",kind:"percent"},
-  {key:"prezzo_manuale",label:"Prezzo manuale €/pz (facoltativo)",shortLabel:"Prezzo man. €/pz",kind:"euro",optional:true},
 ];
 
 // Only non-zero values prefilled by DDCost are marked as suggestions.
@@ -608,6 +608,7 @@ export default function PreventivoEditorPage() {
           </div>
           <div className="grid grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8">
             {fields.map(f=>{
+              if(f.key==="trattamenti_cad" && !legacyCostModel && sharedTreatmentMode!=="per_prodotto")return null;
               const highlighted=suggestedProductValue(p,f.key);
               return <label key={f.key} className="flex min-w-0 flex-col gap-1 text-xs">
                 <span className="truncate font-medium text-slate-600" title={f.label}>{f.shortLabel}</span>
@@ -618,15 +619,6 @@ export default function PreventivoEditorPage() {
                   onChange={value=>updateProduct(index,f.key,value)}/>
               </label>;
             })}
-            {(legacyCostModel || sharedTreatmentMode==="per_prodotto") && (
-              <label className="flex min-w-0 flex-col gap-1 text-xs">
-                <span className="truncate font-medium text-slate-600" title="Trattamenti €/pezzo">Trattamenti €/pz</span>
-                <QuoteNumericInput kind="euro" disabled={locked}
-                  className={compactInputClass+" "+normalInputClass}
-                  value={p.trattamenti_cad??0}
-                  onChange={value=>updateProduct(index,"trattamenti_cad",value)}/>
-              </label>
-            )}
             {legacyCostModel && (
               <>
                 <label className="flex min-w-0 flex-col gap-1 text-xs">
@@ -658,6 +650,13 @@ export default function PreventivoEditorPage() {
             {!legacyCostModel && sharedTreatmentMode === "globale" && <span>Trattamenti comuni €/pz: <b>{euroDetailed(preview?.prodotti?.[index]?.trattamenti_globali_cad)}</b></span>}
             <span>Full cost €/pz: <b>{euro(preview?.prodotti?.[index]?.full_cost)}</b></span>
             <span>Prezzo finale €/pz: <b>{euro(preview?.prodotti?.[index]?.prezzo_netto_unitario_finale)}</b></span>
+            <label className="flex min-w-0 flex-col gap-1" title="Imposta un prezzo unitario manuale: sostituisce il prezzo calcolato della riga">
+              <span className="font-medium text-slate-600">Prezzo manuale €/pz</span>
+              <QuoteNumericInput kind="euro" optional disabled={locked}
+                value={p.prezzo_manuale??null}
+                className={compactInputClass+" "+normalInputClass+" max-w-36"}
+                onChange={value=>updateProduct(index,"prezzo_manuale",value)}/>
+            </label>
             <span>Totale riga €: <b>{euro(preview?.prodotti?.[index]?.totale_finale)}</b></span>
           </div>
         </section>)}
