@@ -20,7 +20,7 @@ describe("TKT-20261015-14060001: design cost by hours and hourly rate",()=>{
     expect(x.prodotti.map((p:Record<string,number>)=>p.progettazione_tot)).toEqual([22.5,45,67.5]);
     expect(x.prodotti.reduce((tot:number,p:Record<string,number>)=>tot+p.progettazione_tot,0)).toBeCloseTo(135);
     expect(x.prodotti.map((p:Record<string,number>)=>p.costo_primo_cad)).toEqual([3.25,3.25,3.25]);
-    expect(d.progettazione_totale_euro).toBe(0); // only clone contains computed value
+    expect(Object.prototype.hasOwnProperty.call(d,"progettazione_totale_euro")).toBe(false); // only clone contains computed value
   });
   it("reallocates across changing quantities without multiplying common cost",()=>{
     const d={...blankQuote(),progettazione_ore:2,costo_progettazione_ora:80,
@@ -59,7 +59,7 @@ describe("TKT-20261015-14060001: design cost by hours and hourly rate",()=>{
     expect(next.costo_progettazione_ora).toBe(160);
     expect(next.trattamenti_modalita).toBe("per_prodotto");
     expect(calculateQuote(next).costi_comuni_riepilogo.progettazione_totale).toBe(160);
-    expect(legacy.prodotti[0].progettazione_h).toBe(2);
+    expect((legacy.prodotti[0] as Record<string,unknown>).progettazione_h).toBe(2);
   });
   it("rejects negative and non-finite engineering hours or rates without altering the source",()=>{
     expect(()=>calculateQuote({...blankQuote(),progettazione_ore:-1})).toThrow("non negativi");
