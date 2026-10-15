@@ -113,6 +113,7 @@ export default function QuoteMobileWizard(props:Props){
   const hasPreview=preview!==null && Number.isFinite(Number(preview.totale_finale));
   const price=euro(preview?.totale_finale);
   const cashMargin=Number(preview?.margine_netto_complessivo_perc??0);
+  const canShare=hasPreview && !isSavedDraft && !steps.some(s=>quoteWizardStepError(s,doc));
   const costVersion=Number(doc.costi_comuni_versione)||0;
   return <div ref={top} className="mx-auto flex w-full max-w-xl flex-col gap-3 pb-24 text-slate-900" data-testid="quote-mobile-wizard">
     <header className="rounded-xl bg-slate-900 px-4 py-3 text-white shadow-sm">
@@ -211,7 +212,7 @@ export default function QuoteMobileWizard(props:Props){
                   <Save size={18}/> Salva bozza
                 </button>
               </>}
-            <button type="button" onClick={onCopy} disabled={busy||isSavedDraft}
+            <button type="button" onClick={onCopy} disabled={busy||!canShare}
               className={actionClass+" w-full border border-slate-300 text-slate-700 disabled:opacity-40"}>
               <Copy size={18}/> Copia per email / documento
             </button>
@@ -277,7 +278,8 @@ export default function QuoteMobileWizard(props:Props){
           <QuoteNumericInput key={current.id} id="wizard-input" className={inputClass}
             kind={current.numeric} optional={field==="prezzo_manuale"||field==="target_totale"}
             disabled={locked} value={value??(field==="prezzo_manuale"||field==="target_totale"?null:0)}
-            onChange={updateValue}/>
+            onChange={updateValue}
+            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();e.currentTarget.blur();next();}}}/>
         ):current.kind==="textarea"?(
           <textarea id="wizard-input" rows={4} className={inputClass} disabled={locked}
             value={String(value??"")} onChange={e=>updateValue(e.target.value)}/>
@@ -304,7 +306,7 @@ export default function QuoteMobileWizard(props:Props){
         <strong className="text-lg tabular-nums">{hasPreview?"€ "+price:"Da calcolare"}</strong>
       </div>
       {hasPreview && <p className="mt-1 text-xs text-slate-500">Margine netto: {cashMargin.toFixed(1).replace(".",",")}%</p>}
-      {!locked && <button type="button" disabled={busy||!unsavedChanges}
+      {!locked && current.id!=="riepilogo" && <button type="button" disabled={busy||!unsavedChanges}
         onClick={onSaveDraft} className="mt-3 min-h-11 w-full rounded-lg border border-emerald-600 font-semibold text-emerald-800 disabled:opacity-40">
         <Save size={16} className="mr-2 inline"/> {busy?"Salvataggio...":"Salva bozza"}
       </button>}
