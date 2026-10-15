@@ -166,7 +166,7 @@ export default function Layout({ children, mobileWizard = false }: { children: R
         <div className={`min-w-0 flex-1 overflow-auto ${mobileWizard ? "p-3 md:p-5" : "p-3 md:p-6"}`}>{children}</div>
       </main>
 
-      <FloatingFeedbackButton />
+      {!mobileWizard && <FloatingFeedbackButton />}
     </div>
   );
 }
