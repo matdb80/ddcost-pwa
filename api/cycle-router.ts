@@ -151,16 +151,19 @@ export const cycleRouter = createRouter({
         inArray(codeKey,keys.map(k=>k.key)),
         ...(!input.includeDeleted?[eq(cycles.deleted,0)]:[])
       )).orderBy(desc(cycles.rev),desc(cycles.id));
+      // MySQL often groups codes case-insensitively: normalize matching keys
+      // identically in JavaScript so no revision disappears in the UI.
+      const normalize=(key:string)=>key.toLocaleUpperCase("it-IT");
       const byKey=new Map<string,typeof all>();
       for(const row of all){
-        const key=row.code?.trim()||`__cycle_id_${row.id}`;
+        const key=normalize(row.code?.trim()||`__cycle_id_${row.id}`);
         const existing=byKey.get(key)??[];
         existing.push(row);
         byKey.set(key,existing);
       }
       return {
         groups:keys.map(k=>{
-          const revisions=byKey.get(k.key)??[];
+          const revisions=byKey.get(normalize(k.key))??[];
           return {key:k.key,latest:revisions[0]??null,revisions};
         }).filter(g=>g.latest!==null),
         total,page:input.page,pageSize:input.pageSize,
