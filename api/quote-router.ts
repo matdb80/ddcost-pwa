@@ -3,6 +3,7 @@ import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { quotes, productGroups } from "@db/schema";
+import {parseIncompleteQuote,quoteIsDraft} from "../src/lib/quote-draft-state";
 
 const ALLOWED_MATERIALS = new Set(["ferro","ottone","inox"]);
 
@@ -124,17 +125,7 @@ export const quoteRouter = createRouter({
       dataJson: z.string().min(2).max(62000),
     }))
     .mutation(async ({ctx,input})=>{
-      let document:Record<string,unknown>;
-      try {
-        const parsed=JSON.parse(input.dataJson) as unknown;
-        if(!parsed || typeof parsed!=="object" || Array.isArray(parsed)) throw Error();
-        document=parsed as Record<string,unknown>;
-        if(!Array.isArray(document.prodotti) || !document.prodotti.length ||
-           document.prodotti.some(p=>!p || typeof p!=="object" || Array.isArray(p)))
-          throw Error();
-      } catch {
-        throw new Error("Bozza non valida: è richiesto almeno un prodotto, anche incompleto");
-      }
+      const document=parseIncompleteQuote(input.dataJson);
       const db=getDb();
       return db.transaction(async tx=>{
         const source=input.sourceId
@@ -147,10 +138,7 @@ export const quoteRouter = createRouter({
         const latest=source ? (await tx.select({rev:quotes.rev}).from(quotes)
           .where(and(eq(quotes.rootId,rootId!),eq(quotes.userId,ctx.user.id)))
           .orderBy(desc(quotes.rev),desc(quotes.id)).limit(1))[0] : null;
-        const currentDraft=source && (()=>{
-          try {return (JSON.parse(source.dataJson ?? "{}") as Record<string,unknown>).stato_preventivo==="bozza";}
-          catch{return false;}
-        })();
+        const currentDraft=Boolean(source && quoteIsDraft(source.dataJson));
         const revision=currentDraft
           ? Number(source.rev??1)
           : source ? Math.max(Number(latest?.rev??1),Number(source.rev??1))+1 : 1;
