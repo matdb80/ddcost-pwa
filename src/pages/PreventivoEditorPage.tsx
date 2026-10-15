@@ -5,6 +5,7 @@ import { trpc } from "@/providers/trpc";
 import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy } from "lucide-react";
 import { formatQuoteForCopy } from "@/lib/quote-copy";
 import QuoteNumericInput, {type QuoteNumericKind} from "@/components/QuoteNumericInput";
+import QuoteMobileWizard from "@/components/QuoteMobileWizard";
 import {
   blankProduct, blankQuote, calculateQuote, migrateQuoteToEngineeringHours,
   type Product, type QuoteDocument,
@@ -79,12 +80,39 @@ const normalInputClass = "border-slate-300 bg-white focus:border-emerald-500 foc
 const suggestedInputClass = "border-sky-300 bg-sky-50 focus:border-sky-500 focus:bg-white focus:ring-sky-200";
 const suggestedHint = "Valore iniziale proposto da DDCost, modificabile";
 
+const MOBILE_VIEW_KEY = "ddcost.quote.mobile-view";
+function readMobileViewChoice():boolean|null {
+  if(typeof window==="undefined")return null;
+  try{
+    const stored=window.localStorage.getItem(MOBILE_VIEW_KEY);
+    return stored==="1"?true:stored==="0"?false:null;
+  }catch{return null;}
+}
+function isPhoneWidth():boolean {
+  return typeof window!=="undefined" && typeof window.matchMedia==="function" &&
+    window.matchMedia("(max-width: 767px)").matches;
+}
+
 export default function PreventivoEditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const isNew = !id;
   const numericId = Number(id ?? 0);
   const [doc, setDoc] = useState<QuoteDocument>(blankQuote());
+  const [viewOverride,setViewOverride]=useState<boolean|null>(readMobileViewChoice);
+  const [phoneWidth,setPhoneWidth]=useState(isPhoneWidth);
+  const wizardMode=viewOverride ?? phoneWidth;
+  useEffect(()=>{
+    const mq=window.matchMedia("(max-width: 767px)");
+    const changed=()=>setPhoneWidth(mq.matches);
+    mq.addEventListener("change",changed);
+    return()=>mq.removeEventListener("change",changed);
+  },[]);
+  const chooseMobileView=(active:boolean)=>{
+    setViewOverride(active);
+    try{window.localStorage.setItem(MOBILE_VIEW_KEY,active?"1":"0");}
+    catch{/* Keep the current choice if storage is unavailable. */}
+  };
   const [baseline, setBaseline] = useState("");
   const [originalJson, setOriginalJson] = useState("");
   const [readOnly, setReadOnly] = useState(!isNew);
@@ -334,8 +362,8 @@ export default function PreventivoEditorPage() {
       setError(err instanceof Error ? err.message : "Conversione non riuscita");
     }
   };
-  return <Layout>
-    <div className="w-full max-w-screen-2xl mx-auto space-y-5 pb-10">
+  return <Layout mobileWizard={wizardMode}>
+    <div className={wizardMode?"w-full min-w-0":"w-full max-w-screen-2xl mx-auto space-y-5 pb-10"}>
       {blocker.state==="blocked" && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4">
           <div role="dialog" aria-modal="true" aria-labelledby="quote-leave-title"
@@ -365,6 +393,46 @@ export default function PreventivoEditorPage() {
           </div>
         </div>
       )}
+      {wizardMode ? (
+        <QuoteMobileWizard
+          doc={doc} preview={preview} locked={locked} isNew={isNew}
+          numericId={numericId} isSavedDraft={isSavedDraft}
+          groups={groupsQuery.data??[]} loadingGroups={groupsQuery.isLoading}
+          error={error} draftMessage={draftMessage} copyMessage={copyMessage}
+          busy={draftSaving||create.isPending||revise.isPending||finalizeDraftMutation.isPending}
+          unsavedChanges={unsavedChanges}
+          priceProductIndex={priceProductIndex}
+          onUpdate={update} onUpdateProduct={updateProduct}
+          onAddProduct={()=>update("prodotti",[...doc.prodotti,blankProduct()],true)}
+          onRemoveProduct={index=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}
+          onCreateGroup={async(index,name)=>{
+            try{
+              const result=await createGroup.mutateAsync({name});
+              await utils.productGroup.list.invalidate();
+              updateProduct(index,"gruppo_merceologico",result.name);
+            }catch(err){
+              setError(err instanceof Error?err.message:"Impossibile creare il gruppo");
+              throw err;
+            }
+          }}
+          onPriceProductIndex={index=>{setPriceProductIndex(index);setListinoModified(true);}}
+          onListinoDiscount={value=>{
+            update("listino",{...(doc.listino??{}),sconto_riferimento:value});
+            setListinoModified(Boolean(value.trim()));
+          }}
+          onSave={()=>void save()} onSaveDraft={()=>void saveDraftOnly()}
+          onCopy={()=>void copyQuote()} onEdit={()=>setReadOnly(false)}
+          onUpgrade={upgradeCosts} onDesktop={()=>chooseMobileView(false)}
+        />
+      ) : (
+        <>
+        <div className="flex items-center justify-end">
+          <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium">
+            <input type="checkbox" className="h-4 w-4 accent-emerald-600"
+              checked={wizardMode} onChange={e=>chooseMobileView(e.target.checked)}/>
+            Visualizzazione cellulare (Wizard)
+          </label>
+        </div>
       {/* Sticky quote identity and actions share the same scroll container as the editor. */}
       <div className="sticky top-0 z-30 -mx-2 mb-4 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-md space-y-3 max-h-[60vh] overflow-y-auto">
       <div className="flex flex-wrap justify-between gap-3 items-center">
@@ -670,6 +738,8 @@ export default function PreventivoEditorPage() {
         <div className="border-t pt-3 text-right text-lg font-bold">Totale preventivo: € {euro(preview?.totale_finale)}</div>
         {dirtyCalculation && <p className="text-amber-700 text-sm">Anteprima del ricalcolo; salvando i nuovi valori saranno memorizzati in una nuova revisione.</p>}
       </section>
+        </>
+      )}
     </div>
   </Layout>;
 }
