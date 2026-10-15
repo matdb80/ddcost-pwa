@@ -252,9 +252,9 @@ export default function PreventivoEditorPage() {
           </label>)}
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">Totale desiderato € (quadratura, facoltativo)</span>
-          <input type="number" step="0.01" className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100"
-            disabled={locked} value={doc.target_totale ?? ""}
-            onChange={e=>update("target_totale",e.target.value === "" ? null : Number(e.target.value),true)}/>
+          <QuoteNumericInput kind="euro" optional className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100"
+            disabled={locked} value={doc.target_totale ?? null}
+            onChange={value=>update("target_totale",value,true)}/>
         </label>
       </section>
       </div>
@@ -311,8 +311,8 @@ export default function PreventivoEditorPage() {
               {sharedTreatmentMode === "globale" ? (
                 <label className="flex flex-col gap-1 text-sm">
                   <span className="font-medium">Costo totale trattamenti dell'offerta (€)</span>
-                  <input type="number" min="0" step="0.01" value={doc.trattamenti_totale_euro ?? 0}
-                    disabled={locked} onChange={e=>update("trattamenti_totale_euro",Number(e.target.value),true)}
+                  <QuoteNumericInput kind="euro" value={doc.trattamenti_totale_euro ?? 0}
+                    disabled={locked} onChange={value=>update("trattamenti_totale_euro",value,true)}
                     className="w-full min-w-0 rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-100"/>
                   <span className="text-xs text-slate-500">
                     Quota ripartita: € {euroDetailed(preview?.costi_comuni_riepilogo?.trattamenti_globali_cad)} /pz.
@@ -411,33 +411,35 @@ export default function PreventivoEditorPage() {
             </label>
             {fields.map(f=><label key={f.key} className="flex flex-col text-sm gap-1">
               <span>{f.label}</span>
-              <input type="number" step={f.step??"any"} className="border p-2 rounded disabled:bg-slate-100"
-                disabled={locked} value={p[f.key]??""} onChange={e=>updateProduct(index,f.key,e.target.value === "" && f.key==="prezzo_manuale" ? null : Number(e.target.value))}/>
+              <QuoteNumericInput kind={f.kind} optional={f.optional}
+                className="border p-2.5 rounded disabled:bg-slate-100"
+                disabled={locked} value={p[f.key]??(f.optional?null:0)}
+                onChange={value=>updateProduct(index,f.key,value)}/>
             </label>)}
             {(legacyCostModel || sharedTreatmentMode === "per_prodotto") && (
               <label className="flex flex-col text-sm gap-1">
                 <span>Trattamenti €/pezzo</span>
-                <input type="number" min="0" step="0.0001" disabled={locked}
+                <QuoteNumericInput kind="euro" disabled={locked}
                   className="border rounded p-2.5 disabled:bg-slate-100"
                   value={p.trattamenti_cad ?? 0}
-                  onChange={e=>updateProduct(index,"trattamenti_cad",Number(e.target.value))}/>
+                  onChange={value=>updateProduct(index,"trattamenti_cad",value)}/>
               </label>
             )}
             {legacyCostModel && (
               <>
                 <label className="flex flex-col text-sm gap-1">
                   <span>Progettazione ore totali (storico)</span>
-                  <input type="number" step="0.01" disabled={locked}
+                  <QuoteNumericInput kind="decimal" disabled={locked}
                     className="border rounded p-2.5 disabled:bg-slate-100"
                     value={p.progettazione_h ?? 0}
-                    onChange={e=>updateProduct(index,"progettazione_h",Number(e.target.value))}/>
+                    onChange={value=>updateProduct(index,"progettazione_h",value)}/>
                 </label>
                 <label className="flex flex-col text-sm gap-1">
                   <span>Costo progettazione €/h (storico)</span>
-                  <input type="number" step="0.01" disabled={locked}
+                  <QuoteNumericInput kind="euro" disabled={locked}
                     className="border rounded p-2.5 disabled:bg-slate-100"
                     value={p.costo_progettazione ?? 50}
-                    onChange={e=>updateProduct(index,"costo_progettazione",Number(e.target.value))}/>
+                    onChange={value=>updateProduct(index,"costo_progettazione",value)}/>
                 </label>
               </>
             )}
