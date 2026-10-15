@@ -2,7 +2,7 @@ import Layout from "@/components/Layout";
 import {trpc} from "@/providers/trpc";
 import {Fragment,useState} from "react";
 import {Link} from "react-router";
-import {Plus,Search,Trash2,RotateCcw,Pencil,ChevronLeft,ChevronRight,ChevronsDown} from "lucide-react";
+import {Plus,Search,Trash2,RotateCcw,Pencil,ChevronLeft,ChevronRight} from "lucide-react";
 
 const PAGE_SIZE=25;
 const fmt=(value:string|number|null|undefined)=>{
