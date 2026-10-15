@@ -5,6 +5,7 @@ import {
   Plus, Save, Settings2, Trash2,
 } from "lucide-react";
 import QuoteNumericInput from "@/components/QuoteNumericInput";
+import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import {type Product, type QuoteDocument} from "@/lib/quote-calculation";
 import {
   buildQuoteWizardSteps, quoteWizardStepError,
@@ -245,6 +246,9 @@ export default function QuoteMobileWizard(props:Props){
             <option value="">Seleziona materiale...</option>
             <option value="ferro">Ferro</option><option value="ottone">Ottone</option><option value="inox">Inox</option>
           </select>
+        ):field==="materiale_cad" && product && productIndex!==undefined?(
+          <QuoteMaterialCostFields product={product} disabled={locked} mobile
+            onChange={(key,value)=>onUpdateProduct(productIndex,key,value)}/>
         ):field==="trattamenti_modalita"?(
           <div className="space-y-3">
             {[["per_prodotto","Costo separato per ciascun prodotto (€/pz)"],
