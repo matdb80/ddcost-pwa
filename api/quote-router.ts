@@ -1,9 +1,10 @@
 import { z } from "zod";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, or } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { quotes, productGroups } from "@db/schema";
 import {parseIncompleteQuote,quoteIsDraft} from "../src/lib/quote-draft-state";
+import {latestCompletedQuotePerRoot,readQuoteOutcome,summarizeQuoteOutcomes} from "../src/lib/quote-outcomes";
 
 const ALLOWED_MATERIALS = new Set(["ferro","ottone","inox"]);
 
@@ -64,6 +65,54 @@ export const quoteRouter = createRouter({
         .from(quotes)
         .orderBy(desc(quotes.createdAt))
         .limit(input.limit);
+    }),
+
+  /** Commercial statuses are stored in JSON metadata. No cost-model or DB
+   * schema changes. Sum only the latest FINALIZED revision of each root, even
+   * when the standard quote list's 100-record limit is exceeded. */
+  outcomeSummary: authedQuery.query(async()=>{
+    const db=getDb();
+    const rows=await db.select({
+      id:quotes.id,rootId:quotes.rootId,rev:quotes.rev,
+      dataJson:quotes.dataJson,totalFinal:quotes.totalFinal,
+    }).from(quotes);
+    const records=rows.map(x=>({...x,totalFinal:x.totalFinal===null?null:String(x.totalFinal)}));
+    const latest=latestCompletedQuotePerRoot(records);
+    return {latest,summary:summarizeQuoteOutcomes(records)};
+  }),
+
+  setOutcome: authedQuery
+    .input(z.object({quoteId:z.number().int().positive(),outcome:z.enum(["in_attesa","vinto","perso"])}))
+    .mutation(async({ctx,input})=>{
+      const db=getDb();
+      return db.transaction(async tx=>{
+        const selected=(await tx.select().from(quotes)
+          .where(eq(quotes.id,input.quoteId)).limit(1))[0];
+        if(!selected)throw new Error("Preventivo non trovato");
+        if(selected.userId!==ctx.user.id && ctx.user.role!=="admin")
+          throw new Error("Non autorizzato a cambiare l'esito di questo preventivo");
+        const root=selected.rootId??selected.id;
+        const all=await tx.select().from(quotes).where(
+          or(eq(quotes.rootId,root),eq(quotes.id,root))
+        );
+        const finalized=latestCompletedQuotePerRoot(all.map(q=>({
+          id:q.id,rootId:q.rootId,rev:q.rev,dataJson:q.dataJson,
+          totalFinal:q.totalFinal===null?null:String(q.totalFinal),
+        })));
+        const current=finalized.find(q=>q.root===root);
+        if(!current)throw new Error("Non è possibile assegnare l'esito a una bozza incompleta");
+        if(current.outcome===input.outcome)return {id:current.id,outcome:input.outcome,unchanged:true};
+        const row=all.find(q=>q.id===current.id)!;
+        let data:Record<string,unknown>;
+        try{data=JSON.parse(row.dataJson??"{}");}
+        catch{throw new Error("Dati del preventivo non leggibili");}
+        // Update commercial metadata in-place, never alter industrial inputs,
+        // selling amounts, historical revision numbering or document columns.
+        await tx.update(quotes).set({dataJson:JSON.stringify({
+          ...data,esito_commerciale:input.outcome,
+        })}).where(eq(quotes.id,current.id));
+        return {id:current.id,outcome:input.outcome,unchanged:false};
+      });
     }),
 
   get: authedQuery
@@ -305,11 +354,13 @@ export const quoteRouter = createRouter({
           throw new Error("Nessuna modifica rilevata: revisione non creata");
         }
         const rootId = source.rootId ?? source.id;
-        const latestRows = await tx.select({ rev: quotes.rev }).from(quotes)
+        const latestRows = await tx.select({ rev: quotes.rev, dataJson:quotes.dataJson })
+          .from(quotes)
           .where(and(eq(quotes.rootId, rootId), eq(quotes.userId, ctx.user.id)))
           .orderBy(desc(quotes.rev), desc(quotes.id)).limit(1);
         const nextRev = Math.max(Number(latestRows[0]?.rev ?? source.rev ?? 1), Number(source.rev ?? 1)) + 1;
-        const patchedJson = JSON.stringify({ ...json, root_id: rootId, rev: nextRev });
+        const currentOutcome=readQuoteOutcome(latestRows[0]?.dataJson??source.dataJson);
+        const patchedJson = JSON.stringify({ ...json, esito_commerciale:currentOutcome, root_id: rootId, rev: nextRev });
         const result = await tx.insert(quotes).values({
           userId: ctx.user.id,
           rootId, rev: nextRev,
