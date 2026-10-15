@@ -415,7 +415,10 @@ export default function PreventivoEditorPage() {
               throw err;
             }
           }}
-          onPriceProductIndex={index=>{setPriceProductIndex(index);setListinoModified(true);}}
+          onPriceProductIndex={index=>{
+            setPriceProductIndex(index);
+            setListinoModified(Boolean(String(doc.listino?.sconto_riferimento??"").trim()));
+          }}
           onListinoDiscount={value=>{
             update("listino",{...(doc.listino??{}),sconto_riferimento:value});
             setListinoModified(Boolean(value.trim()));
@@ -589,7 +592,7 @@ export default function PreventivoEditorPage() {
           <label className="flex flex-col gap-1 text-sm">
             <span>Prodotto di riferimento</span>
             <select disabled={locked} className="border rounded p-2 disabled:bg-slate-100" value={priceProductIndex}
-              onChange={e=>{setPriceProductIndex(Number(e.target.value));setListinoModified(true);}}>
+              onChange={e=>{setPriceProductIndex(Number(e.target.value));setListinoModified(Boolean(String(doc.listino?.sconto_riferimento??"").trim()));}}>
               {(doc.prodotti as Product[]).map((p,i)=><option key={i} value={i}>{i+1}. {p.descrizione||"(senza descrizione)"}</option>)}
             </select>
           </label>
