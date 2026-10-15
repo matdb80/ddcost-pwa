@@ -74,7 +74,8 @@ const suggestedProductKeys = new Set(["quantita","costo_lavoro","ricarico_spese"
 const suggestedProductValue = (product:Product,key:string):boolean =>
   suggestedProductKeys.has(key) && Number(product[key]) === Number(initialProductDefaults[key]);
 
-const compactInputClass = "h-9 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:bg-slate-100";
+const compactInputClass = "h-9 w-full min-w-0 rounded-md border px-2 py-1.5 text-sm tabular-nums text-slate-900 focus:outline-none focus:ring-2 disabled:bg-slate-100";
+const normalInputClass = "border-slate-300 bg-white focus:border-emerald-500 focus:ring-emerald-200";
 const suggestedInputClass = "border-sky-300 bg-sky-50 focus:border-sky-500 focus:bg-white focus:ring-sky-200";
 const suggestedHint = "Valore iniziale proposto da DDCost, modificabile";
 
@@ -428,7 +429,7 @@ export default function PreventivoEditorPage() {
               </button>}
         </section>
       ) : (
-        <section className="bg-white border rounded-xl p-4 md:p-5 space-y-4">
+        <section className="bg-white border rounded-xl p-3 md:p-4 space-y-3">
           <div>
             <h2 className="font-semibold text-lg">Costi comuni all'offerta</h2>
             <p className="text-xs text-slate-600 mt-1">
@@ -437,7 +438,7 @@ export default function PreventivoEditorPage() {
               Nessun costo comune viene sommato due volte.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {legacyEngineeringModel ? (
               <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 <label className="flex flex-col gap-1 text-sm">
@@ -456,19 +457,22 @@ export default function PreventivoEditorPage() {
                 </button>}
               </div>
             ) : (
-              <div className="flex flex-col gap-3">
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium">Ore complessive di progettazione</span>
-                  <QuoteNumericInput kind="decimal" value={doc.progettazione_ore ?? 0}
-                    disabled={locked} onChange={value=>update("progettazione_ore",value,true)}
-                    className="w-full min-w-0 rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-100"/>
-                </label>
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium">Costo orario progettazione (€/h)</span>
-                  <QuoteNumericInput kind="euro" value={doc.costo_progettazione_ora ?? 50}
-                    disabled={locked} onChange={value=>update("costo_progettazione_ora",value,true)}
-                    className="w-full min-w-0 rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-100"/>
-                </label>
+              <div className="flex flex-col gap-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex min-w-0 flex-col gap-1 text-xs">
+                    <span className="font-medium" title="Ore complessive di progettazione">Ore progettazione</span>
+                    <QuoteNumericInput kind="decimal" value={doc.progettazione_ore ?? 0}
+                      disabled={locked} onChange={value=>update("progettazione_ore",value,true)}
+                      className={compactInputClass+" "+normalInputClass}/>
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1 text-xs">
+                    <span className="font-medium" title="Costo orario progettazione (€/h)">Progettazione €/h</span>
+                    <QuoteNumericInput kind="euro" value={doc.costo_progettazione_ora ?? 50}
+                      disabled={locked} onChange={value=>update("costo_progettazione_ora",value,true)}
+                      className={compactInputClass+" "+(Number(doc.costo_progettazione_ora??50)===50?suggestedInputClass:normalInputClass)}
+                      title={Number(doc.costo_progettazione_ora??50)===50?suggestedHint:undefined}/>
+                  </label>
+                </div>
                 <p className="text-xs text-slate-600">
                   Costo comune: <strong>€ {euro(preview?.costi_comuni_riepilogo?.progettazione_totale)}</strong>
                   {" "}(ore × tariffa), diviso tra {preview?.costi_comuni_riepilogo?.quantita_totale ?? "—"} pezzi:
@@ -510,7 +514,7 @@ export default function PreventivoEditorPage() {
           </p>
         </section>
       )}
-      <section className="bg-white border rounded-xl p-5 space-y-3">
+      <section className="bg-white border rounded-xl p-3 md:p-4 space-y-2">
         <h2 className="font-semibold text-lg">Prezzo di listino da sconto cliente</h2>
         <p className="text-xs text-slate-600">Il listino lordo viene ricavato dal prezzo netto finale dell'articolo selezionato, applicando gli sconti successivi (es. 40+10% = fattore 0,54). Il listino è arrotondato in eccesso al centesimo; il prezzo netto del preventivo non viene cambiato.</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -562,7 +566,7 @@ export default function PreventivoEditorPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2">
             <label className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-2">
               <span className="font-medium">Codice articolo</span>
-              <input className={compactInputClass} disabled={locked} value={p.codice??""}
+              <input className={compactInputClass+" "+normalInputClass} disabled={locked} value={p.codice??""}
                 onChange={e=>updateProduct(index,"codice",e.target.value)}/>
             </label>
             <label className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-5">
@@ -572,7 +576,7 @@ export default function PreventivoEditorPage() {
             </label>
             <div className="flex min-w-0 flex-col gap-1 text-xs lg:col-span-3">
               <label htmlFor={"group-"+index} className="font-medium">Gruppo merceologico *</label>
-              <select id={"group-"+index} disabled={locked} className={compactInputClass}
+              <select id={"group-"+index} disabled={locked} className={compactInputClass+" "+normalInputClass}
                 value={p.gruppo_merceologico ?? ""} onChange={e=>updateProduct(index,"gruppo_merceologico",e.target.value)}>
                 <option value="">Seleziona un gruppo esistente</option>
                 {(groupsQuery.data ?? []).map(g=><option key={g.id} value={g.name}>{g.name}</option>)}
@@ -608,7 +612,7 @@ export default function PreventivoEditorPage() {
               return <label key={f.key} className="flex min-w-0 flex-col gap-1 text-xs">
                 <span className="truncate font-medium text-slate-600" title={f.label}>{f.shortLabel}</span>
                 <QuoteNumericInput kind={f.kind} optional={f.optional} disabled={locked}
-                  className={compactInputClass+(highlighted?" "+suggestedInputClass:"")}
+                  className={compactInputClass+" "+(highlighted?suggestedInputClass:normalInputClass)}
                   title={highlighted?suggestedHint:f.label}
                   value={p[f.key]??(f.optional?null:0)}
                   onChange={value=>updateProduct(index,f.key,value)}/>
@@ -618,7 +622,7 @@ export default function PreventivoEditorPage() {
               <label className="flex min-w-0 flex-col gap-1 text-xs">
                 <span className="truncate font-medium text-slate-600" title="Trattamenti €/pezzo">Trattamenti €/pz</span>
                 <QuoteNumericInput kind="euro" disabled={locked}
-                  className={compactInputClass}
+                  className={compactInputClass+" "+normalInputClass}
                   value={p.trattamenti_cad??0}
                   onChange={value=>updateProduct(index,"trattamenti_cad",value)}/>
               </label>
@@ -628,14 +632,14 @@ export default function PreventivoEditorPage() {
                 <label className="flex min-w-0 flex-col gap-1 text-xs">
                   <span className="truncate font-medium text-slate-600" title="Progettazione ore totali (storico)">Ore prog. (storico)</span>
                   <QuoteNumericInput kind="decimal" disabled={locked}
-                    className={compactInputClass}
+                    className={compactInputClass+" "+normalInputClass}
                     value={p.progettazione_h??0}
                     onChange={value=>updateProduct(index,"progettazione_h",value)}/>
                 </label>
                 <label className="flex min-w-0 flex-col gap-1 text-xs">
                   <span className="truncate font-medium text-slate-600" title="Costo progettazione €/h (storico)">Costo prog. €/h</span>
                   <QuoteNumericInput kind="euro" disabled={locked}
-                    className={compactInputClass + (Number(p.costo_progettazione??50)===50?" "+suggestedInputClass:"")}
+                    className={compactInputClass+" "+(Number(p.costo_progettazione??50)===50?suggestedInputClass:normalInputClass)}
                     title={Number(p.costo_progettazione??50)===50?suggestedHint:undefined}
                     value={p.costo_progettazione??50}
                     onChange={value=>updateProduct(index,"costo_progettazione",value)}/>
@@ -657,7 +661,7 @@ export default function PreventivoEditorPage() {
             <span>Totale riga €: <b>{euro(preview?.prodotti?.[index]?.totale_finale)}</b></span>
           </div>
         </section>)}
-      <section className="bg-white border rounded-xl p-5 space-y-4">
+      <section className="bg-white border rounded-xl p-3 md:p-4 space-y-3">
         <h2 className="font-semibold">Note e riepilogo</h2>
         {(["note_generali","note_cliente","note_fornitori"] as const).map(key=><label className="flex flex-col text-sm gap-1" key={key}>
           <span>{key==="note_generali"?"Note generali":key==="note_cliente"?"Note cliente":"Note fornitori"}</span>
