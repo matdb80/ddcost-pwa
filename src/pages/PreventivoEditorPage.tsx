@@ -56,16 +56,27 @@ function buildListino(previous: Record<string, any>, quote: QuoteDocument, produ
   };
 }
 
-const fields: Array<{key:string;label:string;kind:QuoteNumericKind;optional?:boolean}> = [
-  {key:"quantita",label:"Quantità (pezzi)",kind:"decimal"},
-  {key:"materiale_cad",label:"Materiale €/pz",kind:"euro"},
-  {key:"lavoro_h",label:"Lavorazione ore totali",kind:"decimal"},
-  {key:"costo_lavoro",label:"Costo lavoro €/h",kind:"euro"},
-  {key:"attrezzaggi_h",label:"Attrezzaggio ore totali",kind:"decimal"},
-  {key:"ricarico_spese",label:"Spese generali (%)",kind:"percent"},
-  {key:"margine",label:"Margine (%)",kind:"percent"},
-  {key:"prezzo_manuale",label:"Prezzo manuale €/pz (facoltativo)",kind:"euro",optional:true},
+const fields: Array<{key:string;label:string;shortLabel:string;kind:QuoteNumericKind;optional?:boolean}> = [
+  {key:"quantita",label:"Quantità (pezzi)",shortLabel:"Quantità",kind:"decimal"},
+  {key:"materiale_cad",label:"Materiale €/pz",shortLabel:"Materiale €/pz",kind:"euro"},
+  {key:"lavoro_h",label:"Lavorazione ore totali",shortLabel:"Ore lavorazione",kind:"decimal"},
+  {key:"costo_lavoro",label:"Costo lavoro €/h",shortLabel:"Costo €/h",kind:"euro"},
+  {key:"attrezzaggi_h",label:"Attrezzaggio ore totali",shortLabel:"Ore attrezzaggio",kind:"decimal"},
+  {key:"ricarico_spese",label:"Spese generali (%)",shortLabel:"Spese gen. %",kind:"percent"},
+  {key:"margine",label:"Margine (%)",shortLabel:"Margine %",kind:"percent"},
+  {key:"prezzo_manuale",label:"Prezzo manuale €/pz (facoltativo)",shortLabel:"Prezzo man. €/pz",kind:"euro",optional:true},
 ];
+
+// Only non-zero values prefilled by DDCost are marked as suggestions.
+// It is a VISUAL indication, never used in the cost engine or as provenance.
+const initialProductDefaults = blankProduct();
+const suggestedProductKeys = new Set(["quantita","costo_lavoro","ricarico_spese","margine"]);
+const suggestedProductValue = (product:Product,key:string):boolean =>
+  suggestedProductKeys.has(key) && Number(product[key]) === Number(initialProductDefaults[key]);
+
+const compactInputClass = "h-9 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:bg-slate-100";
+const suggestedInputClass = "border-sky-300 bg-sky-50 focus:border-sky-500 focus:bg-white focus:ring-sky-200";
+const suggestedHint = "Valore iniziale proposto da DDCost, modificabile";
 
 export default function PreventivoEditorPage() {
   const { id } = useParams();
@@ -533,21 +544,35 @@ export default function PreventivoEditorPage() {
         })()}
       </section>
       <div className="flex justify-between items-center">
-        <h2 className="font-semibold text-xl">Prodotti ({doc.prodotti?.length ?? 0})</h2>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <h2 className="font-semibold text-xl">Prodotti ({doc.prodotti?.length ?? 0})</h2>
+          <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+            <span aria-hidden="true" className="inline-block h-3.5 w-3.5 rounded border border-sky-300 bg-sky-50"/>
+            Azzurro = valore iniziale proposto, modificabile
+          </span>
+        </div>
         {!locked && <button className="border border-emerald-600 text-emerald-700 rounded px-3 py-2 flex gap-2" onClick={()=>{update("prodotti",[...doc.prodotti,blankProduct()],true);}}><Plus size={16}/> Aggiungi prodotto</button>}
       </div>
       {(doc.prodotti as Product[]).map((p,index)=>
-        <section key={index} className="bg-white border rounded-xl p-5 space-y-3">
+        <section key={index} className="bg-white border rounded-xl p-3 md:p-4 space-y-2.5">
           <div className="flex justify-between items-center">
             <h3 className="font-semibold">Prodotto {index+1}</h3>
             {!locked && doc.prodotti.length > 1 && <button title="Rimuovi prodotto" className="text-red-600" onClick={()=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}><Trash2 size={17}/></button>}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label className="flex flex-col text-sm gap-1"><span>Codice articolo</span><input className="border p-2 rounded disabled:bg-slate-100" disabled={locked} value={p.codice??""} onChange={e=>updateProduct(index,"codice",e.target.value)}/></label>
-            <label className="flex flex-col text-sm gap-1 md:col-span-2"><span>Descrizione *</span><input className="border p-2 rounded disabled:bg-slate-100" disabled={locked} value={p.descrizione??""} onChange={e=>updateProduct(index,"descrizione",e.target.value)}/></label>
-            <div className="flex flex-col text-sm gap-1 md:col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2">
+            <label className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-2">
+              <span className="font-medium">Codice articolo</span>
+              <input className={compactInputClass} disabled={locked} value={p.codice??""}
+                onChange={e=>updateProduct(index,"codice",e.target.value)}/>
+            </label>
+            <label className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-5">
+              <span className="font-medium">Descrizione *</span>
+              <input className={compactInputClass} disabled={locked} value={p.descrizione??""}
+                onChange={e=>updateProduct(index,"descrizione",e.target.value)}/>
+            </label>
+            <div className="flex min-w-0 flex-col gap-1 text-xs lg:col-span-3">
               <label htmlFor={"group-"+index} className="font-medium">Gruppo merceologico *</label>
-              <select id={"group-"+index} disabled={locked} className="border rounded p-2 disabled:bg-slate-100"
+              <select id={"group-"+index} disabled={locked} className={compactInputClass}
                 value={p.gruppo_merceologico ?? ""} onChange={e=>updateProduct(index,"gruppo_merceologico",e.target.value)}>
                 <option value="">Seleziona un gruppo esistente</option>
                 {(groupsQuery.data ?? []).map(g=><option key={g.id} value={g.name}>{g.name}</option>)}
@@ -566,9 +591,9 @@ export default function PreventivoEditorPage() {
                 : <button type="button" className="text-left text-emerald-700 underline text-xs mt-1"
                     onClick={()=>{setNewGroupName("");setNewGroupIndex(index);}}>+ Crea un nuovo gruppo merceologico</button>)}
             </div>
-            <label className="flex flex-col text-sm gap-1">
-              <span className="font-medium">Materiale prodotto *</span>
-              <select className="border rounded p-2 disabled:bg-slate-100" disabled={locked}
+            <label className="flex min-w-0 flex-col gap-1 text-xs lg:col-span-2">
+              <span className="font-medium">Materiale *</span>
+              <select className={compactInputClass} disabled={locked}
                 value={p.materiale_prodotto ?? ""} onChange={e=>updateProduct(index,"materiale_prodotto",e.target.value)}>
                 <option value="">Seleziona materiale</option>
                 <option value="ferro">Ferro</option>
@@ -576,43 +601,54 @@ export default function PreventivoEditorPage() {
                 <option value="inox">Inox</option>
               </select>
             </label>
-            {fields.map(f=><label key={f.key} className="flex flex-col text-sm gap-1">
-              <span>{f.label}</span>
-              <QuoteNumericInput kind={f.kind} optional={f.optional}
-                className="border p-2.5 rounded disabled:bg-slate-100"
-                disabled={locked} value={p[f.key]??(f.optional?null:0)}
-                onChange={value=>updateProduct(index,f.key,value)}/>
-            </label>)}
-            {(legacyCostModel || sharedTreatmentMode === "per_prodotto") && (
-              <label className="flex flex-col text-sm gap-1">
-                <span>Trattamenti €/pezzo</span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8">
+            {fields.map(f=>{
+              const highlighted=suggestedProductValue(p,f.key);
+              return <label key={f.key} className="flex min-w-0 flex-col gap-1 text-xs">
+                <span className="truncate font-medium text-slate-600" title={f.label}>{f.shortLabel}</span>
+                <QuoteNumericInput kind={f.kind} optional={f.optional} disabled={locked}
+                  className={compactInputClass+(highlighted?" "+suggestedInputClass:"")}
+                  title={highlighted?suggestedHint:f.label}
+                  value={p[f.key]??(f.optional?null:0)}
+                  onChange={value=>updateProduct(index,f.key,value)}/>
+              </label>;
+            })}
+            {(legacyCostModel || sharedTreatmentMode==="per_prodotto") && (
+              <label className="flex min-w-0 flex-col gap-1 text-xs">
+                <span className="truncate font-medium text-slate-600" title="Trattamenti €/pezzo">Trattamenti €/pz</span>
                 <QuoteNumericInput kind="euro" disabled={locked}
-                  className="border rounded p-2.5 disabled:bg-slate-100"
-                  value={p.trattamenti_cad ?? 0}
+                  className={compactInputClass}
+                  value={p.trattamenti_cad??0}
                   onChange={value=>updateProduct(index,"trattamenti_cad",value)}/>
               </label>
             )}
             {legacyCostModel && (
               <>
-                <label className="flex flex-col text-sm gap-1">
-                  <span>Progettazione ore totali (storico)</span>
+                <label className="flex min-w-0 flex-col gap-1 text-xs">
+                  <span className="truncate font-medium text-slate-600" title="Progettazione ore totali (storico)">Ore prog. (storico)</span>
                   <QuoteNumericInput kind="decimal" disabled={locked}
-                    className="border rounded p-2.5 disabled:bg-slate-100"
-                    value={p.progettazione_h ?? 0}
+                    className={compactInputClass}
+                    value={p.progettazione_h??0}
                     onChange={value=>updateProduct(index,"progettazione_h",value)}/>
                 </label>
-                <label className="flex flex-col text-sm gap-1">
-                  <span>Costo progettazione €/h (storico)</span>
+                <label className="flex min-w-0 flex-col gap-1 text-xs">
+                  <span className="truncate font-medium text-slate-600" title="Costo progettazione €/h (storico)">Costo prog. €/h</span>
                   <QuoteNumericInput kind="euro" disabled={locked}
-                    className="border rounded p-2.5 disabled:bg-slate-100"
-                    value={p.costo_progettazione ?? 50}
+                    className={compactInputClass + (Number(p.costo_progettazione??50)===50?" "+suggestedInputClass:"")}
+                    title={Number(p.costo_progettazione??50)===50?suggestedHint:undefined}
+                    value={p.costo_progettazione??50}
                     onChange={value=>updateProduct(index,"costo_progettazione",value)}/>
                 </label>
               </>
             )}
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={locked} checked={p.quadrabile!==false} onChange={e=>updateProduct(index,"quadrabile",e.target.checked)}/> Prezzo modificabile dalla quadratura</label>
+            <label className="flex min-w-0 items-center gap-2 text-xs col-span-2 sm:col-span-2">
+              <input type="checkbox" disabled={locked} checked={p.quadrabile!==false}
+                onChange={e=>updateProduct(index,"quadrabile",e.target.checked)}/>
+              Prezzo modificabile dalla quadratura
+            </label>
           </div>
-          <div className="bg-slate-50 rounded p-3 text-sm grid grid-cols-1 md:grid-cols-4 gap-2">
+          <div className="bg-slate-50 rounded px-3 py-2 text-xs grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-x-3 gap-y-1">
             <span>Costo primo €/pz: <b>{euro(preview?.prodotti?.[index]?.costo_primo_cad)}</b></span>
             {!legacyCostModel && <span>Progettazione comune €/pz: <b>{euroDetailed(preview?.prodotti?.[index]?.progettazione_comune_cad)}</b></span>}
             {!legacyCostModel && sharedTreatmentMode === "globale" && <span>Trattamenti comuni €/pz: <b>{euroDetailed(preview?.prodotti?.[index]?.trattamenti_globali_cad)}</b></span>}
