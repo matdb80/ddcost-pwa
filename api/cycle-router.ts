@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { eq, desc, sql, count, and } from "drizzle-orm";
+import { eq, desc, sql, count, and, inArray } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { cycles } from "@db/schema";
@@ -117,6 +117,54 @@ export const cycleRouter = createRouter({
         .offset(offset);
 
       return { items, total, page: input.page, pageSize: input.pageSize };
+    }),
+
+  /** Paginate by product CODE rather than individual revision. Each expanded
+   *  group returns every available revision, not just revisions on this page. */
+  listGrouped: authedQuery
+    .input(z.object({
+      search:z.string().optional(),
+      page:z.number().int().min(1).default(1),
+      pageSize:z.number().int().min(1).max(100).default(25),
+      includeDeleted:z.boolean().optional(),
+    }))
+    .query(async ({input})=>{
+      const db=getDb();
+      const codeKey=sql<string>`COALESCE(NULLIF(TRIM(${cycles.code}), ''), CONCAT('__cycle_id_', ${cycles.id}))`;
+      const filters=[];
+      if(!input.includeDeleted) filters.push(eq(cycles.deleted,0));
+      if(input.search?.trim()){
+        const pattern=`%${input.search.trim()}%`;
+        filters.push(sql`(${cycles.code} LIKE ${pattern} OR ${cycles.description} LIKE ${pattern} OR ${cycles.client} LIKE ${pattern})`);
+      }
+      const whereClause=filters.length?and(...filters):undefined;
+      const countRow=await db.select({total:sql<number>`COUNT(DISTINCT ${codeKey})`})
+        .from(cycles).where(whereClause);
+      const total=Number(countRow[0]?.total??0);
+      const keys=await db.select({key:codeKey})
+        .from(cycles).where(whereClause)
+        .groupBy(codeKey)
+        .orderBy(sql`MAX(${cycles.updatedAt}) DESC`,sql`MAX(${cycles.id}) DESC`)
+        .limit(input.pageSize).offset((input.page-1)*input.pageSize);
+      if(keys.length===0)return {groups:[],total,page:input.page,pageSize:input.pageSize};
+      const all=await db.select().from(cycles).where(and(
+        inArray(codeKey,keys.map(k=>k.key)),
+        ...(!input.includeDeleted?[eq(cycles.deleted,0)]:[])
+      )).orderBy(desc(cycles.rev),desc(cycles.id));
+      const byKey=new Map<string,typeof all>();
+      for(const row of all){
+        const key=row.code?.trim()||`__cycle_id_${row.id}`;
+        const existing=byKey.get(key)??[];
+        existing.push(row);
+        byKey.set(key,existing);
+      }
+      return {
+        groups:keys.map(k=>{
+          const revisions=byKey.get(k.key)??[];
+          return {key:k.key,latest:revisions[0]??null,revisions};
+        }).filter(g=>g.latest!==null),
+        total,page:input.page,pageSize:input.pageSize,
+      };
     }),
 
   get: authedQuery
