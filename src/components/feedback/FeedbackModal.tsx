@@ -116,6 +116,25 @@ export default function FeedbackModal({ open, onOpenChange, cycleId, cycleRev }:
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<{ success: boolean; ticketNumber?: string; message?: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [position,setPosition]=useState({x:0,y:0});
+  const dragRef=useRef<{x:number;y:number;startX:number;startY:number}|null>(null);
+  const onDragStart=(event:React.PointerEvent<HTMLDivElement>)=>{
+    if(event.button!==0 || isSubmitting)return;
+    dragRef.current={x:position.x,y:position.y,startX:event.clientX,startY:event.clientY};
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const onDragMove=(event:React.PointerEvent<HTMLDivElement>)=>{
+    if(!dragRef.current)return;
+    const deltaX=event.clientX-dragRef.current.startX;
+    const deltaY=event.clientY-dragRef.current.startY;
+    const maxX=Math.max(0,(window.innerWidth-Math.min(window.innerWidth-32,512))/2);
+    const maxY=Math.max(0,(window.innerHeight-180)/2);
+    setPosition({
+      x:Math.max(-maxX,Math.min(maxX,dragRef.current.x+deltaX)),
+      y:Math.max(-maxY,Math.min(maxY,dragRef.current.y+deltaY)),
+    });
+  };
+  const onDragEnd=()=>{dragRef.current=null;};
 
   const createMutation = trpc.feedback.create.useMutation();
 
@@ -127,6 +146,8 @@ export default function FeedbackModal({ open, onOpenChange, cycleId, cycleRev }:
     setScreenshot(null);
     setScreenshotPreview(null);
     setCaptureState("idle");
+    setPosition({x:0,y:0});
+    dragRef.current=null;
     manualScreenshotOverride.current=false;
     setResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -230,11 +251,22 @@ export default function FeedbackModal({ open, onOpenChange, cycleId, cycleRev }:
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent
+        className="max-w-lg max-h-[90vh] overflow-y-auto"
+        style={{transform:`translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px))`}}
+      >
+        <DialogHeader
+          onPointerDown={onDragStart}
+          onPointerMove={onDragMove}
+          onPointerUp={onDragEnd}
+          onPointerCancel={onDragEnd}
+          className="cursor-move select-none touch-none"
+          title="Trascina per spostare questa finestra"
+        >
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare className="w-5 h-5 text-emerald-600" />
             Invia segnalazione
+            <span className="ml-auto mr-6 text-xs font-normal text-slate-500">Trascina per spostare</span>
           </DialogTitle>
         </DialogHeader>
 
