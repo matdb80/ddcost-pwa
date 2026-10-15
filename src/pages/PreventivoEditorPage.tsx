@@ -166,7 +166,8 @@ export default function PreventivoEditorPage() {
       });
       draftIdRef.current=result.id;
       setDraftMessage("Bozza salvata nell'archivio preventivi, anche se incompleta.");
-      await utils.quote.list.invalidate();
+      // Persistence is already confirmed: a refresh error must not report a failed save.
+      void utils.quote.list.invalidate().catch(()=>{});
       return result.id;
     }catch(err){
       setError(err instanceof Error?err.message:"Impossibile salvare la bozza");
@@ -184,8 +185,18 @@ export default function PreventivoEditorPage() {
   async function saveDraftOnly(){
     try{
       const id=await persistDraft();
-      allowLeaveRef.current=true;
-      navigate("/preventivi/"+id,{replace:isNew});
+      if(!isNew && id===numericId){
+        // Updating an existing draft does not change route: reset the dirty
+        // baseline here rather than accidentally disabling future guards.
+        const persisted={...doc,stato_preventivo:"bozza"};
+        setDoc(persisted);
+        setBaseline(JSON.stringify(persisted));
+        setDirtyCalculation(true);
+        void utils.quote.get.invalidate({id}).catch(()=>{});
+      }else{
+        allowLeaveRef.current=true;
+        navigate("/preventivi/"+id,{replace:isNew});
+      }
     }catch{/* Keep the document editable and error visible. */}
   }
   const addGroup = async (index: number) => {
@@ -238,7 +249,7 @@ export default function PreventivoEditorPage() {
     if (!isNew && !changed && !isSavedDraft) return setError("Nessuna modifica rilevata");
     if (create.isPending || revise.isPending || finalizeDraftMutation.isPending || draftSaving) return;
     try {
-      const computed = dirtyCalculation || isNew ? calculateQuote(doc) : doc;
+      const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
       if (listinoModified) computed.listino = buildListino(computed.listino ?? {}, computed, priceProductIndex);
       computed.stato_preventivo="completo";
       const json = JSON.stringify(computed);
@@ -260,10 +271,21 @@ export default function PreventivoEditorPage() {
         const result=await finalizeDraftMutation.mutateAsync({
           draftId:draftIdRef.current,...payload,
         });
-        allowLeaveRef.current=true;
-        await utils.quote.list.invalidate();
-        navigate("/preventivi/"+result.id,{replace:true});
-        await utils.quote.get.invalidate({id:result.id});
+        // The draft row is finalized in place. Update local state because
+        // navigation to the exact same pathname can reuse this component.
+        setDoc(computed);
+        setBaseline(JSON.stringify(computed));
+        setOriginalJson(json);
+        setDirtyCalculation(false);
+        setListinoModified(false);
+        setReadOnly(true);
+        draftIdRef.current=null;
+        void utils.quote.list.invalidate().catch(()=>{});
+        void utils.quote.get.invalidate({id:result.id}).catch(()=>{});
+        if(isNew){
+          allowLeaveRef.current=true;
+          navigate("/preventivi/"+result.id,{replace:true});
+        }
       }else if(isNew){
         const result=await create.mutateAsync({...payload,targetTotal:payload.targetTotal??undefined});
         allowLeaveRef.current=true;
