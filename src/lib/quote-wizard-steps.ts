@@ -21,7 +21,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     ]:[]),
   ];
   const items=Array.isArray(doc.prodotti)?doc.prodotti:[];
-  items.forEach((_,i)=>{
+  items.forEach((product,i)=>{
     const s="Prodotto "+(i+1)+" di "+items.length;
     const add=(key:string,title:string,hint:string,more:Partial<QuoteWizardStep>={})=>
       steps.push(step("p:"+i+":"+key,title,s,hint,{field:key,index:i,...more}));
@@ -30,7 +30,15 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     add("gruppo_merceologico","Gruppo merceologico","Seleziona il gruppo di appartenenza.",{kind:"select",required:true});
     add("materiale_prodotto","Materiale del prodotto","Scegli il materiale principale.",{kind:"select",required:true});
     add("quantita","Quanti pezzi?","La quantità serve anche a ripartire i costi comuni.",{kind:"number",numeric:"decimal",required:true});
-    add("materiale_cad","Costo materiale per pezzo","Costo diretto del materiale in euro per singolo pezzo.",{kind:"number",numeric:"euro"});
+    add("costo_materiale_noto","Conosci il costo del materiale?","Se conosci già il prezzo €/pezzo, seleziona Sì. Altrimenti lo stimiamo da peso teorico e €/kg.",{kind:"checkbox"});
+    if(product.costo_materiale_noto===false){
+      add("lunghezza_mm","Lunghezza del grezzo (mm)","Misura totale del rettangolo di materiale.",{kind:"number",numeric:"decimal",required:true});
+      add("larghezza_mm","Larghezza del grezzo (mm)","Misura totale del rettangolo di materiale.",{kind:"number",numeric:"decimal",required:true});
+      add("spessore_mm","Spessore del grezzo (mm)","Spessore del materiale prima delle lavorazioni.",{kind:"number",numeric:"decimal",required:true});
+      add("costo_materiale_kg","Costo materiale al kg","Prezzo di acquisto del materiale in €/kg.",{kind:"number",numeric:"euro",required:true});
+    }else{
+      add("materiale_cad","Costo materiale per pezzo","Costo diretto del materiale in euro per singolo pezzo.",{kind:"number",numeric:"euro"});
+    }
     add("lavoro_h","Ore complessive di lavorazione","Tempo totale per produrre la quantità indicata.",{kind:"number",numeric:"decimal"});
     if(advanced){
       add("costo_lavoro","Costo orario manodopera","Tariffa di lavorazione in €/ora.",{kind:"number",numeric:"euro",advanced:true});
@@ -82,8 +90,10 @@ export function quoteWizardStepError(step:QuoteWizardStep,doc:QuoteDocument):str
   if(!step.required)return null;
   const obj=step.index===undefined?doc:doc.prodotti?.[step.index];
   const value=obj?.[step.field||""];
-  if(step.field==="quantita"){
-    if(!Number.isFinite(Number(value)) || Number(value)<=0) return "Inserisci una quantità maggiore di zero.";
+  if(step.field==="quantita" || ["lunghezza_mm","larghezza_mm","spessore_mm"].includes(step.field??"")){
+    if(!Number.isFinite(Number(value)) || Number(value)<=0) return "Inserisci un numero maggiore di zero.";
+  }else if(step.field==="costo_materiale_kg"){
+    if(!Number.isFinite(Number(value)) || Number(value)<0) return "Inserisci un costo al kg valido, non negativo.";
   }else if(!String(value??"").trim()){
     return "Questo campo è obbligatorio per completare il preventivo.";
   }
