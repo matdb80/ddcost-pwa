@@ -302,6 +302,35 @@ export default function PreventivoEditorPage() {
   };
   return <Layout>
     <div className="w-full max-w-screen-2xl mx-auto space-y-5 pb-10">
+      {blocker.state==="blocked" && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="quote-leave-title"
+            className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl space-y-4">
+            <h2 id="quote-leave-title" className="text-lg font-semibold text-slate-900">
+              Vuoi salvare il preventivo prima di uscire?
+            </h2>
+            <p className="text-sm text-slate-700">
+              Ci sono dati non salvati. Puoi conservare il preventivo come
+              <strong> bozza anche se incompleto</strong> e riprenderlo dall'archivio.
+            </p>
+            {error && <p role="alert" className="rounded bg-red-50 p-2 text-sm text-red-800">{error}</p>}
+            <div className="flex flex-col sm:flex-row sm:flex-wrap justify-end gap-2">
+              <button type="button" disabled={draftSaving} onClick={()=>blocker.reset()}
+                className="rounded-lg border px-4 py-2.5 text-sm font-medium">
+                Continua a compilare
+              </button>
+              <button type="button" disabled={draftSaving} onClick={()=>blocker.proceed()}
+                className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700">
+                Esci senza salvare
+              </button>
+              <button type="button" disabled={draftSaving} onClick={()=>void saveDraftAndLeave()}
+                className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+                {draftSaving?"Salvataggio...":"Salva bozza ed esci"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Sticky quote identity and actions share the same scroll container as the editor. */}
       <div className="sticky top-0 z-30 -mx-2 mb-4 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-md space-y-3 max-h-[60vh] overflow-y-auto">
       <div className="flex flex-wrap justify-between gap-3 items-center">
