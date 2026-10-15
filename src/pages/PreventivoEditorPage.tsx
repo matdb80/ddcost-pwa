@@ -571,7 +571,7 @@ export default function PreventivoEditorPage() {
             </label>
             <label className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-5">
               <span className="font-medium">Descrizione *</span>
-              <input className={compactInputClass} disabled={locked} value={p.descrizione??""}
+              <input className={compactInputClass+" "+normalInputClass} disabled={locked} value={p.descrizione??""}
                 onChange={e=>updateProduct(index,"descrizione",e.target.value)}/>
             </label>
             <div className="flex min-w-0 flex-col gap-1 text-xs lg:col-span-3">
@@ -597,7 +597,7 @@ export default function PreventivoEditorPage() {
             </div>
             <label className="flex min-w-0 flex-col gap-1 text-xs lg:col-span-2">
               <span className="font-medium">Materiale *</span>
-              <select className={compactInputClass} disabled={locked}
+              <select className={compactInputClass+" "+normalInputClass} disabled={locked}
                 value={p.materiale_prodotto ?? ""} onChange={e=>updateProduct(index,"materiale_prodotto",e.target.value)}>
                 <option value="">Seleziona materiale</option>
                 <option value="ferro">Ferro</option>
