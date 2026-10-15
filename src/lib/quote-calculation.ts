@@ -5,7 +5,9 @@ const val = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n
 const euro = (v: unknown) => val(v).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const blankProduct = (): Product => ({
   gruppo_merceologico: "", materiale_prodotto: "",
-  codice: "", descrizione: "", quantita: 1, materiale_cad: 0, lavoro_h: 0, costo_lavoro: 24,
+  codice: "", descrizione: "", quantita: 1, materiale_cad: 0,
+  costo_materiale_noto: true, lunghezza_mm: 0, larghezza_mm: 0, spessore_mm: 0,
+  costo_materiale_kg: 0, oggetto_modifica: [], lavoro_h: 0, costo_lavoro: 24,
   trattamenti_cad: 0, attrezzaggi_h: 0,
   ricarico_spese: 0.75, margine: 0.2, prezzo_manuale: null, quadrabile: true,
 });
