@@ -147,7 +147,14 @@ export const cycleRouter = createRouter({
         .orderBy(sql`MAX(${cycles.updatedAt}) DESC`,sql`MAX(${cycles.id}) DESC`)
         .limit(input.pageSize).offset((input.page-1)*input.pageSize);
       if(keys.length===0)return {groups:[],total,page:input.page,pageSize:input.pageSize};
-      const all=await db.select().from(cycles).where(and(
+      // Do not send mediumtext dataJson for every revision in the directory.
+      // Opening a revision still loads the complete source through cycle.get.
+      const all=await db.select({
+        id:cycles.id,code:cycles.code,description:cycles.description,
+        client:cycles.client,lot:cycles.lot,rev:cycles.rev,
+        deleted:cycles.deleted,standardCost:cycles.standardCost,
+        minimumPrice:cycles.minimumPrice,
+      }).from(cycles).where(and(
         inArray(codeKey,keys.map(k=>k.key)),
         ...(!input.includeDeleted?[eq(cycles.deleted,0)]:[])
       )).orderBy(desc(cycles.rev),desc(cycles.id));
