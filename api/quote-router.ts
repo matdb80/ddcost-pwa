@@ -140,7 +140,7 @@ export const quoteRouter = createRouter({
           .orderBy(desc(quotes.rev),desc(quotes.id)).limit(1))[0] : null;
         const currentDraft=Boolean(source && quoteIsDraft(source.dataJson));
         const revision=currentDraft
-          ? Number(source.rev??1)
+          ? Number(source?.rev??1)
           : source ? Math.max(Number(latest?.rev??1),Number(source.rev??1))+1 : 1;
         const json=JSON.stringify({
           ...document,stato_preventivo:"bozza",
