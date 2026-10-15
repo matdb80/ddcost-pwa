@@ -320,7 +320,7 @@ export default function FeedbackModal({ open, onOpenChange, cycleId, cycleRev }:
               </p>}
               {captureState==="removed" && <p role="status" className="text-xs text-slate-600">
                 Screenshot rimosso: la segnalazione sarà inviata senza immagine.
-              </p>
+              </p>}
               <div className="flex items-center gap-2">
                 <input
                   ref={fileInputRef}
