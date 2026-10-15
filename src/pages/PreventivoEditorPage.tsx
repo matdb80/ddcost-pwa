@@ -150,6 +150,44 @@ export default function PreventivoEditorPage() {
     if (!["gruppo_merceologico","materiale_prodotto","codice","descrizione"].includes(key))
       setDirtyCalculation(true);
   };
+  // A draft is stored in MySQL even with missing client, product group or
+  // commercial values. Server-side validations still apply to final quotes.
+  async function persistDraft():Promise<number>{
+    if(draftSaving || saveDraftMutation.isPending)
+      throw new Error("Salvataggio già in corso");
+    setDraftSaving(true);
+    setError("");
+    try{
+      const result=await saveDraftMutation.mutateAsync({
+        sourceId:draftIdRef.current??(!isNew?numericId:undefined),
+        client:String(doc.cliente??""),
+        reference:String(doc.riferimento_preventivo??""),
+        dataJson:JSON.stringify({...doc,stato_preventivo:"bozza"}),
+      });
+      draftIdRef.current=result.id;
+      setDraftMessage("Bozza salvata nell'archivio preventivi, anche se incompleta.");
+      await utils.quote.list.invalidate();
+      return result.id;
+    }catch(err){
+      setError(err instanceof Error?err.message:"Impossibile salvare la bozza");
+      throw err;
+    }finally{
+      setDraftSaving(false);
+    }
+  }
+  async function saveDraftAndLeave(){
+    try{
+      await persistDraft();
+      if(blocker.state==="blocked")blocker.proceed();
+    }catch{/* Never leave on failed persistence. */}
+  }
+  async function saveDraftOnly(){
+    try{
+      const id=await persistDraft();
+      allowLeaveRef.current=true;
+      navigate("/preventivi/"+id,{replace:isNew});
+    }catch{/* Keep the document editable and error visible. */}
+  }
   const addGroup = async (index: number) => {
     setError("");
     try {
@@ -163,6 +201,10 @@ export default function PreventivoEditorPage() {
     }
   };
   const copyQuote = async () => {
+    if(isSavedDraft){
+      setError("Prima completa il preventivo: una bozza non va inviata al cliente.");
+      return;
+    }
     setError("");
     setCopyMessage("");
     try {
