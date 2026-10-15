@@ -4,8 +4,9 @@ import Layout from "@/components/Layout";
 import { trpc } from "@/providers/trpc";
 import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy } from "lucide-react";
 import { formatQuoteForCopy } from "@/lib/quote-copy";
+import QuoteNumericInput, {type QuoteNumericKind} from "@/components/QuoteNumericInput";
 import {
-  blankProduct, blankQuote, calculateQuote, migrateQuoteToSharedCosts,
+  blankProduct, blankQuote, calculateQuote, migrateQuoteToEngineeringHours,
   type Product, type QuoteDocument,
 } from "@/lib/quote-calculation";
 const val = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
@@ -55,15 +56,15 @@ function buildListino(previous: Record<string, any>, quote: QuoteDocument, produ
   };
 }
 
-const fields: Array<{key:string;label:string;step?:string}> = [
-  {key:"quantita",label:"Quantità",step:"1"},
-  {key:"materiale_cad",label:"Materiale €/pz",step:"0.0001"},
-  {key:"lavoro_h",label:"Lavorazione ore totali",step:"0.01"},
-  {key:"costo_lavoro",label:"Costo lavoro €/h",step:"0.01"},
-  {key:"attrezzaggi_h",label:"Attrezzaggio ore totali",step:"0.01"},
-  {key:"ricarico_spese",label:"Spese generali (0,75 = 75%)",step:"0.01"},
-  {key:"margine",label:"Margine (0,20 = 20%)",step:"0.01"},
-  {key:"prezzo_manuale",label:"Prezzo manuale €/pz (facoltativo)",step:"0.0001"},
+const fields: Array<{key:string;label:string;kind:QuoteNumericKind;optional?:boolean}> = [
+  {key:"quantita",label:"Quantità (pezzi)",kind:"decimal"},
+  {key:"materiale_cad",label:"Materiale €/pz",kind:"euro"},
+  {key:"lavoro_h",label:"Lavorazione ore totali",kind:"decimal"},
+  {key:"costo_lavoro",label:"Costo lavoro €/h",kind:"euro"},
+  {key:"attrezzaggi_h",label:"Attrezzaggio ore totali",kind:"decimal"},
+  {key:"ricarico_spese",label:"Spese generali (%)",kind:"percent"},
+  {key:"margine",label:"Margine (%)",kind:"percent"},
+  {key:"prezzo_manuale",label:"Prezzo manuale €/pz (facoltativo)",kind:"euro",optional:true},
 ];
 
 export default function PreventivoEditorPage() {
@@ -203,15 +204,17 @@ export default function PreventivoEditorPage() {
   const locked = readOnly && !isNew;
   const legacyCostModel = !(Number(doc.costi_comuni_versione) >= 2);
   const sharedTreatmentMode = doc.trattamenti_modalita === "globale" ? "globale" : "per_prodotto";
+  const legacyEngineeringModel = !(Number(doc.costi_comuni_versione) >= 3);
   const upgradeCosts = () => {
     if (locked) return;
     if (!window.confirm(
-      "Convertire questo preventivo al nuovo modello? La progettazione delle vecchie righe diventerà un unico costo comune; i trattamenti resteranno per prodotto. " +
-      "I prezzi potranno variare se prodotti diversi hanno margini o spese generali differenti. " +
-      "L'originale resta invariato; il nuovo calcolo verrà salvato solo creando una revisione."
+      "Convertire questo preventivo alla progettazione per ore × tariffa oraria? " +
+      "Il costo storico totale rimarrà identico: inizialmente verrà indicata 1 ora " +
+      "con tariffa pari all'importo storico. Sostituisci questi valori provvisori con le ore e la tariffa effettive. " +
+      "L'originale resta invariato; il risultato si salva soltanto in una nuova revisione."
     )) return;
     try {
-      setDoc(migrateQuoteToSharedCosts(doc));
+      setDoc(migrateQuoteToEngineeringHours(doc));
       setDirtyCalculation(true);
       setListinoModified(Boolean(String(doc.listino?.sconto_riferimento ?? "").trim()));
       setError("");
