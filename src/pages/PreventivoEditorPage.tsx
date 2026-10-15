@@ -5,6 +5,7 @@ import { trpc } from "@/providers/trpc";
 import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy } from "lucide-react";
 import { formatQuoteForCopy } from "@/lib/quote-copy";
 import QuoteNumericInput, {type QuoteNumericKind} from "@/components/QuoteNumericInput";
+import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteMobileWizard from "@/components/QuoteMobileWizard";
 import {
   blankProduct, blankQuote, calculateQuote, migrateQuoteToEngineeringHours,
@@ -59,7 +60,6 @@ function buildListino(previous: Record<string, any>, quote: QuoteDocument, produ
 
 const fields: Array<{key:string;label:string;shortLabel:string;kind:QuoteNumericKind;optional?:boolean}> = [
   {key:"quantita",label:"Quantità (pezzi)",shortLabel:"Quantità",kind:"decimal"},
-  {key:"materiale_cad",label:"Materiale €/pz",shortLabel:"Materiale €/pz",kind:"euro"},
   {key:"lavoro_h",label:"Lavorazione ore totali",shortLabel:"Ore lavorazione",kind:"decimal"},
   {key:"trattamenti_cad",label:"Trattamenti €/pezzo",shortLabel:"Trattamenti €/pz",kind:"euro"},
   {key:"costo_lavoro",label:"Costo lavoro €/h",shortLabel:"Costo €/h",kind:"euro"},
@@ -677,6 +677,8 @@ export default function PreventivoEditorPage() {
               </select>
             </label>
           </div>
+          <QuoteMaterialCostFields product={p} disabled={locked}
+            onChange={(key,value)=>updateProduct(index,key,value)}/>
           <div className="grid grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8">
             {fields.map(f=>{
               if(f.key==="trattamenti_cad" && !legacyCostModel && sharedTreatmentMode!=="per_prodotto")return null;
