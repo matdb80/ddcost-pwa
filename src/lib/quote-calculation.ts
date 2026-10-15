@@ -1,3 +1,4 @@
+import { calculateMaterialByWeight, type MaterialName } from "./quote-material-weight";
 export type Product = Record<string, any>;
 export type QuoteDocument = Record<string, any>;
 const val = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
