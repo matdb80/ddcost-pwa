@@ -12,7 +12,7 @@ const navItems = [
   { path: "/", label: "Home", icon: Home },
   { path: "/cicli", label: "Cicli Standard", icon: Factory },
   { path: "/bandelle-t", label: "Bandelle a T", icon: Wrench },
-  { path: "/bandelle-veneta", label: "Bandelle Veneta", icon: Scissors },
+  { path: "/bandelle-veneta", label: "Bandelle alla veneta Giotto Plus", icon: Scissors },
   { path: "/preventivi", label: "Preventivi Speciali Unatantum", icon: FileText },
   { path: "/offerte", label: "Offerte commerciali prodotti standard", icon: Briefcase },
   { path: "/importa-storico", label: "Importa storico", icon: DatabaseZap },
@@ -83,7 +83,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <h1 className={collapsed ? "text-sm font-bold" : "text-xl font-bold tracking-tight"}>
                 {collapsed ? "DD" : "DDCost"}
               </h1>
-              {!collapsed && <p className="text-xs text-slate-400 mt-1">Preventivatore Speciali</p>}
+              {!collapsed && <p className="text-xs text-slate-400 mt-1">Gestione e preventivazione costi di produzione</p>}
             </div>
             <button
               type="button"
