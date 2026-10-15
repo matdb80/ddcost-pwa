@@ -53,7 +53,21 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
   for (const p of d.prodotti as Product[]) {
     const q = val(p.quantita);
     if (!(q > 0)) throw new Error("La quantità dei prodotti deve essere maggiore di zero");
-    const m = val(p.materiale_cad), lh = val(p.lavoro_h), hcost = val(p.costo_lavoro);
+    // Existing documents without the checkbox retain their saved €/piece.
+    // When unchecked, geometry/€/kg becomes the sole active material cost.
+    const weightCost = p.costo_materiale_noto === false
+      ? calculateMaterialByWeight({
+          material: String(p.materiale_prodotto) as MaterialName,
+          lengthMm: Number(p.lunghezza_mm),
+          widthMm: Number(p.larghezza_mm),
+          thicknessMm: Number(p.spessore_mm),
+          euroPerKg: Number(p.costo_materiale_kg),
+        })
+      : null;
+    const m = weightCost?.materialCostPerPiece ?? val(p.materiale_cad);
+    p.materiale_calcolato_cad = m;
+    p.peso_teorico_kg = weightCost?.theoreticalWeightKg ?? null;
+    const lh = val(p.lavoro_h), hcost = val(p.costo_lavoro);
     const treatment = val(p.trattamenti_cad), ah = val(p.attrezzaggi_h);
     const dh = val(p.progettazione_h), dcost = val(p.costo_progettazione);
     const overhead = val(p.ricarico_spese), margin = val(p.margine);
