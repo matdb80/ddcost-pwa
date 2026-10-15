@@ -261,11 +261,20 @@ export const quoteRouter = createRouter({
         if(prior.stato_preventivo!=="bozza")
           throw new Error("Il preventivo non è una bozza: utilizzare il salvataggio di revisione");
         const doc=JSON.parse(input.dataJson) as Record<string,unknown>;
+        const rootId=source.rootId??source.id;
+        const previous=await tx.select({
+          id:quotes.id,rev:quotes.rev,rootId:quotes.rootId,
+          totalFinal:quotes.totalFinal,dataJson:quotes.dataJson,
+        }).from(quotes).where(or(eq(quotes.rootId,rootId),eq(quotes.id,rootId)));
+        const lastFinal=latestCompletedQuotePerRoot(previous.map(q=>({
+          ...q,totalFinal:q.totalFinal===null?null:String(q.totalFinal),
+        })))[0];
         const {draftId,...changes}=input;
         await tx.update(quotes).set({
           ...changes,
           dataJson:JSON.stringify({...doc,stato_preventivo:"completo",
-            root_id:source.rootId??source.id,rev:source.rev??1}),
+            esito_commerciale:lastFinal?.outcome??readQuoteOutcome(source.dataJson),
+            root_id:rootId,rev:source.rev??1}),
         }).where(and(eq(quotes.id,draftId),eq(quotes.userId,ctx.user.id)));
         return {id:draftId,rev:source.rev??1,rootId:source.rootId??source.id};
       });
@@ -354,12 +363,17 @@ export const quoteRouter = createRouter({
           throw new Error("Nessuna modifica rilevata: revisione non creata");
         }
         const rootId = source.rootId ?? source.id;
-        const latestRows = await tx.select({ rev: quotes.rev, dataJson:quotes.dataJson })
-          .from(quotes)
+        const latestRows = await tx.select({
+          id:quotes.id,rev:quotes.rev,rootId:quotes.rootId,
+          dataJson:quotes.dataJson,totalFinal:quotes.totalFinal,
+        }).from(quotes)
           .where(and(eq(quotes.rootId, rootId), eq(quotes.userId, ctx.user.id)))
-          .orderBy(desc(quotes.rev), desc(quotes.id)).limit(1);
+          .orderBy(desc(quotes.rev), desc(quotes.id));
         const nextRev = Math.max(Number(latestRows[0]?.rev ?? source.rev ?? 1), Number(source.rev ?? 1)) + 1;
-        const currentOutcome=readQuoteOutcome(latestRows[0]?.dataJson??source.dataJson);
+        const lastFinal=latestCompletedQuotePerRoot(latestRows.map(q=>({
+          ...q,totalFinal:q.totalFinal===null?null:String(q.totalFinal),
+        })))[0];
+        const currentOutcome=lastFinal?.outcome??"in_attesa";
         const patchedJson = JSON.stringify({ ...json, esito_commerciale:currentOutcome, root_id: rootId, rev: nextRev });
         const result = await tx.insert(quotes).values({
           userId: ctx.user.id,
