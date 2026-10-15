@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
 import { trpc } from "@/providers/trpc";
 import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy } from "lucide-react";
@@ -83,12 +83,19 @@ export default function PreventivoEditorPage() {
   const [copyMessage, setCopyMessage] = useState("");
   const [newGroupIndex, setNewGroupIndex] = useState<number | null>(null);
   const [newGroupName, setNewGroupName] = useState("");
+  const draftIdRef=useRef<number|null>(null);
+  const allowLeaveRef=useRef(false);
+  const [draftSaving,setDraftSaving]=useState(false);
+  const [draftMessage,setDraftMessage]=useState("");
+
   const groupsQuery = trpc.productGroup.list.useQuery();
   const createGroup = trpc.productGroup.create.useMutation();
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.quote.get.useQuery({ id:numericId }, { enabled: !isNew && numericId > 0 });
   const create = trpc.quote.create.useMutation();
   const revise = trpc.quote.saveRevision.useMutation();
+  const saveDraftMutation=trpc.quote.saveDraft.useMutation();
+  const finalizeDraftMutation=trpc.quote.finalizeDraft.useMutation();
   useEffect(() => {
     if (!data || isNew) return;
     try {
@@ -102,13 +109,34 @@ export default function PreventivoEditorPage() {
       setDirtyCalculation(false);
       setListinoModified(false);
       setPriceProductIndex(Number.isInteger(parsed.listino?.product_index_riferimento) ? parsed.listino.product_index_riferimento : 0);
-      setReadOnly(true);
+      const isDraft=parsed.stato_preventivo==="bozza";
+      draftIdRef.current=isDraft?numericId:null;
+      setReadOnly(!isDraft);
+      setDirtyCalculation(isDraft);
       setError("");
     } catch {
       setError("Il preventivo storico contiene dati non riconosciuti. Nessun record è stato modificato.");
     }
   }, [data, isNew]);
-  const changed = JSON.stringify(doc) !== baseline;
+  const changed=isNew
+    ? JSON.stringify(doc)!==JSON.stringify(blankQuote())
+    : Boolean(data) && JSON.stringify(doc)!==baseline;
+  const unsavedChanges=changed && (isNew || !readOnly);
+  const isSavedDraft=doc.stato_preventivo==="bozza";
+  const blocker=useBlocker(({currentLocation,nextLocation})=>
+    unsavedChanges && !allowLeaveRef.current &&
+    (currentLocation.pathname!==nextLocation.pathname ||
+     currentLocation.search!==nextLocation.search)
+  );
+  useEffect(()=>{
+    if(!unsavedChanges || allowLeaveRef.current)return;
+    const handler=(event:BeforeUnloadEvent)=>{
+      event.preventDefault();
+      event.returnValue="";
+    };
+    window.addEventListener("beforeunload",handler);
+    return()=>window.removeEventListener("beforeunload",handler);
+  },[unsavedChanges]);
   const update = (key: string, value: unknown, economic = false) => {
     setDoc(prev => ({ ...prev, [key]: value }));
     if (economic) setDirtyCalculation(true);
