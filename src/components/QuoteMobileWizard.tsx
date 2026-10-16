@@ -115,10 +115,6 @@ export default function QuoteMobileWizard(props:Props){
   const cashMargin=Number(preview?.margine_netto_complessivo_perc??0);
   const canShare=hasPreview && !isSavedDraft && !steps.some(s=>quoteWizardStepError(s,doc));
   const costVersion=Number(doc.costi_comuni_versione)||0;
-  const treatmentMode=doc.trattamenti_modalita==="globale"?"globale":"per_prodotto";
-  const treatmentTotal=treatmentMode==="globale"
-    ? Number(doc.trattamenti_totale_euro??0)
-    : (doc.prodotti as Product[]).reduce((sum,p)=>sum+Number(p.quantita??0)*Number(p.trattamenti_cad??0),0);
   return <div ref={top} className="mx-auto flex w-full max-w-xl flex-col gap-3 pb-24 text-slate-900" data-testid="quote-mobile-wizard">
     <header className="rounded-xl bg-slate-900 px-4 py-3 text-white shadow-sm">
       <div className="flex items-center justify-between gap-2">
@@ -228,21 +224,6 @@ export default function QuoteMobileWizard(props:Props){
             </div>
             {!locked && <button type="button" onClick={addAnotherProduct}
               className={actionClass+" w-full border border-emerald-600 text-emerald-800"}><Plus size={17}/> Aggiungi un altro prodotto</button>}
-            {costVersion>=2 && <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-              <h2 className="font-semibold">Trattamenti: modalità applicata</h2>
-              <p className="mt-1 text-slate-700">
-                {treatmentMode==="globale"
-                  ?"Un solo costo complessivo per tutta l'offerta; i trattamenti delle singole righe NON vengono conteggiati."
-                  :"Costi €/pezzo distinti per prodotto; il costo globale NON viene conteggiato."}
-              </p>
-              <p className="mt-2 font-semibold tabular-nums">
-                {hasPreview ? "Costo diretto trattamenti: € "+euro(treatmentTotal) : "Costo trattamenti: da verificare"}
-              </p>
-              <button type="button" onClick={()=>goto("trattamenti_modalita")}
-                className="mt-2 min-h-11 font-semibold text-emerald-700 underline">
-                Rivedi modalità trattamenti
-              </button>
-            </div>}
             {costVersion<3 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
               Questo preventivo usa il modello storico della progettazione. La conversione è facoltativa e crea una nuova revisione.
               {!locked && <button type="button" onClick={onUpgrade} className="mt-2 block font-semibold underline">Converti al modello attuale</button>}
