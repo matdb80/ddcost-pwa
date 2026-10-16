@@ -190,6 +190,34 @@ export default function QuoteMobileWizard(props:Props){
               <div><dt className="text-slate-500">Totale preventivo</dt><dd className="font-semibold">{hasPreview?"€ "+price:"Da calcolare"}</dd></div>
               <div><dt className="text-slate-500">Margine netto</dt><dd className="font-semibold">{hasPreview?cashMargin.toFixed(1).replace(".",",")+"%":"—"}</dd></div>
             </dl>
+            {costVersion>=2 && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Trattamenti applicati al preventivo</p>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {doc.trattamenti_modalita==="globale"
+                        ? "Unico costo complessivo"
+                        : "Costi distinti per prodotto"}
+                    </p>
+                    <p className="text-xs text-slate-700">
+                      {doc.trattamenti_modalita==="globale"
+                        ? "Ripartito sul numero complessivo di pezzi, senza sommare i singoli trattamenti."
+                        : "Vengono conteggiati soltanto i trattamenti €/pezzo dei singoli articoli."}
+                    </p>
+                  </div>
+                  <strong className="text-sm tabular-nums text-slate-900">
+                    {hasPreview
+                      ? "€ "+euro((preview?.prodotti as Product[]).reduce((sum:number,p:Product)=>sum+Number(p.trattamenti_tot??0),0))
+                      : "Da calcolare"}
+                  </strong>
+                </div>
+                {!locked && <button type="button" onClick={()=>goto("trattamenti_modalita")}
+                  className="mt-3 min-h-10 rounded-lg border border-emerald-600 bg-white px-3 text-sm font-semibold text-emerald-800">
+                  Modifica la modalità dei trattamenti
+                </button>}
+              </div>
+            )}
             <div className="space-y-2">
               {(doc.prodotti as Product[]).map((p,i)=><button type="button" key={i}
                 onClick={()=>goto("p:"+i+":descrizione")}
