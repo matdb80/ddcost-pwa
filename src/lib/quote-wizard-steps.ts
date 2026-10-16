@@ -20,6 +20,18 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
       step("titolo_preventivo","Titolo preventivo","Intestazione","Titolo descrittivo del documento.",{field:"titolo_preventivo",kind:"text",advanced:true}),
     ]:[]),
   ];
+  // Decide ONCE for the whole quote, before asking for any per-product
+  // treatment cost. The calculator already excludes the inactive mode.
+  if(version>=2){
+    steps.push(step("trattamenti_modalita","Come gestiamo i trattamenti?","Trattamenti",
+      "Scegli una sola modalità valida per tutta l'offerta: costo unico oppure costo per ciascun articolo.",
+      {field:"trattamenti_modalita",kind:"select"}));
+    if(doc.trattamenti_modalita==="globale"){
+      steps.push(step("trattamenti_totale_euro","Costo totale dei trattamenti (€)","Trattamenti",
+        "Inserisci UNA SOLA VOLTA il costo complessivo di tutti i trattamenti. Sarà ripartito sulla somma dei pezzi di tutti i prodotti, senza aggiungere i costi di ogni articolo.",
+        {field:"trattamenti_totale_euro",kind:"number",numeric:"euro"}));
+    }
+  }
   const items=Array.isArray(doc.prodotti)?doc.prodotti:[];
   items.forEach((product,i)=>{
     const s="Prodotto "+(i+1)+" di "+items.length;
@@ -49,7 +61,10 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
       add("progettazione_h","Ore progettazione della riga (storico)","Campo storico, prima del costo comune.",{kind:"number",numeric:"decimal"});
       add("costo_progettazione","Tariffa progettazione della riga (storico)","Costo orario del modello storico.",{kind:"number",numeric:"euro"});
     }else if(doc.trattamenti_modalita!=="globale"){
-      add("trattamenti_cad","Trattamenti per pezzo","Costo trattamento specifico di questo prodotto.",{kind:"number",numeric:"euro"});
+      add("trattamenti_cad","Trattamenti del prodotto "+(i+1)+" (€/pz)",
+        "Solo per questo articolo"+(product.descrizione?" — "+product.descrizione:"")+
+        ". Inserisci il costo €/pezzo; usa 0 se non richiede trattamenti. Non si tratta di un costo comune.",
+        {kind:"number",numeric:"euro"});
     }
     if(advanced){
       add("ricarico_spese","Spese generali (%)","Ricarico dei costi diretti di questo prodotto.",{kind:"number",numeric:"percent",advanced:true});
@@ -64,12 +79,6 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     steps.push(step("costo_progettazione_ora","Costo orario progettazione","Costi comuni","Le ore vengono moltiplicate per questa tariffa, una sola volta.",{field:"costo_progettazione_ora",kind:"number",numeric:"euro"}));
   }else if(version>=2){
     steps.push(step("progettazione_totale_euro","Progettazione totale (€)","Costi comuni","Importo totale del modello precedente, ripartito tra tutti i pezzi.",{field:"progettazione_totale_euro",kind:"number",numeric:"euro"}));
-  }
-  if(version>=2){
-    steps.push(step("trattamenti_modalita","Come attribuire i trattamenti?","Costi comuni","Scegli tra costo complessivo o costo specifico per prodotto.",{field:"trattamenti_modalita",kind:"select"}));
-    if(doc.trattamenti_modalita==="globale"){
-      steps.push(step("trattamenti_totale_euro","Costo totale trattamenti (€)","Costi comuni","L'importo sarà diviso tra tutti i pezzi dell'offerta.",{field:"trattamenti_totale_euro",kind:"number",numeric:"euro"}));
-    }
   }
   if(advanced){
     steps.push(step("target_totale","Totale desiderato (€)","Opzioni avanzate","Facoltativo: la quadratura adatta i prezzi delle righe non bloccate.",{field:"target_totale",kind:"number",numeric:"euro",advanced:true}));
