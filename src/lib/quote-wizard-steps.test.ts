@@ -134,6 +134,55 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     // Back to global uses the saved global number only.
     expect(calculateQuote(q).prodotti.map((p:Record<string,number>)=>p.trattamenti_tot)).toEqual([15,30,45]);
   });
+  it("asks the allocation mode FIRST and exactly once, even with 3 different products",()=>{
+    const q={...blankQuote(),prodotti:[
+      {...blankProduct(),quantita:10,trattamenti_cad:1},
+      {...blankProduct(),quantita:20,trattamenti_cad:2},
+      {...blankProduct(),quantita:30,trattamenti_cad:3},
+    ]};
+    const steps=buildQuoteWizardSteps(q);
+    expect(steps.filter(s=>s.id==="trattamenti_modalita")).toHaveLength(1);
+    expect(steps.findIndex(s=>s.id==="trattamenti_modalita")).toBe(1);
+    expect(steps.findIndex(s=>s.id==="trattamenti_modalita"))
+      .toBeLessThan(steps.findIndex(s=>s.id==="p:0:descrizione"));
+    expect(steps.filter(s=>s.field==="trattamenti_cad")).toHaveLength(3);
+    expect(steps.filter(s=>s.field==="trattamenti_totale_euro")).toHaveLength(0);
+    for(const [i,field] of steps.filter(s=>s.field==="trattamenti_cad").entries()){
+      expect(field.id).toBe("p:"+i+":trattamenti_cad");
+      expect(field.title).toContain("prodotto "+(i+1));
+    }
+    expect(calculateQuote(q).prodotti.reduce((sum:number,p:Record<string,number>)=>sum+p.trattamenti_tot,0))
+      .toBeCloseTo(140);
+  });
+  it("in global mode asks only one amount BEFORE products, never any per-product amount",()=>{
+    const q={...blankQuote(),trattamenti_modalita:"globale",trattamenti_totale_euro:90,
+      prodotti:[
+        {...blankProduct(),quantita:10,trattamenti_cad:1},
+        {...blankProduct(),quantita:20,trattamenti_cad:2},
+        {...blankProduct(),quantita:30,trattamenti_cad:3},
+      ]};
+    for(const advanced of [false,true]){
+      const steps=buildQuoteWizardSteps(q,advanced);
+      expect(steps.filter(s=>s.field==="trattamenti_modalita")).toHaveLength(1);
+      expect(steps.filter(s=>s.field==="trattamenti_totale_euro")).toHaveLength(1);
+      expect(steps.filter(s=>s.field==="trattamenti_cad")).toHaveLength(0);
+      expect(steps.findIndex(s=>s.id==="trattamenti_modalita"))
+        .toBeLessThan(steps.findIndex(s=>s.id==="trattamenti_totale_euro"));
+      expect(steps.findIndex(s=>s.id==="trattamenti_totale_euro"))
+        .toBeLessThan(steps.findIndex(s=>s.id==="p:0:descrizione"));
+    }
+    const result=calculateQuote(q);
+    expect(result.prodotti.map((p:Record<string,number>)=>p.trattamenti_tot))
+      .toEqual([15,30,45]);
+    expect(result.prodotti.reduce((sum:number,p:Record<string,number>)=>sum+p.trattamenti_tot,0))
+      .toBeCloseTo(90);
+    q.trattamenti_modalita="per_prodotto";
+    const reverted=buildQuoteWizardSteps(q);
+    expect(reverted.filter(s=>s.field==="trattamenti_totale_euro")).toHaveLength(0);
+    expect(reverted.filter(s=>s.field==="trattamenti_cad")).toHaveLength(3);
+    expect(calculateQuote(q).prodotti.reduce((sum:number,p:Record<string,number>)=>sum+p.trattamenti_tot,0))
+      .toBeCloseTo(140);
+  });
   it("weight costing is a separate guided path; a hidden known €/piece value cannot mislead",()=>{
     const q=blankQuote();
     q.prodotti[0].costo_materiale_noto=false;
