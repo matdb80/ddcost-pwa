@@ -10,6 +10,7 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     expect(steps.filter(x=>x.kind==="number").every(x=>typeof x.field==="string")).toBe(true);
     expect(steps.filter(x=>x.index===0).map(x=>x.field))
       .toContain("quantita");
+    expect(steps.find(x=>x.id==="p:0:oggetto_modifica")?.kind).toBe("multiselect");
     expect(steps.some(x=>x.field==="target_totale")).toBe(false);
     expect(steps.some(x=>x.field==="ricarico_spese")).toBe(false);
     expect(steps.some(x=>x.field==="progettazione_ore")).toBe(true);
@@ -33,6 +34,7 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     expect(steps.filter(x=>x.field==="materiale_prodotto")).toHaveLength(3);
     expect(steps.filter(x=>x.id.endsWith(":done"))).toHaveLength(3);
     expect(steps.some(x=>x.id==="p:2:descrizione")).toBe(true);
+    expect(steps.filter(x=>x.field==="oggetto_modifica").map(x=>x.index)).toEqual([0,1,2]);
   });
   it("treatments branch changes and never requires duplicate global and line treatment inputs",()=>{
     const q=blankQuote();

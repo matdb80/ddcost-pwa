@@ -3,7 +3,7 @@ import type {QuoteDocument} from "./quote-calculation";
 export type QuoteWizardStep = {
   id:string; title:string; section:string; hint:string;
   field?:string; index?:number; required?:boolean;
-  kind?:"text"|"select"|"number"|"textarea"|"checkbox";
+  kind?:"text"|"select"|"number"|"textarea"|"checkbox"|"multiselect";
   numeric?:"euro"|"decimal"|"percent";
   advanced?:boolean;
 };
@@ -30,6 +30,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     const add=(key:string,title:string,hint:string,more:Partial<QuoteWizardStep>={})=>
       steps.push(step("p:"+i+":"+key,title,s,hint,{field:key,index:i,...more}));
     add("descrizione","Che prodotto vuoi preventivare?","Descrivi l'articolo o la lavorazione.",{kind:"text",required:true});
+    add("oggetto_modifica","Oggetto della modifica","Selezione facoltativa, puoi indicare più voci.",{kind:"multiselect"});
     if(advanced)add("codice","Codice articolo","Codice interno, se già disponibile.",{kind:"text",advanced:true});
     add("gruppo_merceologico","Gruppo merceologico","Seleziona il gruppo di appartenenza.",{kind:"select",required:true});
     add("materiale_prodotto","Materiale del prodotto","Scegli il materiale principale.",{kind:"select",required:true});

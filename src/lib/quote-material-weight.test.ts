@@ -1,6 +1,20 @@
 import {describe,it,expect} from "vitest";
-import {calculateMaterialByWeight,MATERIAL_DENSITY_G_CM3} from "./quote-material-weight";
+import {calculateMaterialByWeight,MATERIAL_DENSITY_G_CM3,MODIFICATION_OBJECTS,toggleModificationObject} from "./quote-material-weight";
 import {blankProduct,blankQuote,calculateQuote} from "./quote-calculation";
+
+describe("TKT-20261015-16060008: oggetto della modifica",()=>{
+  it("toggles multiple modification objects independently and tolerates old empty values",()=>{
+    expect(MODIFICATION_OBJECTS).toEqual([
+      "occhio","collo","zanca","lunghezza","spessore",
+      "applicazione rinforzi saldati",
+      "altre pieghe o variazioni alla geometria",
+    ]);
+    const selected=toggleModificationObject([],"occhio");
+    expect(toggleModificationObject(selected,"zanca")).toEqual(["occhio","zanca"]);
+    expect(toggleModificationObject(["occhio","zanca"],"occhio")).toEqual(["zanca"]);
+    expect(toggleModificationObject(undefined,"collo")).toEqual(["collo"]);
+  });
+});
 
 describe("TKT-20261015-18060001: preventivo una tantum, costo materiale per peso",()=>{
   it("starts with the cost-known checkbox checked and the direct €/piece model",()=>{

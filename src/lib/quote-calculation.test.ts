@@ -69,6 +69,15 @@ describe("TKT-20261015-14060001: design cost by hours and hourly rate",()=>{
 });
 
 describe("Una Tantum: quote-wide engineering and dual treatment allocation",()=>{
+  it("preserves declared modification objects without changing the cost calculation",()=>{
+    const selected=["occhio","zanca","applicazione rinforzi saldati"];
+    const quote={...blankQuote(),prodotti:[product(10,1,{oggetto_modifica:selected})]};
+    const result=calculateQuote(quote);
+    const unchanged=calculateQuote({...blankQuote(),prodotti:[product(10,1)]});
+    expect((result.prodotti[0] as Record<string,unknown>).oggetto_modifica).toEqual(selected);
+    expect(result.prodotti[0].full_cost).toBe(unchanged.prodotti[0].full_cost);
+    expect((quote.prodotti[0] as Record<string,unknown>).oggetto_modifica).toEqual(selected);
+  });
   it("allocates a single engineering amount over the total of 3 product quantities (not three times)",()=>{
     const quote={...blankQuote(),progettazione_ore:2,costo_progettazione_ora:60,prodotti:[
       product(10,2),product(20,3),product(30,4),

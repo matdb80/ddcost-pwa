@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 11325)
+Total output lines: 754
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
@@ -6,6 +9,7 @@ import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy } from "lucide-
 import { formatQuoteForCopy } from "@/lib/quote-copy";
 import QuoteNumericInput, {type QuoteNumericKind} from "@/components/QuoteNumericInput";
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
+import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
 import QuoteMobileWizard from "@/components/QuoteMobileWizard";
 import {
   blankProduct, blankQuote, calculateQuote, migrateQuoteToEngineeringHours,
@@ -400,85 +404,7 @@ export default function PreventivoEditorPage() {
           groups={groupsQuery.data??[]} loadingGroups={groupsQuery.isLoading}
           error={error} draftMessage={draftMessage} copyMessage={copyMessage}
           busy={draftSaving||create.isPending||revise.isPending||finalizeDraftMutation.isPending}
-          unsavedChanges={unsavedChanges}
-          priceProductIndex={priceProductIndex}
-          onUpdate={update} onUpdateProduct={updateProduct}
-          onAddProduct={()=>update("prodotti",[...doc.prodotti,blankProduct()],true)}
-          onRemoveProduct={index=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}
-          onCreateGroup={async(index,name)=>{
-            try{
-              const result=await createGroup.mutateAsync({name});
-              await utils.productGroup.list.invalidate();
-              updateProduct(index,"gruppo_merceologico",result.name);
-            }catch(err){
-              setError(err instanceof Error?err.message:"Impossibile creare il gruppo");
-              throw err;
-            }
-          }}
-          onPriceProductIndex={index=>{
-            setPriceProductIndex(index);
-            setListinoModified(Boolean(String(doc.listino?.sconto_riferimento??"").trim()));
-          }}
-          onListinoDiscount={value=>{
-            update("listino",{...(doc.listino??{}),sconto_riferimento:value});
-            setListinoModified(Boolean(value.trim()));
-          }}
-          onSave={()=>void save()} onSaveDraft={()=>void saveDraftOnly()}
-          onCopy={()=>void copyQuote()} onEdit={()=>setReadOnly(false)}
-          onUpgrade={upgradeCosts} onDesktop={()=>chooseMobileView(false)}
-        />
-      ) : (
-        <>
-        <div className="flex items-center justify-end">
-          <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium">
-            <input type="checkbox" className="h-4 w-4 accent-emerald-600"
-              checked={wizardMode} onChange={e=>chooseMobileView(e.target.checked)}/>
-            Visualizzazione cellulare (Wizard)
-          </label>
-        </div>
-      {/* Sticky quote identity and actions share the same scroll container as the editor. */}
-      <div className="sticky top-0 z-30 -mx-2 mb-4 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-md space-y-3 max-h-[60vh] overflow-y-auto">
-      <div className="flex flex-wrap justify-between gap-3 items-center">
-        <div className="flex items-center gap-2">
-          <Link to="/preventivi" className="p-2 border rounded"><ArrowLeft size={16}/></Link>
-          <h1 className="text-2xl font-bold">{isNew ? "Nuovo preventivo una tantum" : "Preventivo #" + numericId + " — rev. " + (data?.rev ?? 1)}</h1>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <button type="button" onClick={copyQuote}
-            className="border border-emerald-600 text-emerald-700 px-4 py-2 rounded flex gap-2 items-center">
-            <Copy size={16}/> Copia per email / documento
-          </button>
-          {locked ? <button className="bg-emerald-600 text-white px-4 py-2 rounded flex gap-2" onClick={() => setReadOnly(false)}><Pencil size={16}/> Modifica</button>
-          : <>
-              <button type="button" className="border px-4 py-2 rounded flex gap-2" onClick={() => { try { setDoc(calculateQuote(doc)); setDirtyCalculation(false); setError(""); } catch(e) { setError(e instanceof Error ? e.message : "Errore ricalcolo"); } }}><Calculator size={16}/> Ricalcola</button>
-              <button type="button" disabled={draftSaving || !unsavedChanges} onClick={()=>void saveDraftOnly()}
-                className="rounded border border-emerald-600 px-4 py-2 font-medium text-emerald-700 disabled:opacity-40">
-                {draftSaving?"Salvataggio...":"Salva bozza"}
-              </button>
-              <button type="button" disabled={create.isPending || revise.isPending || finalizeDraftMutation.isPending || draftSaving || (!isNew && !changed && !isSavedDraft)}
-                className="bg-emerald-600 disabled:opacity-40 text-white px-4 py-2 rounded flex gap-2" onClick={()=>void save()}>
-                <Save size={16}/> {isSavedDraft?"Completa preventivo":isNew?"Salva preventivo":"Salva nuova revisione"}
-              </button>
-            </>}
-        </div>
-      </div>
-      <section className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        {(["cliente","riferimento_preventivo","titolo_preventivo"] as const).map(key=>
-          <label key={key} className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">{key === "cliente" ? "Cliente *" : key === "riferimento_preventivo" ? "Riferimento" : "Titolo preventivo"}</span>
-            <input className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100" value={doc[key] ?? ""} disabled={locked}
-              onChange={e=>update(key,e.target.value)}/>
-          </label>)}
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Totale desiderato € (quadratura, facoltativo)</span>
-          <QuoteNumericInput kind="euro" optional className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100"
-            disabled={locked} value={doc.target_totale ?? null}
-            onChange={value=>update("target_totale",value,true)}/>
-        </label>
-      </section>
-      </div>
-      {draftMessage && <div role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{draftMessage}</div>}
-      {copyMessage && <div role="status" className="text-sm bg-emerald-50 border border-emerald-200 text-emerald-900 rounded p-3">{copyMessage}</div>}
+          unsavedChanges={unsave…1325 tokens truncated…d-50 border border-emerald-200 text-emerald-900 rounded p-3">{copyMessage}</div>}
       {error && <div role="alert" className="border border-red-400 bg-red-50 p-3 rounded text-red-800">{error}</div>}
       {!isNew && <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 p-3 rounded">
         {isSavedDraft
@@ -677,6 +603,9 @@ export default function PreventivoEditorPage() {
               </select>
             </label>
           </div>
+          <QuoteModificationObjectFields value={p.oggetto_modifica} disabled={locked}
+            idPrefix={`quote-product-${index}-modification`}
+            onChange={value=>updateProduct(index,"oggetto_modifica",value)}/>
           <QuoteMaterialCostFields product={p} disabled={locked}
             onChange={(key,value)=>updateProduct(index,key,value)}/>
           <div className="grid grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8">

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import QuoteNumericInput from "@/components/QuoteNumericInput";
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
+import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
 import {type Product, type QuoteDocument} from "@/lib/quote-calculation";
 import {
   buildQuoteWizardSteps, quoteWizardStepError,
@@ -163,6 +164,8 @@ export default function QuoteMobileWizard(props:Props){
               <div><dt className="text-slate-500">Prezzo €/pz</dt><dd className="font-semibold">{hasPreview?euro(preview?.prodotti?.[productIndex]?.prezzo_netto_unitario_finale):"—"}</dd></div>
               <div><dt className="text-slate-500">Totale prodotto</dt><dd className="font-semibold">{hasPreview?"€ "+euro(preview?.prodotti?.[productIndex]?.totale_finale):"—"}</dd></div>
             </dl>
+            {Array.isArray(product.oggetto_modifica)&&product.oggetto_modifica.length>0&&
+              <p className="text-xs text-slate-600"><strong>Oggetto della modifica:</strong> {product.oggetto_modifica.join(", ")}</p>}
             {product.costo_materiale_noto===false &&
               <p className="text-xs text-slate-600">
                 Costo materiale calcolato da peso: {hasPreview?"€ "+euro(preview?.prodotti?.[productIndex]?.materiale_calcolato_cad):"da completare"} /pz.
@@ -283,6 +286,9 @@ export default function QuoteMobileWizard(props:Props){
         ):field==="materiale_cad" && product && productIndex!==undefined?(
           <QuoteMaterialCostFields product={product} disabled={locked} mobile
             onChange={(key,value)=>onUpdateProduct(productIndex,key,value)}/>
+        ):field==="oggetto_modifica" && product && productIndex!==undefined?(
+          <QuoteModificationObjectFields value={value} disabled={locked} compact idPrefix={`wizard-modification-${productIndex}`}
+            onChange={selected=>onUpdateProduct(productIndex,"oggetto_modifica",selected)}/>
         ):field==="trattamenti_modalita"?(
           <div className="space-y-3">
             {[["per_prodotto","Costo separato per ciascun prodotto (€/pz)"],
