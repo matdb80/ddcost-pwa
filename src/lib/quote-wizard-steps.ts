@@ -20,18 +20,10 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
       step("titolo_preventivo","Titolo preventivo","Intestazione","Titolo descrittivo del documento.",{field:"titolo_preventivo",kind:"text",advanced:true}),
     ]:[]),
   ];
-  // Decide ONCE for the whole quote, before asking for any per-product
-  // treatment cost. The calculator already excludes the inactive mode.
-  if(version>=2){
-    steps.push(step("trattamenti_modalita","Come gestiamo i trattamenti?","Trattamenti",
-      "Scegli una sola modalità valida per tutta l'offerta: costo unico oppure costo per ciascun articolo.",
-      {field:"trattamenti_modalita",kind:"select"}));
-    if(doc.trattamenti_modalita==="globale"){
-      steps.push(step("trattamenti_totale_euro","Costo totale dei trattamenti (€)","Trattamenti",
-        "Inserisci UNA SOLA VOLTA il costo complessivo di tutti i trattamenti. Sarà ripartito sulla somma dei pezzi di tutti i prodotti, senza aggiungere i costi di ogni articolo.",
-        {field:"trattamenti_totale_euro",kind:"number",numeric:"euro"}));
-    }
-  }
+  // Historical documents keep their original per-product treatment fields.
+  // Newer quotes handle treatments in one dedicated block after all product
+  // details, so the mode and its costs cannot be mistaken for repeated fields
+  // in each product's input sequence.
   const items=Array.isArray(doc.prodotti)?doc.prodotti:[];
   items.forEach((product,i)=>{
     const s="Prodotto "+(i+1)+" di "+items.length;
@@ -60,11 +52,6 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
       add("trattamenti_cad","Trattamenti per pezzo","Costo €/pezzo del documento storico.",{kind:"number",numeric:"euro"});
       add("progettazione_h","Ore progettazione della riga (storico)","Campo storico, prima del costo comune.",{kind:"number",numeric:"decimal"});
       add("costo_progettazione","Tariffa progettazione della riga (storico)","Costo orario del modello storico.",{kind:"number",numeric:"euro"});
-    }else if(doc.trattamenti_modalita!=="globale"){
-      add("trattamenti_cad","Trattamenti del prodotto "+(i+1)+" (€/pz)",
-        "Solo per questo articolo"+(product.descrizione?" — "+product.descrizione:"")+
-        ". Inserisci il costo €/pezzo; usa 0 se non richiede trattamenti. Non si tratta di un costo comune.",
-        {kind:"number",numeric:"euro"});
     }
     if(advanced){
       add("ricarico_spese","Spese generali (%)","Ricarico dei costi diretti di questo prodotto.",{kind:"number",numeric:"percent",advanced:true});
@@ -74,6 +61,27 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     }
     steps.push(step("p:"+i+":done","Riepilogo del prodotto",s,"Controlla il risultato o aggiungi un altro prodotto."));
   });
+  // Current cost models ask for the treatment allocation exactly once, after
+  // every product is defined. Global mode has one quote-wide amount; split
+  // mode has one clearly identified €/piece value for each product.
+  if(version>=2){
+    steps.push(step("trattamenti_modalita","Come gestiamo i trattamenti?","Trattamenti dell'offerta",
+      "Scegli una sola modalità per tutta l'offerta. La scelta determina i campi che seguono.",
+      {field:"trattamenti_modalita",kind:"select"}));
+    if(doc.trattamenti_modalita==="globale"){
+      steps.push(step("trattamenti_totale_euro","Costo totale dei trattamenti (€)","Trattamenti dell'offerta",
+        "Inserisci una sola cifra per tutti i prodotti. Sarà ripartita sul totale dei pezzi; i costi dei singoli prodotti non verranno conteggiati.",
+        {field:"trattamenti_totale_euro",kind:"number",numeric:"euro"}));
+    }else{
+      items.forEach((product,i)=>steps.push(step(
+        "p:"+i+":trattamenti_cad",
+        "Costo trattamento — prodotto "+(i+1)+" (€/pz)",
+        "Trattamenti dell'offerta",
+        (product.descrizione?product.descrizione+". ":"")+"Inserisci il costo per pezzo di questo prodotto; usa 0 se non richiede trattamenti.",
+        {field:"trattamenti_cad",index:i,kind:"number",numeric:"euro"},
+      )));
+    }
+  }
   if(version>=3){
     steps.push(step("progettazione_ore","Ore totali di progettazione","Costi comuni","Questo tempo riguarda l'intero preventivo.",{field:"progettazione_ore",kind:"number",numeric:"decimal"}));
     steps.push(step("costo_progettazione_ora","Costo orario progettazione","Costi comuni","Le ore vengono moltiplicate per questa tariffa, una sola volta.",{field:"costo_progettazione_ora",kind:"number",numeric:"euro"}));
