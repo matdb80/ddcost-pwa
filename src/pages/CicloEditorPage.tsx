@@ -792,7 +792,7 @@ export default function CicloEditorPage() {
             <h2 className="text-sm font-semibold text-slate-700 mb-4">Prezzi</h2>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Costo Standard</span>
+                <span className="text-slate-500">Costo industriale standard</span>
                 <span className="font-mono">{formatMoney(simulatedModel.costo_standard)}</span>
               </div>
               <div className="flex justify-between text-sm">
@@ -848,7 +848,7 @@ export default function CicloEditorPage() {
                       <strong className={marketMargins.grossPercent<0?"text-red-700":"text-emerald-800"}>{formatMarginPercent(marketMargins.grossPercent)}</strong>
                     </div>
                     <div className="mt-1 text-xs text-slate-600">€ {formatMoney(marketMargins.grossEuro)} · prima delle spese generali</div>
-                    <div className="text-xs text-slate-500">(Prezzo − costo standard) / prezzo × 100</div>
+                    <div className="text-xs text-slate-500">(Prezzo − costo industriale standard) / prezzo × 100</div>
                   </div>
                   <div className="rounded-lg bg-sky-50/70 border border-sky-100 p-3">
                     <div className="flex justify-between items-baseline gap-2">
@@ -938,7 +938,7 @@ export default function CicloEditorPage() {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="text-left px-3 py-2 font-medium text-slate-600">Lotto</th>
-                  <th className="text-right px-3 py-2 font-medium text-slate-600">Costo Std</th>
+                  <th className="text-right px-3 py-2 font-medium text-slate-600">Costo industriale standard</th>
                   <th className="text-right px-3 py-2 font-medium text-slate-600">Full Cost</th>
                   <th className="text-right px-3 py-2 font-medium text-slate-600">Prezzo Min</th>
                   <th className="text-right px-3 py-2 font-medium text-slate-600">Attrezz. pz</th>

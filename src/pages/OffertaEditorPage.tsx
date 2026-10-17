@@ -9,9 +9,15 @@ import {
   cycleForOfferRow,
   discountFactor,
   generateListinoFromNet,
+  offerLotTerms,
+  offerLotsForRow,
+  selectedOfferLots,
   simulationsForOfferRow,
   withCalculatedOfferRow,
+  withOfferLotTerms,
+  withSelectedOfferLot,
   type CommercialOfferRow,
+  type OfferLotTerms,
 } from "@/lib/commercial-offer-pricing";
 import {
   buildCommercialOfferPrintHtml,
@@ -39,6 +45,9 @@ type OfferRow = CommercialOfferRow & {
   root_id?: number;
   rev?: number;
   cycle_lot?: string;
+  lotti_selezionati?: number[];
+  lotti_aggiuntivi?: number[];
+  prezzi_lotti?: Record<string, OfferLotTerms>;
   data?: unknown;
 };
 type OfferDocument = {
@@ -57,6 +66,7 @@ const blankRow = (): OfferRow => ({
   codice: "", descrizione: "", lotto: "", listino: 0, tipo_listino: "Listino calcolato",
   sconto_base: "40+10%", extra: 0, netto_base: 0, netto: 0, sconto_finale: "40+10%",
   full_cost: null, prezzo_minimo: null,
+  lotti_selezionati: [], lotti_aggiuntivi: [], prezzi_lotti: {},
 });
 const blankOffer = (): OfferDocument => ({ nome: "", cliente: "", riferimento: "", note: "", righe: [blankRow()] });
 
@@ -88,11 +98,12 @@ function lotPrice(row: OfferRow) {
   catch { return null; }
 }
 
-function generatedListinoIsCurrent(row: OfferRow): boolean {
-  const price = lotPrice(row);
-  if (!price || row.listino_generato_per_netto == null) return false;
-  return Math.abs(Number(row.listino_generato_per_netto) - price.netPrice) < 0.000001 &&
-    String(row.listino_generato_sconto ?? "") === combinedDiscount(row);
+function generatedListinoIsCurrent(row: OfferRow, lot: number): boolean {
+  const price = (() => { try { return calculateOfferLotPrice(row, lot); } catch { return null; } })();
+  const terms = offerLotTerms(row, lot);
+  if (!price || terms.listino_generato_per_netto == null) return false;
+  return Math.abs(Number(terms.listino_generato_per_netto) - price.netPrice) < 0.000001 &&
+    String(terms.listino_generato_sconto ?? "") === combinedDiscount(row);
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -112,6 +123,7 @@ export default function OffertaEditorPage() {
   const [cycleSearch, setCycleSearch] = useState("");
   const [cyclePage, setCyclePage] = useState(1);
   const [selectingCycle, setSelectingCycle] = useState(false);
+  const [newLotDrafts, setNewLotDrafts] = useState<Record<number, string>>({});
   const [pricePresentation, setPricePresentation] = useState<CustomerPricePresentation>("netto");
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.offer.get.useQuery({ id: numericId }, { enabled: !isNew && numericId > 0 });
@@ -199,21 +211,57 @@ export default function OffertaEditorPage() {
     setError("");
     try {
       const row = offer.righe[index];
-      const price = calculateOfferLotPrice(row, Number(row.lotto));
-      const generated = generateListinoFromNet(price.netPrice, combinedDiscount(row));
-      const next = recompute({
-        ...row,
-        listino: generated.listino,
-        full_cost: price.fullCost,
-        prezzo_netto_proposto: price.netPrice,
-        listino_generato_per_netto: price.netPrice,
-        listino_generato_sconto: combinedDiscount(row),
-        tipo_listino: "Generato dal prezzo netto",
-      });
+      const lots = selectedOfferLots(row);
+      if (!lots.length) throw Error("Selezionare almeno un lotto da includere nell'offerta cliente");
+      const discount = combinedDiscount(row);
+      let next: OfferRow = { ...row, tipo_listino: "Generato dal prezzo netto" };
+      for (const lot of lots) {
+        const price = calculateOfferLotPrice(row, lot);
+        const generated = generateListinoFromNet(price.netPrice, discount);
+        next = withOfferLotTerms(next, lot, {
+          listino: generated.listino,
+          listino_generato_per_netto: price.netPrice,
+          listino_generato_sconto: discount,
+        }) as OfferRow;
+      }
+      next = recompute(next);
       replaceRow(index, next);
     } catch (caught) {
       setError(errorMessage(caught, "Impossibile generare il listino"));
     }
+  };
+
+  const editLotListino = (index: number, lot: number, value: number | "") => {
+    const next = withOfferLotTerms(offer.righe[index], lot, {
+      listino: value,
+      listino_generato_per_netto: undefined,
+      listino_generato_sconto: undefined,
+    }) as OfferRow;
+    replaceRow(index, recompute(next));
+  };
+
+  const selectLot = (index: number, lot: number, selected: boolean) => {
+    replaceRow(index, withSelectedOfferLot(offer.righe[index], lot, selected) as OfferRow);
+  };
+
+  const addOfferLot = (index: number) => {
+    setError("");
+    const lot = Number(newLotDrafts[index]);
+    if (!Number.isInteger(lot) || lot <= 0) return setError("Inserire un lotto aggiuntivo intero e maggiore di zero");
+    const row = offer.righe[index];
+    const customLots = Array.isArray(row.lotti_aggiuntivi) ? row.lotti_aggiuntivi : [];
+    const isCycleLot = simulationsForOfferRow(row).some((simulation) => Number(simulation.lotto) === lot);
+    const nextCustomLots = isCycleLot ? customLots : [...new Set([...customLots, lot])];
+    const next = withSelectedOfferLot({ ...row, lotti_aggiuntivi: nextCustomLots }, lot, true) as OfferRow;
+    replaceRow(index, next);
+    setNewLotDrafts((current) => ({ ...current, [index]: "" }));
+  };
+
+  const removeOfferLot = (index: number, lot: number) => {
+    const row = offer.righe[index];
+    const customLots = (row.lotti_aggiuntivi ?? []).filter((item) => item !== lot);
+    const next = withSelectedOfferLot({ ...row, lotti_aggiuntivi: customLots }, lot, false) as OfferRow;
+    replaceRow(index, next);
   };
 
   const preparedOffer = (): OfferDocument => ({
@@ -237,8 +285,11 @@ export default function OffertaEditorPage() {
         if (parseNumber(row.listino) < 0 || parseNumber(row.extra) < 0 || parseNumber(row.extra) >= 100)
           throw Error("Listino o sconto extra non valido");
         if (cycleForOfferRow(row)) {
-          calculateOfferLotPrice(row, Number(row.lotto));
-          if (parseNumber(row.lotto) <= 0) throw Error("Inserire un lotto di riferimento valido");
+          const lots = selectedOfferLots(row);
+          if (!lots.length) throw Error("Selezionare almeno un lotto da includere nell'offerta cliente");
+          lots.forEach((lot) => calculateOfferLotPrice(row, lot));
+          if ((row.lotti_aggiuntivi ?? []).some((lot) => !Number.isInteger(Number(lot)) || Number(lot) <= 0))
+            throw Error("I lotti aggiuntivi devono essere interi e maggiori di zero");
         }
       }
       const body = {
@@ -270,11 +321,16 @@ export default function OffertaEditorPage() {
     setError("");
     try {
       const computed = preparedOffer();
-      if (mode === "customer" && pricePresentation === "listino_sconto") {
+      if (mode === "customer") {
         for (const row of computed.righe) {
-          if (parseNumber(row.listino) <= 0) throw Error("Generare o inserire un prezzo di listino per ogni prodotto prima dell'esportazione.");
-          discountFactor(combinedDiscount(row));
-          if (parseNumber(row.lotto) <= 0) throw Error("Inserire un lotto di riferimento valido per ogni prodotto.");
+          const lots = cycleForOfferRow(row) ? selectedOfferLots(row) : [Number(row.lotto)].filter((lot) => lot > 0);
+          if (!lots.length) throw Error("Selezionare almeno un lotto da includere nell'offerta cliente.");
+          if (cycleForOfferRow(row)) lots.forEach((lot) => calculateOfferLotPrice(row, lot));
+          if (pricePresentation === "listino_sconto") {
+            discountFactor(combinedDiscount(row));
+            if (lots.some((lot) => parseNumber(offerLotTerms(row, lot).listino) <= 0))
+              throw Error("Generare o inserire il prezzo di listino per ogni lotto selezionato prima dell'esportazione.");
+          }
         }
       }
       const html = buildCommercialOfferPrintHtml(
@@ -326,12 +382,9 @@ export default function OffertaEditorPage() {
       {offer.righe.map((row, index) => {
         const cycle = cycleForOfferRow(row);
         let lots: number[] = [];
-        try { lots = simulationsForOfferRow(row).map((simulation) => Number(simulation.lotto)); } catch { /* Validation appears in the price summary. */ }
+        try { lots = offerLotsForRow(row); } catch { /* Validation appears in the price summary. */ }
+        const selectedLots = selectedOfferLots(row);
         const price = lotPrice(row);
-        const netDiscount = (() => {
-          try { return parseNumber(row.listino) * discountFactor(combinedDiscount(row)); }
-          catch { return parseNumber(row.netto); }
-        })();
         return <section key={index} className="bg-white border rounded-xl p-5 space-y-4">
           <div className="flex justify-between items-center gap-2">
             <h3 className="font-semibold">Prodotto {index + 1}{row.record_id ? ` · ciclo ${row.codice || row.record_id} · rev. ${row.rev ?? 1}` : ""}</h3>
@@ -350,12 +403,7 @@ export default function OffertaEditorPage() {
             {([["codice", "Codice articolo"], ["descrizione", "Descrizione"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
               <span>{label}</span><input disabled={locked} className="p-2 rounded border disabled:bg-slate-100" value={String(row[key] ?? "")} onChange={(event) => editRow(index, key, event.target.value)}/>
             </label>)}
-            {cycle ? <label className="flex flex-col text-sm gap-1">
-              <span>Lotto di riferimento (pezzi)</span>
-              <select disabled={locked || lots.length === 0} value={String(row.lotto ?? "")} onChange={(event) => editRow(index, "lotto", Number(event.target.value))} className="p-2 rounded border disabled:bg-slate-100">
-                {lots.map((lot) => <option key={lot} value={lot}>{lot.toLocaleString("it-IT")} pz</option>)}
-              </select>
-            </label> : <label className="flex flex-col text-sm gap-1">
+            {!cycle && <label className="flex flex-col text-sm gap-1">
               <span>Lotto di riferimento (pezzi)</span><input disabled={locked} type="number" min="1" step="1" className="p-2 rounded border disabled:bg-slate-100" value={row.lotto ?? ""} onChange={(event) => editRow(index, "lotto", event.target.value === "" ? "" : Number(event.target.value))}/>
             </label>}
             <label className="flex flex-col text-sm gap-1">
@@ -369,7 +417,8 @@ export default function OffertaEditorPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-lg bg-slate-50 p-4 text-sm">
             {price ? <>
-              <span>Costo standard €/pz: <b>€ {money(price.simulation.costo_standard)}</b></span>
+              <span>Costo industriale standard €/pz: <b>€ {money(price.simulation.costo_standard)}</b></span>
+              <span>Lotto principale: <b>{Number(row.lotto).toLocaleString("it-IT")} pz</b></span>
               <span>Quota costi fissi €/pz: <b>€ {money(price.fixedCostPerPiece)}</b></span>
               <span>Ricarico costi fissi: <b>€ {money(price.fixedCostPerPiece * price.markupPercent / 100)}</b></span>
               <span>Costo pieno €/pz: <b>€ {money(price.fullCost)}</b></span>
@@ -378,47 +427,75 @@ export default function OffertaEditorPage() {
             </> : <p className="md:col-span-3 text-amber-800">Seleziona un prodotto dai Cicli Standard e verifica lotto, ricarico e margine.</p>}
           </div>
 
-          {cycle && lots.length > 0 && <div>
-            <h4 className="mb-2 font-semibold">Prezzi proposti per i lotti del ciclo</h4>
+          {cycle && <div>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div><h4 className="font-semibold">Prezzi proposti per lotto</h4><p className="text-xs text-slate-500">Seleziona una o più quantità da presentare al cliente. I lotti aggiuntivi si calcolano sullo stesso ciclo.</p></div>
+              {!locked && <div className="flex items-center gap-2">
+                <label className="sr-only" htmlFor={"new-offer-lot-" + index}>Nuovo lotto aggiuntivo</label>
+                <input id={"new-offer-lot-" + index} type="number" min="1" step="1" value={newLotDrafts[index] ?? ""} onChange={(event) => setNewLotDrafts((current) => ({ ...current, [index]: event.target.value }))} placeholder="Nuovo lotto pz" className="w-36 rounded border p-2 text-sm"/>
+                <button type="button" onClick={() => addOfferLot(index)} className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm text-emerald-800"><Plus size={15}/>Aggiungi lotto</button>
+              </div>}
+            </div>
             <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full min-w-[720px] text-sm">
+              <table className="w-full min-w-[760px] text-sm">
                 <thead className="bg-slate-50"><tr>
-                  <th className="p-2 text-left">Lotto</th><th className="p-2 text-right">Costo standard €/pz</th>
+                  <th className="p-2 text-left">Lotto</th><th className="p-2 text-right">Costo industriale standard €/pz</th>
                   <th className="p-2 text-right">Costi fissi €/pz</th><th className="p-2 text-right">Costo pieno €/pz</th>
                   <th className="p-2 text-right">Prezzo netto €/pz</th><th className="p-2 text-right">Totale lotto</th>
-                  {!locked && <th className="p-2 text-center">Scelta</th>}
+                  {!locked && <th className="p-2 text-center">In offerta</th>}
                 </tr></thead>
                 <tbody>{lots.map((lot) => {
                   let simulationPrice = null;
                   try { simulationPrice = calculateOfferLotPrice(row, lot); } catch { /* Keep an invalid row visible for correction. */ }
-                  return <tr key={lot} className={`border-t ${Number(row.lotto) === lot ? "bg-emerald-50" : ""}`}>
+                  const custom = (row.lotti_aggiuntivi ?? []).some((customLot) => Number(customLot) === lot) &&
+                    !simulationsForOfferRow(row).some((simulation) => Number(simulation.lotto) === lot);
+                  return <tr key={lot} className={selectedLots.includes(lot) ? "border-t bg-emerald-50" : "border-t"}>
                     <td className="p-2 font-medium">{lot.toLocaleString("it-IT")} pz</td>
                     <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.simulation.costo_standard)}</td>
                     <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.fixedCostPerPiece)}</td>
                     <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.fullCost)}</td>
                     <td className="p-2 text-right font-semibold tabular-nums">€ {money(simulationPrice?.netPrice)}</td>
                     <td className="p-2 text-right tabular-nums">€ {money((simulationPrice?.netPrice ?? 0) * lot)}</td>
-                    {!locked && <td className="p-2 text-center"><button type="button" aria-label={`Seleziona lotto ${lot}`} onClick={() => editRow(index, "lotto", lot)} className="rounded border px-2 py-1 text-xs text-emerald-800">Seleziona</button></td>}
+                    {!locked && <td className="p-2 text-center">
+                      <input type="checkbox" aria-label={"Includi lotto " + lot + " nell'offerta cliente"} checked={selectedLots.includes(lot)} onChange={(event) => selectLot(index, lot, event.target.checked)} className="h-4 w-4 accent-emerald-700"/>
+                      {custom && <button type="button" aria-label={"Rimuovi lotto aggiuntivo " + lot} onClick={() => removeOfferLot(index, lot)} className="ml-2 text-xs text-red-700">Rimuovi</button>}
+                    </td>}
                   </tr>;
                 })}</tbody>
               </table>
             </div>
+            {selectedLots.length === 0 && <p className="mt-2 text-sm text-amber-800">Seleziona almeno un lotto per l’offerta cliente.</p>}
           </div>}
 
           <div className="rounded-lg border p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div><h4 className="font-semibold">Prezzo di listino</h4><p className="text-xs text-slate-500">Genera il listino inverso partendo dal prezzo netto proposto e dallo sconto.</p></div>
-              {!locked && <button type="button" onClick={() => generateListino(index)} disabled={!price} className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 disabled:opacity-40"><FileText size={16}/>Genera prezzo di listino</button>}
+              <div><h4 className="font-semibold">Prezzi di listino per lotto</h4><p className="text-xs text-slate-500">Il listino viene calcolato separatamente sul netto proposto per ciascun lotto selezionato.</p></div>
+              {!locked && <button type="button" onClick={() => generateListino(index)} disabled={!price || selectedLots.length === 0} className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 disabled:opacity-40"><FileText size={16}/>Genera listini selezionati</button>}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <label className="flex flex-col text-sm gap-1"><span>Listino €</span><input disabled={locked} type="number" min="0" step="0.01" className="p-2 rounded border disabled:bg-slate-100" value={row.listino ?? ""} onChange={(event) => editRow(index, "listino", Number(event.target.value))}/></label>
+            {cycle && <div className="overflow-x-auto rounded border">
+              <table className="w-full min-w-[620px] text-sm"><thead className="bg-slate-50"><tr><th className="p-2 text-left">Lotto selezionato</th><th className="p-2 text-right">Netto proposto €/pz</th><th className="p-2 text-right">Listino €/pz</th><th className="p-2 text-right">Netto dopo sconto €/pz</th><th className="p-2 text-left">Esito listino</th></tr></thead>
+                <tbody>{selectedLots.map((lot) => {
+                  const terms = offerLotTerms(row, lot);
+                  const listino = parseNumber(terms.listino);
+                  const netAfterDiscount = (() => { try { return listino * discountFactor(combinedDiscount(row)); } catch { return 0; } })();
+                  let proposedNet = 0;
+                  try { proposedNet = calculateOfferLotPrice(row, lot).netPrice; } catch { /* The row validation explains the error. */ }
+                  const current = generatedListinoIsCurrent(row, lot);
+                  return <tr key={lot} className="border-t"><td className="p-2">{lot.toLocaleString("it-IT")} pz</td><td className="p-2 text-right">€ {money(proposedNet)}</td>
+                    <td className="p-2 text-right"><input aria-label={"Prezzo di listino per lotto " + lot} disabled={locked} type="number" min="0" step="0.01" className="w-32 rounded border p-2 text-right disabled:bg-slate-100" value={terms.listino ?? ""} onChange={(event) => editLotListino(index, lot, event.target.value === "" ? "" : Number(event.target.value))}/></td>
+                    <td className="p-2 text-right">€ {money(netAfterDiscount)}</td><td className={current ? "p-2 text-xs text-emerald-700" : "p-2 text-xs text-amber-700"}>{current ? "Allineato al netto" : "Da generare o aggiornare"}</td></tr>;
+                })}</tbody>
+              </table>
+            </div>}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <label className="flex flex-col text-sm gap-1"><span>Sconto cliente (es. 40+10%)</span><input disabled={locked} className="p-2 rounded border disabled:bg-slate-100" value={row.sconto_base ?? ""} onChange={(event) => editRow(index, "sconto_base", event.target.value)}/></label>
               <label className="flex flex-col text-sm gap-1"><span>Sconto extra (%)</span><input disabled={locked} type="number" min="0" max="99.99" step="0.1" className="p-2 rounded border disabled:bg-slate-100" value={row.extra ?? 0} onChange={(event) => editRow(index, "extra", Number(event.target.value))}/></label>
-              <div className="rounded bg-slate-50 p-2 text-sm"><div>Netto dopo sconto: <b>€ {money(netDiscount)}</b></div><div>Prezzo listino attuale: <b>€ {money(row.listino)}</b></div></div>
+              {!cycle && <label className="flex flex-col text-sm gap-1"><span>Listino €</span><input disabled={locked} type="number" min="0" step="0.01" className="p-2 rounded border disabled:bg-slate-100" value={row.listino ?? ""} onChange={(event) => editRow(index, "listino", Number(event.target.value))}/></label>}
             </div>
-            {row.listino_generato_per_netto != null && <p className={`text-xs ${generatedListinoIsCurrent(row) ? "text-emerald-700" : "text-amber-700"}`}>
-              {generatedListinoIsCurrent(row) ? "Listino allineato al prezzo netto attuale." : "Lotto, ricarico, margine o sconto sono cambiati: genera di nuovo il listino."}
-            </p>}
+            {!cycle && <div className="flex flex-wrap items-center gap-3">
+              {!locked && <button type="button" onClick={() => generateListino(index)} disabled={!price} className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 disabled:opacity-40"><FileText size={16}/>Genera prezzo di listino</button>}
+              {row.listino_generato_per_netto != null && <span className={generatedListinoIsCurrent(row, Number(row.lotto)) ? "text-xs text-emerald-700" : "text-xs text-amber-700"}>{generatedListinoIsCurrent(row, Number(row.lotto)) ? "Listino allineato al prezzo netto attuale." : "Prezzo o sconto cambiato: genera di nuovo il listino."}</span>}
+            </div>}
           </div>
           {Boolean(row.data) && <p className="text-xs text-slate-500">I dati del ciclo sorgente e i costi del lotto restano salvati come snapshot nell’offerta.</p>}
         </section>;
@@ -426,7 +503,7 @@ export default function OffertaEditorPage() {
 
       <section className="bg-white border rounded-xl p-5 space-y-3">
         <h2 className="text-lg font-semibold">Esportazione PDF</h2>
-        <p className="text-sm text-slate-600">Il documento interno include i costi del ciclo e tutte le simulazioni lotto. Il documento cliente mostra solo il lotto scelto e il prezzo selezionato.</p>
+        <p className="text-sm text-slate-600">Il documento interno include i costi del ciclo e tutti i lotti calcolati. Il documento cliente riporta tutti i lotti selezionati e il relativo prezzo netto o listino scontato.</p>
         <div className="flex flex-wrap items-center gap-3">
           <button type="button" onClick={() => exportPdf("internal")} className="inline-flex items-center gap-2 rounded bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"><Printer size={16}/>Esporta PDF interno</button>
           <label className="flex items-center gap-2 text-sm"><span>Prezzo cliente</span><select value={pricePresentation} onChange={(event) => setPricePresentation(event.target.value as CustomerPricePresentation)} className="rounded border px-2 py-2">
@@ -455,7 +532,7 @@ export default function OffertaEditorPage() {
               return <li key={group.key} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0"><p className="font-semibold text-slate-900">{cycle.code || "(senza codice)"} <span className="font-normal text-slate-500">· rev. {cycle.rev ?? 1}</span></p>
                   <p className="break-words text-sm text-slate-700">{cycle.description || "Descrizione non presente"}</p>
-                  <p className="mt-1 text-xs text-slate-500">{cycle.client || "Cliente non indicato"} · Lotto ciclo: {cycle.lot || "—"} · Costo standard: € {money(cycle.standardCost)} · Prezzo minimo ciclo: € {money(cycle.minimumPrice)}</p></div>
+                  <p className="mt-1 text-xs text-slate-500">{cycle.client || "Cliente non indicato"} · Lotto ciclo: {cycle.lot || "—"} · Costo industriale standard: € {money(cycle.standardCost)} · Prezzo minimo ciclo: € {money(cycle.minimumPrice)}</p></div>
                 <button type="button" disabled={selectingCycle} onClick={() => void chooseStandardCycle(cycle.id)} className="shrink-0 rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{selectingCycle ? "Caricamento..." : "Seleziona"}</button>
               </li>;
             })}</ul>

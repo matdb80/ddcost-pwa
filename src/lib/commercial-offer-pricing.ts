@@ -4,6 +4,12 @@ import { parseCycleRow, type CicloEditorModel } from "@/types/cycle";
 
 export type CommercialOfferRow = Record<string, unknown>;
 
+export type OfferLotTerms = {
+  listino?: number | string;
+  listino_generato_per_netto?: number;
+  listino_generato_sconto?: string;
+};
+
 export type OfferLotPrice = {
   lot: number;
   simulation: SimulazioneLotto;
@@ -65,9 +71,100 @@ export function cycleForOfferRow(row: CommercialOfferRow): CicloEditorModel | nu
 export function simulationsForOfferRow(row: CommercialOfferRow): SimulazioneLotto[] {
   const cycle = cycleForOfferRow(row);
   if (!cycle) return [];
-  const saved = cycle.simulazioni.filter((item) => Number(item.lotto) > 0);
-  if (saved.length) return saved;
-  return calcolaSimulazioni(cycle);
+  // Stored simulation values can predate the current cost rules. The source
+  // snapshot is authoritative for the cycle inputs; recalculate its lots so
+  // setup and tooling costs are consistently included in every offer.
+  return calcolaSimulazioni({ ...cycle, lotti_personalizzati: cycleSimulationLots(cycle) });
+}
+
+export function cycleSimulationLots(cycle: CicloEditorModel): number[] | undefined {
+  const configured = (cycle.lotti_personalizzati ?? []).map(Number).filter((lot) => Number.isInteger(lot) && lot > 0);
+  if (configured.length) return [...new Set(configured)];
+  const persisted = cycle.simulazioni.map((simulation) => Number(simulation.lotto))
+    .filter((lot) => Number.isInteger(lot) && lot > 0);
+  return persisted.length ? [...new Set(persisted)] : undefined;
+}
+
+export function offerLotsForRow(row: CommercialOfferRow): number[] {
+  const configured = simulationsForOfferRow(row).map((simulation) => Number(simulation.lotto));
+  const custom = Array.isArray(row.lotti_aggiuntivi) ? row.lotti_aggiuntivi.map(Number) : [];
+  const primary = Number(row.lotto);
+  return [...new Set([...configured, ...custom, primary])]
+    .filter((lot) => Number.isInteger(lot) && lot > 0)
+    .sort((a, b) => a - b);
+}
+
+export function selectedOfferLots(row: CommercialOfferRow): number[] {
+  const raw = Array.isArray(row.lotti_selezionati) ? row.lotti_selezionati : [row.lotto];
+  return [...new Set(raw.map(Number))]
+    .filter((lot) => Number.isInteger(lot) && lot > 0)
+    .sort((a, b) => a - b);
+}
+
+export function offerLotTerms(row: CommercialOfferRow, lot: number): OfferLotTerms {
+  const allTerms = row.prezzi_lotti && typeof row.prezzi_lotti === "object" && !Array.isArray(row.prezzi_lotti)
+    ? row.prezzi_lotti as Record<string, OfferLotTerms>
+    : {};
+  const stored = allTerms[String(lot)];
+  if (stored) return { ...stored };
+  if (Number(row.lotto) === lot) {
+    return {
+      listino: row.listino as number | string | undefined,
+      listino_generato_per_netto: numberOrUndefined(row.listino_generato_per_netto),
+      listino_generato_sconto: typeof row.listino_generato_sconto === "string" ? row.listino_generato_sconto : undefined,
+    };
+  }
+  return {};
+}
+
+export function withOfferLotTerms(
+  row: CommercialOfferRow,
+  lot: number,
+  terms: OfferLotTerms,
+): CommercialOfferRow {
+  const allTerms = row.prezzi_lotti && typeof row.prezzi_lotti === "object" && !Array.isArray(row.prezzi_lotti)
+    ? row.prezzi_lotti as Record<string, OfferLotTerms>
+    : {};
+  const nextTerms = { ...allTerms, [String(lot)]: { ...offerLotTerms(row, lot), ...terms } };
+  const next = { ...row, prezzi_lotti: nextTerms };
+  if (Number(row.lotto) === lot) {
+    return {
+      ...next,
+      listino: nextTerms[String(lot)].listino ?? "",
+      listino_generato_per_netto: nextTerms[String(lot)].listino_generato_per_netto,
+      listino_generato_sconto: nextTerms[String(lot)].listino_generato_sconto,
+    };
+  }
+  return next;
+}
+
+export function withSelectedOfferLot(
+  row: CommercialOfferRow,
+  lot: number,
+  selected: boolean,
+): CommercialOfferRow {
+  const currentPrimary = Number(row.lotto);
+  const baseRow = Number.isInteger(currentPrimary) && currentPrimary > 0
+    ? withOfferLotTerms(row, currentPrimary, {
+      listino: row.listino as number | string | undefined,
+      listino_generato_per_netto: numberOrUndefined(row.listino_generato_per_netto),
+      listino_generato_sconto: typeof row.listino_generato_sconto === "string" ? row.listino_generato_sconto : undefined,
+    })
+    : row;
+  const current = selectedOfferLots(row);
+  const nextLots = selected
+    ? [...new Set([...current, lot])].sort((a, b) => a - b)
+    : current.filter((item) => item !== lot);
+  const primary = nextLots.includes(currentPrimary) ? currentPrimary : nextLots[0];
+  const primaryTerms = primary ? offerLotTerms(baseRow, primary) : {};
+  return {
+    ...baseRow,
+    lotti_selezionati: nextLots,
+    lotto: primary ?? "",
+    listino: primaryTerms.listino ?? "",
+    listino_generato_per_netto: primaryTerms.listino_generato_per_netto,
+    listino_generato_sconto: primaryTerms.listino_generato_sconto,
+  };
 }
 
 export function calculateOfferLotPrice(row: CommercialOfferRow, lot: number): OfferLotPrice {
@@ -120,8 +217,21 @@ export function calculateOfferLotPrice(row: CommercialOfferRow, lot: number): Of
 export function withCalculatedOfferRow(row: CommercialOfferRow): CommercialOfferRow {
   const lot = Number(row.lotto);
   const price = calculateOfferLotPrice(row, lot);
+  const prices = selectedOfferLots(row).map((selectedLot) => {
+    const selectedPrice = calculateOfferLotPrice(row, selectedLot);
+    return {
+      lotto: selectedLot,
+      costo_industriale_standard: selectedPrice.simulation.costo_standard,
+      costi_fissi_per_pezzo: selectedPrice.fixedCostPerPiece,
+      costo_pieno: selectedPrice.fullCost,
+      prezzo_netto_proposto: selectedPrice.netPrice,
+      totale_lotto: selectedPrice.netPrice * selectedLot,
+      margine_netto_pct: selectedPrice.actualMarginPercent,
+    };
+  });
   return {
     ...row,
+    prezzi_proposti_lotti: prices,
     costo_standard_lotto: price.simulation.costo_standard,
     full_cost: price.fullCost,
     prezzo_minimo: price.netPrice,
@@ -135,4 +245,9 @@ export function withCalculatedOfferRow(row: CommercialOfferRow): CommercialOffer
 function numberOrNull(value: unknown): number | null {
   const number = Number(value);
   return value == null || value === "" || !Number.isFinite(number) ? null : number;
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  const number = Number(value);
+  return value == null || value === "" || !Number.isFinite(number) ? undefined : number;
 }

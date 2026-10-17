@@ -206,6 +206,41 @@ export function calcolaAttrezzaggioTotale(ciclo: CicloEditorModel): number {
 }
 
 /**
+ * Setup cost per finished item at the requested simulation lot.
+ * A row-level reference lot overrides the simulation lot when present;
+ * otherwise each simulation lot amortizes its own setup share.
+ */
+export function calcolaAttrezzaggioPerPezzo(ciclo: CicloEditorModel, lotto: number): number {
+  if (!(lotto > 0)) return 0;
+  const active = new Set<number>();
+  function setupAt(index: number, depth: number): number {
+    if (depth > 4) throw new Error("Assieme oltre quattro livelli");
+    if (active.has(index)) throw new Error("Ciclo di parentela negli assiemi");
+    const row = ciclo.righe[index];
+    if (!row || row.considera === false) return 0;
+    active.add(index);
+    try {
+      if (row.assembly_auto === true) {
+        const children = ciclo.righe.flatMap((child, childIndex) =>
+          child.parent_idx === index ? [childIndex] : []
+        );
+        const quantity = Number(row.nr_componenti) || 0;
+        return children.reduce((sum, childIndex) => sum + setupAt(childIndex, depth + 1), 0) * quantity;
+      }
+      if (row.categoria !== "LAVORAZIONE INTERNA" || !(row.attrezzaggio_min > 0)) return 0;
+      const referenceLot = row.lotto_voce > 0 ? row.lotto_voce : lotto;
+      return referenceLot > 0 ? row.attrezzaggio_min * ciclo.costo_lavoro_min / referenceLot : 0;
+    } finally {
+      active.delete(index);
+    }
+  }
+
+  return ciclo.righe.reduce((sum, row, index) =>
+    row.parent_idx == null ? sum + setupAt(index, 1) : sum, 0
+  );
+}
+
+/**
  * Fixed setup and dedicated-tooling cost per finished product at a given lot.
  * These are the cycle costs that are amortized by the production quantity.
  */
@@ -263,7 +298,6 @@ export function calcolaSimulazioni(ciclo: CicloEditorModel): SimulazioneLotto[] 
     : [25, 50, 100, 250, 500, 1000];
 
   const clm = ciclo.costo_lavoro_min;
-  const attrezzaggioTotale = calcolaAttrezzaggioTotale(ciclo);
 
   // Do not change the original historical lot simulator for cycles with no
   // auto-assembly. Only new explicit assemblies use the recursive breakdown.
@@ -275,7 +309,7 @@ export function calcolaSimulazioni(ciclo: CicloEditorModel): SimulazioneLotto[] 
       return {
         lotto, breakdown:bd, costo_standard:costoStandard, full_cost:fullCost,
         prezzo_minimo:calcolaPrezzoMinimo(fullCost,ciclo.margine_minimo),
-        attrezzaggio_pz:lotto>0?attrezzaggioTotale/lotto:0,
+        attrezzaggio_pz: calcolaAttrezzaggioPerPezzo(ciclo, lotto),
       };
     });
   }
@@ -344,7 +378,7 @@ export function calcolaSimulazioni(ciclo: CicloEditorModel): SimulazioneLotto[] 
     const costoStandard = calcolaCostoStandard(bd);
     const fullCost = calcolaFullCost(costoStandard, ciclo.ricarico_spese);
     const prezzoMinimo = calcolaPrezzoMinimo(fullCost, ciclo.margine_minimo);
-    const attrezzaggioPz = lotto > 0 ? attrezzaggioTotale / lotto : 0;
+    const attrezzaggioPz = calcolaAttrezzaggioPerPezzo(ciclo, lotto);
 
     return {
       lotto,

@@ -76,7 +76,7 @@ export default function CicliPage(){
               <th className="text-left p-3">Cliente</th>
               <th className="text-left p-3">Lotto</th>
               <th className="text-left p-3">Rev.</th>
-              <th className="text-right p-3">Costo Std.</th>
+              <th className="text-right p-3">Costo industriale standard</th>
               <th className="text-right p-3">Prezzo Min.</th>
               <th className="text-center p-3">Azioni</th>
             </tr>

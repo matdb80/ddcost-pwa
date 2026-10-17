@@ -1,7 +1,10 @@
 import {
   calculateOfferLotPrice,
   cycleForOfferRow,
+  offerLotTerms,
+  offerLotsForRow,
   simulationsForOfferRow,
+  selectedOfferLots,
   type CommercialOfferRow,
 } from "./commercial-offer-pricing";
 
@@ -117,18 +120,20 @@ function internalProductSection(row: CommercialOfferRow, index: number): string 
   const cycle = cycleForOfferRow(row);
   const code = escapeHtml(String(row.codice ?? ""));
   const description = escapeHtml(String(row.descrizione ?? ""));
-  const heading = `<div class="product-heading"><h2>${index + 1}. ${code || "Prodotto"} · ${description}</h2><span class="muted">Lotto offerta: ${formatNumber(row.lotto)} pz · rev. ${escapeHtml(String(row.rev ?? "—"))}</span></div>`;
+  const offeredLots = selectedOfferLots(row).map(formatNumber).join(" · ") || "nessuno";
+  const heading = `<div class="product-heading"><h2>${index + 1}. ${code || "Prodotto"} · ${description}</h2><span class="muted">Lotti offerti: ${offeredLots} pz · rev. ${escapeHtml(String(row.rev ?? "—"))}</span></div>`;
   if (!cycle) return `<section class="product">${heading}<p class="muted">Questa riga non contiene uno snapshot di un Ciclo Standard; sono riportati solo i dati commerciali salvati.</p>${storedOfferSummary(row)}</section>`;
 
   const simulations = simulationsForOfferRow(row);
   const markup = percentValue(row.ricarico_costi_fissi_pct, cycle.ricarico_spese * 100);
   const margin = percentValue(row.margine_netto_desiderato_pct, cycle.margine_minimo * 100);
   const cycleDetails = `<p class="muted">Ciclo ${escapeHtml(cycle.codice)} · revisione ${escapeHtml(String(cycle.rev ?? row.rev ?? 1))} · lotto base ${escapeHtml(String(cycle.lotto || "—"))} · costo lavoro € ${money(cycle.costo_lavoro_min)}/min · ricarico spese del ciclo ${money(cycle.ricarico_spese * 100)}% · margine minimo del ciclo ${money(cycle.margine_minimo * 100)}%.</p>`;
-  const pricingDetails = `<p>Parametri offerta: ricarico costi ${money(markup)}% · margine netto desiderato ${money(margin)}% · lotto scelto ${formatNumber(row.lotto)} pz.</p>`;
-  const groups = chunk(simulations, 5);
+  const pricingDetails = `<p>Parametri offerta: ricarico costi ${money(markup)}% · margine netto desiderato ${money(margin)}% · lotti selezionati ${offeredLots} pz.</p>`;
+  const allLots = offerLotsForRow(row).map((lot) => calculateOfferLotPrice(row, lot).simulation);
+  const groups = chunk(allLots.length ? allLots : simulations, 5);
   const tables = groups.map((group, groupIndex) => costMatrix(row, group, groupIndex, groups.length)).join("");
   const sourceLines = sourceCycleLines(cycle.righe);
-  return `<section class="product">${heading}${cycleDetails}${pricingDetails}<p class="footnote">Le voci per categoria compongono il costo standard. Le quote fisse e variabili sono una ripartizione analitica dello stesso costo e non vanno sommate di nuovo.</p><h3>Costi e prezzi per tutti i lotti del ciclo</h3>${tables}<h3 class="page-break">Riferimenti tecnici e costi unitari salvati nel ciclo</h3>${sourceLines}${cycle.note_generali ? `<p><b>Note del ciclo:</b> ${escapeHtml(cycle.note_generali)}</p>` : ""}</section>`;
+  return `<section class="product">${heading}${cycleDetails}${pricingDetails}<p class="footnote">Le voci per categoria compongono il costo industriale standard. Le quote fisse e variabili sono una ripartizione analitica dello stesso costo e non vanno sommate di nuovo.</p><h3>Costi e prezzi per tutti i lotti del ciclo e dell’offerta</h3>${tables}<h3 class="page-break">Riferimenti tecnici e costi unitari salvati nel ciclo</h3>${sourceLines}${cycle.note_generali ? `<p><b>Note del ciclo:</b> ${escapeHtml(cycle.note_generali)}</p>` : ""}</section>`;
 }
 
 function costMatrix(
@@ -140,7 +145,7 @@ function costMatrix(
   const headers = simulations.map((simulation) => `<th class="num">${formatNumber(simulation.lotto)} pz</th>`).join("");
   const row = (label: string, getValue: (simulation: SimulationsItem) => unknown, total = false) =>
     `<tr${total ? ` class="total"` : ""}><th>${label}</th>${simulations.map((simulation) => `<td>${money(getValue(simulation))}</td>`).join("")}</tr>`;
-  const standardRow = row("Costo standard €/pz", (simulation) => simulation.costo_standard, true);
+  const standardRow = row("Costo industriale standard €/pz", (simulation) => simulation.costo_standard, true);
   const rows = COST_CATEGORIES.map(([category, label]) => row(label, (simulation) => simulation.breakdown?.[category] ?? 0)).join("");
   const setup = row("Quota attrezzaggio €/pz", (simulation) => simulation.attrezzaggio_pz);
   const fixed = row("Costi fissi ammortizzati €/pz", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).fixedCostPerPiece);
@@ -177,14 +182,18 @@ function sourceCycleLines(lines: CicloRow[]): string {
 }
 
 function customerOfferTable(rows: CommercialOfferRow[], presentation: CustomerPricePresentation): string {
-  const lines = rows.map((row, index) => {
-    const lot = positiveNumber(row.lotto) ?? 0;
+  const expanded = rows.flatMap((row, index) => {
+    const selectedLots = selectedOfferLots(row);
+    const lots = selectedLots.length ? selectedLots : [positiveNumber(row.lotto) ?? 0];
+    return lots.map((lot) => ({ row, index, lot }));
+  });
+  const lines = expanded.map(({ row, index, lot }) => {
     const code = escapeHtml(String(row.codice ?? ""));
     const description = escapeHtml(String(row.descrizione ?? ""));
     let unitNet: number;
     let priceCell: string;
     if (presentation === "listino_sconto") {
-      const listPrice = number(row.listino);
+      const listPrice = number(offerLotTerms(row, lot).listino);
       const discount = discountText(row);
       const factor = discountFactor(discount);
       unitNet = roundCurrency(listPrice * factor);
@@ -196,13 +205,16 @@ function customerOfferTable(rows: CommercialOfferRow[], presentation: CustomerPr
     }
     return `<tr><td>${index + 1}</td><td><strong>${code}</strong><br>${description}</td><td class="num">${formatNumber(lot)} pz</td><td>${priceCell}</td><td class="num">€ ${money(unitNet * lot)}</td></tr>`;
   }).join("");
-  const total = rows.reduce((sum, row) => {
-    const lot = positiveNumber(row.lotto) ?? 0;
-    if (presentation === "listino_sconto") return sum + roundCurrency(number(row.listino) * discountFactor(discountText(row))) * lot;
+  const hasAlternativeQuantities = rows.some((row) => selectedOfferLots(row).length > 1);
+  const total = hasAlternativeQuantities ? null : expanded.reduce((sum, { row, lot }) => {
+    if (presentation === "listino_sconto") return sum + roundCurrency(number(offerLotTerms(row, lot).listino) * discountFactor(discountText(row))) * lot;
     try { return sum + roundCurrency(calculateOfferLotPrice(row, lot).netPrice) * lot; }
     catch { return sum + number(row.prezzo_netto_proposto ?? row.netto ?? row.netto_base) * lot; }
   }, 0);
-  return `<table class="customer-lines"><thead><tr><th>#</th><th>Prodotto</th><th class="num">Lotto</th><th>${presentation === "netto" ? "Prezzo" : "Listino e sconto"}</th><th class="num">Totale netto</th></tr></thead><tbody>${lines}</tbody></table><div class="customer-total">Totale netto offerta: € ${money(total)}</div>`;
+  const totalBlock = total == null
+    ? `<p class="footnote">Le quantità indicate sono alternative. Il totale è riportato per ciascun lotto.</p>`
+    : `<div class="customer-total">Totale netto offerta: € ${money(total)}</div>`;
+  return `<table class="customer-lines"><thead><tr><th>#</th><th>Prodotto</th><th class="num">Lotto</th><th>${presentation === "netto" ? "Prezzo" : "Listino e sconto"}</th><th class="num">Totale netto</th></tr></thead><tbody>${lines}</tbody></table>${totalBlock}`;
 }
 
 function storedOfferSummary(row: CommercialOfferRow): string {

@@ -1,5 +1,6 @@
 import { parseCycleRow } from "@/types/cycle";
 import { calcolaSimulazioni } from "./cycle-calculator";
+import { cycleSimulationLots } from "./commercial-offer-pricing";
 
 export type StandardCycleRecord = {
   id: number;
@@ -22,13 +23,18 @@ export function applyStandardCycleToOfferRow(
   cycle: StandardCycleRecord,
 ): CommercialOfferRow {
   const product = parseCycleRow(cycle);
-  const simulations = product.simulazioni.length ? product.simulazioni : calcolaSimulazioni(product);
+  const simulations = calcolaSimulazioni({ ...product, lotti_personalizzati: cycleSimulationLots(product) });
   const configuredLots = simulations.map((simulation) => simulation.lotto).filter((lot) => lot > 0);
   const cycleLot = Number(product.lotto);
   const defaultLot = configuredLots.length
     ? configuredLots.includes(cycleLot) ? cycleLot : configuredLots[0]
     : cycleLot > 0 ? cycleLot : 1;
   const currentLot = Number(row.lotto);
+  const initialLot = Number.isInteger(currentLot) && currentLot > 0 ? currentLot : defaultLot;
+  const existingSelectedLots = Array.isArray(row.lotti_selezionati)
+    ? row.lotti_selezionati.map(Number).filter((lot) => Number.isInteger(lot) && lot > 0)
+    : [];
+  const selectedLots = existingSelectedLots.length ? [...new Set(existingSelectedLots)] : [initialLot];
 
   return {
     ...row,
@@ -43,7 +49,9 @@ export function applyStandardCycleToOfferRow(
     cycle_lot: product.lotto,
     // A new offer starts from the cycle's reference lot and price assumptions.
     // Existing commercial terms are retained when a product is replaced.
-    lotto: Number.isFinite(currentLot) && currentLot > 0 ? currentLot : defaultLot,
+    lotto: initialLot,
+    lotti_selezionati: selectedLots,
+    lotti_aggiuntivi: Array.isArray(row.lotti_aggiuntivi) ? row.lotti_aggiuntivi : [],
     ricarico_costi_fissi_pct: row.ricarico_costi_fissi_pct ?? product.ricarico_spese * 100,
     margine_netto_desiderato_pct: row.margine_netto_desiderato_pct ?? product.margine_minimo * 100,
     data: {
@@ -60,7 +68,7 @@ export function applyStandardCycleToOfferRow(
       costo_standard: product.costo_standard,
       full_cost: product.full_cost,
       prezzo_minimo: product.prezzo_minimo,
-      simulazioni: product.simulazioni,
+      simulazioni: simulations,
       dataJson: cycle.dataJson ?? null,
     },
   };
