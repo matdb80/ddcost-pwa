@@ -23,6 +23,7 @@ export function applyStandardCycleToOfferRow(
   cycle: StandardCycleRecord,
 ): CommercialOfferRow {
   const product = parseCycleRow(cycle);
+  const articleCode = product.codice.trim() || `TMP${product.id ?? cycle.id}`;
   const simulations = calcolaSimulazioni({ ...product, lotti_personalizzati: cycleSimulationLots(product) });
   const configuredLots = simulations.map((simulation) => simulation.lotto).filter((lot) => lot > 0);
   const cycleLot = Number(product.lotto);
@@ -38,7 +39,9 @@ export function applyStandardCycleToOfferRow(
 
   return {
     ...row,
-    codice: product.codice,
+    // A temporary, stable code lets the offer and both PDFs identify cycles
+    // that do not yet have an article code assigned in the standard cycle.
+    codice: articleCode,
     descrizione: product.descrizione,
     record_id: product.id,
     root_id: product.rootId ?? product.id,

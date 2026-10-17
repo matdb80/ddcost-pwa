@@ -114,6 +114,7 @@ describe("commercial offer print documents", () => {
   it("shows all cycle lots and technical cost references in the internal export", () => {
     const html = buildCommercialOfferPrintHtml({
       nome: "Offerta di prova",
+      note_cliente: "Consegna da concordare",
       cliente: "Cliente",
       note: "Nota interna riservata",
       righe: [offerRow()],
@@ -121,11 +122,13 @@ describe("commercial offer print documents", () => {
 
     expect(html).toContain("DIDIEFFE GROUP srl");
     expect(html).toContain("Costo industriale standard €/pz");
+    expect(html).toContain("Numero offerta");
     expect(html).toContain("10 pz");
     expect(html).toContain("100 pz");
     expect(html).not.toContain("250 pz");
     expect(html).toContain("ATT-01");
     expect(html).toContain("Nota interna riservata");
+    expect(html).toContain("Consegna da concordare");
   });
 
   it("keeps cycle costs and internal notes out of the customer export", () => {
@@ -139,6 +142,7 @@ describe("commercial offer print documents", () => {
 
     expect(html).toContain("Prezzo netto unitario");
     expect(html).toContain("Consegna da concordare");
+    expect(html).toContain("Numero offerta");
     expect(html).not.toContain("Costo standard €/pz");
     expect(html).not.toContain("ATT-01");
     expect(html).not.toContain("Nota interna riservata");

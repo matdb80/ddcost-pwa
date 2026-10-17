@@ -88,6 +88,21 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    expect(bySimulation.simulazioni.map((s)=>s.costo_standard)).toEqual([0.6,0.06]);
    expect(bySimulation.simulazioni.map((s)=>s.attrezzaggio_pz)).toEqual([0.6,0.06]);
  });
+ it("amortizes ten setup minutes at €24/hour by the row lot or, when empty, by each simulated lot",()=>{
+   const setupRow={
+     ...row("Setup",0),
+     categoria:"LAVORAZIONE INTERNA" as const,
+     attrezzaggio_min:10,
+     lotto_voce:100,
+   };
+   const cycle={...make([setupRow]),costo_lavoro_min:24/60,lotti_personalizzati:[100,200]};
+   const fixedReference=ricalcolaCiclo(cycle);
+   expect(fixedReference.simulazioni.map((simulation)=>simulation.costo_standard)).toEqual([0.04,0.04]);
+
+   const simulationReference=ricalcolaCiclo({...cycle,righe:[{...setupRow,lotto_voce:0}]});
+   expect(simulationReference.simulazioni.map((simulation)=>simulation.costo_standard)).toEqual([0.04,0.02]);
+   expect(simulationReference.simulazioni.map((simulation)=>simulation.attrezzaggio_pz)).toEqual([0.04,0.02]);
+ });
  it("adds a direct component by + and keeps cost, parent and independent rows after a reload",()=>{
    const old=[row("Assembly",0),row("Other row",3)];
    const original=JSON.stringify(old);

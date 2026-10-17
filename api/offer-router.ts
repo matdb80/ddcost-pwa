@@ -3,8 +3,17 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { commercialOffers } from "@db/schema";
+import { formatOfferNumber, italianOfferYear, nextOfferNumberPreview, withOfferNumberInJson } from "../src/lib/commercial-offer-number";
 
 export const offerRouter = createRouter({
+  nextNumber: authedQuery.query(async () => {
+    const db = getDb();
+    const rows = await db
+      .select({ maxId: sql<number>`COALESCE(MAX(${commercialOffers.id}), 0)` })
+      .from(commercialOffers);
+    return { number: nextOfferNumberPreview(Number(rows[0]?.maxId ?? 0)) };
+  }),
+
   list: authedQuery
     .input(
       z.object({
@@ -56,15 +65,30 @@ export const offerRouter = createRouter({
         notes: z.string().optional(),
         numRows: z.number().optional(),
         dataJson: z.string().optional(),
+        /** false means name is the untouched preview and should use the assigned DB sequence. */
+        numberEdited: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
-      const result = await db.insert(commercialOffers).values({
-        userId: ctx.user.id,
-        ...input,
+      const { numberEdited, ...offer } = input;
+      const year = italianOfferYear();
+      return db.transaction(async (tx) => {
+        const result = await tx.insert(commercialOffers).values({
+          userId: ctx.user.id,
+          ...offer,
+          // The auto-increment id is a concurrency-safe, never-reused sequence.
+          name: numberEdited === false ? null : offer.name,
+        });
+        const id = Number(result[0].insertId);
+        const name = numberEdited === false ? formatOfferNumber(id, year) : String(offer.name ?? "");
+        const dataJson = withOfferNumberInJson(offer.dataJson, name);
+        await tx.update(commercialOffers).set({
+          name,
+          ...(dataJson === undefined ? {} : { dataJson }),
+        }).where(eq(commercialOffers.id, id));
+        return { id, name };
       });
-      return { id: Number(result[0].insertId) };
     }),
 
   update: authedQuery

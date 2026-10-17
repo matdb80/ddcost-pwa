@@ -71,4 +71,14 @@ describe("applyStandardCycleToOfferRow", () => {
     });
     expect(result).toMatchObject({ lotto: 25, ricarico_costi_fissi_pct: 40, margine_netto_desiderato_pct: 25 });
   });
+
+  it("assigns a stable TMP code when the selected cycle has no article code", () => {
+    const result = applyStandardCycleToOfferRow({}, {
+      id: 731,
+      code: "",
+      description: "Prodotto senza codice",
+      dataJson: JSON.stringify({ codice: "", descrizione: "Prodotto senza codice", righe: [] }),
+    });
+    expect(result.codice).toBe("TMP731");
+  });
 });

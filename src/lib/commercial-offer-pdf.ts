@@ -56,8 +56,13 @@ export function buildCommercialOfferPrintHtml(
   const body = internal
     ? rows.map((row, index) => internalProductSection(row, index)).join("")
     : customerOfferTable(rows, pricePresentation);
-  const note = String(internal ? offer.note ?? "" : offer.note_cliente ?? "").trim();
-  const noteBlock = note ? `<section class="notes"><h2>Note</h2><p>${escapeHtml(note).replace(/\n/g, "<br>")}</p></section>` : "";
+  const noteSection = (heading: string, raw: unknown) => {
+    const note = String(raw ?? "").trim();
+    return note ? `<section class="notes"><h2>${heading}</h2><p>${escapeHtml(note).replace(/\n/g, "<br>")}</p></section>` : "";
+  };
+  const noteBlock = internal
+    ? noteSection("Note interne", offer.note) + noteSection("Note da mostrare al cliente", offer.note_cliente)
+    : noteSection("Note", offer.note_cliente);
   const companyDetails = [COMPANY.address, COMPANY.vat, COMPANY.registry, COMPANY.phone, COMPANY.email]
     .map((line) => `<div>${escapeHtml(line)}</div>`).join("");
 
@@ -101,7 +106,7 @@ export function buildCommercialOfferPrintHtml(
 </style></head><body>
 <header><img src="${escapeAttribute(logoUrl)}" alt="DDF Didieffe Group"><div class="company"><strong>${COMPANY.name}</strong>${companyDetails}</div></header>
 <h1>${title}</h1>
-<section class="meta"><div><b>Offerta</b>${offerName}${offer.id ? ` · #${offer.id}` : ""}</div><div><b>Data</b>${new Date().toLocaleDateString("it-IT")}</div><div><b>Cliente</b>${client || "—"}</div><div><b>Riferimento</b>${reference || "—"}</div></section>
+<section class="meta"><div><b>Numero offerta</b>${offerName}${offer.id ? ` · #${offer.id}` : ""}</div><div><b>Data</b>${new Date().toLocaleDateString("it-IT")}</div><div><b>Cliente</b>${client || "—"}</div><div><b>Riferimento</b>${reference || "—"}</div></section>
 ${body}${noteBlock}
 <div class="footnote">Documento generato da DDCost · ${internal ? "Uso interno: contiene dati economici e tecnici riservati." : "Importi espressi in Euro."}</div>
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>

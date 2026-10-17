@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
 import { trpc } from "@/providers/trpc";
-import { ArrowLeft, ChevronLeft, ChevronRight, FileText, Pencil, Plus, Printer, Save, Search, Trash2, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, FileText, Pencil, Plus, Printer, Save, Search, Trash2, X } from "lucide-react";
 import { applyStandardCycleToOfferRow } from "@/lib/commercial-offer-cycle";
 import {
   calculateOfferLotPrice,
@@ -118,6 +118,7 @@ export default function OffertaEditorPage() {
   const [offer, setOffer] = useState<OfferDocument>(blankOffer());
   const [baseline, setBaseline] = useState("");
   const [readOnly, setReadOnly] = useState(!isNew);
+  const [offerNumberEdited, setOfferNumberEdited] = useState(false);
   const [error, setError] = useState("");
   const [cyclePickerRow, setCyclePickerRow] = useState<number | null>(null);
   const [cycleSearch, setCycleSearch] = useState("");
@@ -127,6 +128,7 @@ export default function OffertaEditorPage() {
   const [pricePresentation, setPricePresentation] = useState<CustomerPricePresentation>("netto");
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.offer.get.useQuery({ id: numericId }, { enabled: !isNew && numericId > 0 });
+  const nextOfferNumber = trpc.offer.nextNumber.useQuery(undefined, { enabled: isNew });
   const cycleDirectory = trpc.cycle.listGrouped.useQuery({
     search: cycleSearch || undefined, page: cyclePage, pageSize: 25,
   }, { enabled: cyclePickerRow !== null });
@@ -153,6 +155,11 @@ export default function OffertaEditorPage() {
       setError("Il formato storico dell'offerta non è riconosciuto. Nessun dato è stato modificato.");
     }
   }, [data, isNew]);
+
+  useEffect(() => {
+    if (!isNew || offerNumberEdited || !nextOfferNumber.data?.number) return;
+    setOffer((previous) => ({ ...previous, nome: nextOfferNumber.data.number }));
+  }, [isNew, nextOfferNumber.data, offerNumberEdited]);
 
   const changed = JSON.stringify(offer) !== baseline;
   const locked = !isNew && readOnly;
@@ -274,7 +281,7 @@ export default function OffertaEditorPage() {
 
   const save = async () => {
     setError("");
-    if (!offer.nome?.trim()) return setError("Inserire il nome dell'offerta");
+    if (!offer.nome?.trim()) return setError("Inserire il numero dell'offerta");
     if (!Array.isArray(offer.righe) || offer.righe.length < 1) return setError("Inserire almeno una riga");
     if (offer.righe.some((row) => !String(row.descrizione ?? "").trim())) return setError("Inserire la descrizione di ogni riga");
     if (!isNew && !changed) return setError("Nessuna modifica rilevata");
@@ -301,7 +308,7 @@ export default function OffertaEditorPage() {
         dataJson: JSON.stringify(computed),
       };
       if (isNew) {
-        const result = await create.mutateAsync(body);
+        const result = await create.mutateAsync({ ...body, numberEdited: offerNumberEdited });
         navigate("/offerte/" + result.id);
       } else {
         await update.mutateAsync({ id: numericId, ...body });
@@ -357,14 +364,14 @@ export default function OffertaEditorPage() {
         </div>
         {locked
           ? <button type="button" onClick={() => setReadOnly(false)} className="flex gap-2 bg-emerald-600 text-white rounded px-4 py-2"><Pencil size={16}/>Modifica</button>
-          : <button type="button" disabled={create.isPending || update.isPending || (!isNew && !changed)} onClick={() => void save()} className="flex gap-2 bg-emerald-600 disabled:opacity-40 text-white rounded px-4 py-2"><Save size={16}/>Salva offerta</button>}
+          : <button type="button" disabled={create.isPending || update.isPending || (!isNew && !changed) || (isNew && !offerNumberEdited && !nextOfferNumber.data?.number)} onClick={() => void save()} className="flex gap-2 bg-emerald-600 disabled:opacity-40 text-white rounded px-4 py-2"><Save size={16}/>Salva offerta</button>}
       </div>
       {error && <p role="alert" className="p-3 bg-red-50 border border-red-300 text-red-800 rounded">{error}</p>}
       <p className="text-sm text-slate-600">Scegli un prodotto dai Cicli Standard, confronta i prezzi al variare del lotto e prepara una versione interna o una versione da inviare al cliente.</p>
 
       <section className="bg-white border rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 gap-3">
-        {([["nome", "Nome offerta"], ["cliente", "Cliente"], ["riferimento", "Riferimento"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
-          <span>{label}</span><input disabled={locked} value={String(offer[key] ?? "")} onChange={(event) => edit(key, event.target.value)} className="p-2 border rounded disabled:bg-slate-100"/>
+        {([["nome", "Numero offerta"], ["cliente", "Cliente"], ["riferimento", "Riferimento"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
+          <span>{label}</span><input disabled={locked} value={String(offer[key] ?? "")} onChange={(event) => { if (key === "nome" && isNew) setOfferNumberEdited(true); edit(key, event.target.value); }} className="p-2 border rounded disabled:bg-slate-100"/>
         </label>)}
         <label className="flex flex-col text-sm gap-1 md:col-span-2">
           <span>Note interne</span><textarea disabled={locked} rows={3} value={String(offer.note ?? "")} onChange={(event) => edit("note", event.target.value)} className="p-2 border rounded disabled:bg-slate-100"/>
@@ -391,13 +398,18 @@ export default function OffertaEditorPage() {
             {!locked && offer.righe.length > 1 && <button title="Rimuovi prodotto" className="text-red-500" onClick={() => edit("righe", offer.righe.filter((_, rowIndex) => index !== rowIndex))}><Trash2 size={16}/></button>}
           </div>
 
-          {!locked && <div className="flex flex-wrap items-center gap-3">
-            <button type="button" onClick={() => { setCyclePickerRow(index); setCycleSearch(""); setCyclePage(1); }}
+          <div className="flex flex-wrap items-center gap-3">
+            {!locked && <button type="button" onClick={() => { setCyclePickerRow(index); setCycleSearch(""); setCyclePage(1); }}
               className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">
               <Search size={16}/>{row.record_id ? "Sostituisci prodotto da Cicli Standard" : "Scegli prodotto da Cicli Standard"}
-            </button>
-            {row.record_id && <span className="text-xs text-slate-600">Snapshot ciclo {row.codice || row.record_id}, revisione {row.rev ?? 1}</span>}
-          </div>}
+            </button>}
+            {row.record_id && <>
+              <Link to={`/cicli/${row.record_id}`} target="_blank" rel="noreferrer" title="Apre la revisione del ciclo salvata nell'offerta; l'offerta conserva il proprio snapshot." className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                <ExternalLink size={15}/>Apri e modifica ciclo
+              </Link>
+              <span className="text-xs text-slate-600">Snapshot ciclo {row.codice || row.record_id}, revisione {row.rev ?? 1}</span>
+            </>}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {([["codice", "Codice articolo"], ["descrizione", "Descrizione"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
