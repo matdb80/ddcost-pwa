@@ -54,4 +54,21 @@ describe("applyStandardCycleToOfferRow", () => {
     });
     expect(result.data).toMatchObject({ dataJson });
   });
+
+  it("uses a configured cycle lot and its pricing assumptions for a new row", () => {
+    const result = applyStandardCycleToOfferRow({ lotto: "" }, {
+      id: 18,
+      code: "ART-18",
+      description: "Prodotto lotto",
+      lot: "100",
+      dataJson: JSON.stringify({
+        ricarico_spese: 0.4,
+        margine_minimo: 0.25,
+        costo_lavoro_min: 0.6,
+        lotti_personalizzati: [25, 50],
+        righe: [],
+      }),
+    });
+    expect(result).toMatchObject({ lotto: 25, ricarico_costi_fissi_pct: 40, margine_netto_desiderato_pct: 25 });
+  });
 });

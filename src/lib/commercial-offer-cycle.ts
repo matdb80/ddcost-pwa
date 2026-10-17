@@ -1,4 +1,5 @@
 import { parseCycleRow } from "@/types/cycle";
+import { calcolaSimulazioni } from "./cycle-calculator";
 
 export type StandardCycleRecord = {
   id: number;
@@ -21,7 +22,8 @@ export function applyStandardCycleToOfferRow(
   cycle: StandardCycleRecord,
 ): CommercialOfferRow {
   const product = parseCycleRow(cycle);
-  const configuredLots = product.simulazioni.map((simulation) => simulation.lotto).filter((lot) => lot > 0);
+  const simulations = product.simulazioni.length ? product.simulazioni : calcolaSimulazioni(product);
+  const configuredLots = simulations.map((simulation) => simulation.lotto).filter((lot) => lot > 0);
   const cycleLot = Number(product.lotto);
   const defaultLot = configuredLots.length
     ? configuredLots.includes(cycleLot) ? cycleLot : configuredLots[0]
