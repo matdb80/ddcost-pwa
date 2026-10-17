@@ -9,7 +9,7 @@ export default function BandelleVenetaPage() {
     <Layout>
       <div className="max-w-4xl mx-auto">
         <h2 className="text-lg font-semibold text-slate-800 mb-4">
-          Bandelle per scuri alla veneta
+          Bandelle alla veneta Giotto Plus
         </h2>
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">

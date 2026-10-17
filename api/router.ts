@@ -3,6 +3,8 @@ import { cycleRouter } from "./cycle-router";
 import { quoteRouter } from "./quote-router";
 import { simulationRouter } from "./simulation-router";
 import { offerRouter } from "./offer-router";
+import { feedbackRouter } from "./feedback-router";
+import { productGroupRouter } from "./product-group-router";
 import { createRouter, publicQuery } from "./middleware";
 
 export const appRouter = createRouter({
@@ -12,6 +14,8 @@ export const appRouter = createRouter({
   quote: quoteRouter,
   simulation: simulationRouter,
   offer: offerRouter,
+  feedback: feedbackRouter,
+  productGroup: productGroupRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -1,20 +1,12 @@
 import Layout from "@/components/Layout";
 import { trpc } from "@/providers/trpc";
 import { useState } from "react";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Link } from "react-router";
+import { Plus, Search } from "lucide-react";
 
 export default function OffertePage() {
   const [search, setSearch] = useState("");
-  const { data: offers, refetch } = trpc.offer.list.useQuery({ search, limit: 100 });
-  const createOffer = trpc.offer.create.useMutation({ onSuccess: () => refetch() });
-  const deleteOffer = trpc.offer.delete.useMutation({ onSuccess: () => refetch() });
-
-  const handleCreate = () => {
-    createOffer.mutate({
-      name: "Nuova offerta",
-      dataJson: JSON.stringify({ rows: [] }),
-    });
-  };
+  const { data: offers } = trpc.offer.list.useQuery({ search, limit: 100 });
 
   return (
     <Layout>
@@ -30,13 +22,13 @@ export default function OffertePage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <button
-            onClick={handleCreate}
+          <Link
+            to="/offerte/new"
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
           >
             <Plus className="w-4 h-4" />
-            Nuova Offerta
-          </button>
+            Nuova offerta prodotti standard
+          </Link>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -55,19 +47,14 @@ export default function OffertePage() {
               {offers?.map((o) => (
                 <tr key={o.id} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="px-4 py-3 text-slate-500">{o.id}</td>
-                  <td className="px-4 py-3 font-medium text-slate-800">{o.name}</td>
+                  <td className="px-4 py-3 font-medium text-slate-800"><Link to={`/offerte/${o.id}`} className="text-emerald-700 hover:underline">{o.name}</Link></td>
                   <td className="px-4 py-3 text-slate-600">{o.client}</td>
                   <td className="px-4 py-3 text-slate-600">{o.reference}</td>
                   <td className="px-4 py-3 text-right font-mono text-slate-700">
                     {o.numRows}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => o.id && deleteOffer.mutate({ id: o.id })}
-                      className="text-red-500 hover:text-red-700 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <Link to={`/offerte/${o.id}`} className="text-emerald-700 hover:underline">Apri / Modifica</Link>
                   </td>
                 </tr>
               ))}
