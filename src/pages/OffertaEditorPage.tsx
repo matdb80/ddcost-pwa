@@ -404,10 +404,10 @@ export default function OffertaEditorPage() {
               <Search size={16}/>{row.record_id ? "Sostituisci prodotto da Cicli Standard" : "Scegli prodotto da Cicli Standard"}
             </button>}
             {row.record_id && <>
-              <Link to={`/cicli/${row.record_id}`} target="_blank" rel="noreferrer" title="Apre la revisione del ciclo salvata nell'offerta; l'offerta conserva il proprio snapshot." className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+              <Link to={`/cicli/${row.record_id}`} target="_blank" rel="noreferrer" title="Apre il ciclo standard più recente. Per applicare una nuova revisione, riseleziona il prodotto nell'offerta." className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                 <ExternalLink size={15}/>Apri e modifica ciclo
               </Link>
-              <span className="text-xs text-slate-600">Snapshot ciclo {row.codice || row.record_id}, revisione {row.rev ?? 1}</span>
+              <span className="text-xs text-slate-600">Snapshot ciclo {row.codice || row.record_id}, rev. {row.rev ?? 1}. Per aggiornare l’offerta, riseleziona il prodotto.</span>
             </>}
           </div>
 

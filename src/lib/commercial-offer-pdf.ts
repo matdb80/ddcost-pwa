@@ -106,7 +106,7 @@ export function buildCommercialOfferPrintHtml(
 </style></head><body>
 <header><img src="${escapeAttribute(logoUrl)}" alt="DDF Didieffe Group"><div class="company"><strong>${COMPANY.name}</strong>${companyDetails}</div></header>
 <h1>${title}</h1>
-<section class="meta"><div><b>Numero offerta</b>${offerName}${offer.id ? ` · #${offer.id}` : ""}</div><div><b>Data</b>${new Date().toLocaleDateString("it-IT")}</div><div><b>Cliente</b>${client || "—"}</div><div><b>Riferimento</b>${reference || "—"}</div></section>
+<section class="meta"><div><b>Numero offerta</b>${offerName}</div><div><b>Data</b>${new Date().toLocaleDateString("it-IT")}</div><div><b>Cliente</b>${client || "—"}</div><div><b>Riferimento</b>${reference || "—"}</div></section>
 ${body}${noteBlock}
 <div class="footnote">Documento generato da DDCost · ${internal ? "Uso interno: contiene dati economici e tecnici riservati." : "Importi espressi in Euro."}</div>
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>
