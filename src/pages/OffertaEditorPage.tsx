@@ -2,10 +2,25 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
 import { trpc } from "@/providers/trpc";
-import { ArrowLeft, Plus, Save, Pencil, Trash2, Search, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, FileText, Pencil, Plus, Printer, Save, Search, Trash2, X } from "lucide-react";
 import { applyStandardCycleToOfferRow } from "@/lib/commercial-offer-cycle";
+import {
+  calculateOfferLotPrice,
+  cycleForOfferRow,
+  discountFactor,
+  generateListinoFromNet,
+  simulationsForOfferRow,
+  withCalculatedOfferRow,
+  type CommercialOfferRow,
+} from "@/lib/commercial-offer-pricing";
+import {
+  buildCommercialOfferPrintHtml,
+  openCommercialOfferPrintWindow,
+  type CustomerPricePresentation,
+  type OfferPrintMode,
+} from "@/lib/commercial-offer-pdf";
 
-type OfferRow = {
+type OfferRow = CommercialOfferRow & {
   codice?: string;
   descrizione?: string;
   lotto?: number | string;
@@ -25,48 +40,63 @@ type OfferRow = {
   rev?: number;
   cycle_lot?: string;
   data?: unknown;
-  [key: string]: unknown;
 };
 type OfferDocument = {
   nome?: string;
   cliente?: string;
   riferimento?: string;
   note?: string;
+  note_cliente?: string;
   righe: OfferRow[];
   [key: string]: unknown;
 };
-const parseNumber = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-const money = (v: unknown) => parseNumber(v).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const parseNumber = (value: unknown) => { const number = Number(value); return Number.isFinite(number) ? number : 0; };
+const money = (value: unknown) => parseNumber(value).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const blankRow = (): OfferRow => ({
-  codice: "", descrizione: "", lotto: 1, listino: 0, tipo_listino: "Listino calcolato",
+  codice: "", descrizione: "", lotto: "", listino: 0, tipo_listino: "Listino calcolato",
   sconto_base: "40+10%", extra: 0, netto_base: 0, netto: 0, sconto_finale: "40+10%",
   full_cost: null, prezzo_minimo: null,
 });
 const blankOffer = (): OfferDocument => ({ nome: "", cliente: "", riferimento: "", note: "", righe: [blankRow()] });
-function discountFactor(raw: string): number {
-  const parts = raw.replace(/\s|%/g, "").split("+");
-  if (!parts.length || parts.some(p => p === "" || !/^\d+(?:[.,]\d+)?$/.test(p))) throw Error("Sconto non valido: usare ad esempio 40+10%");
-  let factor = 1;
-  for (const p of parts) {
-    const n = Number(p.replace(",", "."));
-    if (n < 0 || n >= 100) throw Error("Sconto non valido: ogni percentuale deve essere tra 0 e 99,99");
-    factor *= 1 - n / 100;
-  }
-  return factor;
+
+function combinedDiscount(row: OfferRow): string {
+  const base = String(row.sconto_base ?? "").trim();
+  const extra = parseNumber(row.extra);
+  return base + (extra > 0 ? (base ? "+" : "") + String(extra).replace(".", ",") + "%" : "");
 }
+
 function recompute(row: OfferRow): OfferRow {
-  if (parseNumber(row.listino) < 0 || parseNumber(row.extra) < 0 || parseNumber(row.extra) >= 100) {
-    throw Error("Listino o sconto extra non valido");
-  }
+  const listPrice = parseNumber(row.listino);
+  const extra = parseNumber(row.extra);
+  if (listPrice < 0 || extra < 0 || extra >= 100) throw Error("Listino o sconto extra non valido");
   const factor = discountFactor(String(row.sconto_base ?? ""));
-  const base = parseNumber(row.listino) * factor;
-  const net = base * (1 - parseNumber(row.extra) / 100);
+  const base = listPrice * factor;
+  const net = base * (1 - extra / 100);
   return {
-    ...row, netto_base: base, netto: net,
-    sconto_finale: String(row.sconto_base || "") + (parseNumber(row.extra) ? "+" + row.extra + "%" : ""),
+    ...row,
+    netto_base: base,
+    netto: net,
+    sconto_finale: combinedDiscount(row),
     margine_pct: net > 0 && row.full_cost != null ? (net - parseNumber(row.full_cost)) / net * 100 : null,
     ...(row.totale_riga === undefined ? {} : { totale_riga: net * parseNumber(row.lotto) }),
   };
+}
+
+function lotPrice(row: OfferRow) {
+  try { return calculateOfferLotPrice(row, Number(row.lotto)); }
+  catch { return null; }
+}
+
+function generatedListinoIsCurrent(row: OfferRow): boolean {
+  const price = lotPrice(row);
+  if (!price || row.listino_generato_per_netto == null) return false;
+  return Math.abs(Number(row.listino_generato_per_netto) - price.netPrice) < 0.000001 &&
+    String(row.listino_generato_sconto ?? "") === combinedDiscount(row);
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }
 
 export default function OffertaEditorPage() {
@@ -82,6 +112,7 @@ export default function OffertaEditorPage() {
   const [cycleSearch, setCycleSearch] = useState("");
   const [cyclePage, setCyclePage] = useState(1);
   const [selectingCycle, setSelectingCycle] = useState(false);
+  const [pricePresentation, setPricePresentation] = useState<CustomerPricePresentation>("netto");
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.offer.get.useQuery({ id: numericId }, { enabled: !isNew && numericId > 0 });
   const cycleDirectory = trpc.cycle.listGrouped.useQuery({
@@ -113,18 +144,31 @@ export default function OffertaEditorPage() {
 
   const changed = JSON.stringify(offer) !== baseline;
   const locked = !isNew && readOnly;
-  const edit = (key: string, value: unknown) => setOffer(prev => ({ ...prev, [key]: value }));
+  const edit = (key: string, value: unknown) => setOffer((previous) => ({ ...previous, [key]: value }));
+  const replaceRow = (index: number, next: OfferRow) => setOffer((previous) => {
+    const rows = [...previous.righe];
+    rows[index] = next;
+    return { ...previous, righe: rows };
+  });
   const editRow = (index: number, key: string, value: unknown) => {
-    setOffer(prev => {
-      const righe: OfferRow[] = [...prev.righe];
-      righe[index] = { ...righe[index], [key]: value };
-      if (["listino", "sconto_base", "extra"].includes(key)) {
-        try { righe[index] = recompute(righe[index]); setError(""); }
-        catch (e) { setError(e instanceof Error ? e.message : "Sconto non valido"); }
-      }
-      return { ...prev, righe };
+    let next = { ...offer.righe[index], [key]: value } as OfferRow;
+    let validationMessage = "";
+    if (["listino", "sconto_base", "extra"].includes(key)) {
+      try { Object.assign(next, recompute(next)); }
+      catch (caught) { validationMessage = errorMessage(caught, "Sconto non valido"); }
+    }
+    if (["lotto", "ricarico_costi_fissi_pct", "margine_netto_desiderato_pct"].includes(key) && cycleForOfferRow(next)) {
+      try { next = withCalculatedOfferRow(next) as OfferRow; validationMessage = ""; }
+      catch (caught) { validationMessage = errorMessage(caught, "Valori di prezzo non validi"); }
+    }
+    setOffer((previous) => {
+      const righe = [...previous.righe];
+      righe[index] = next;
+      return { ...previous, righe };
     });
+    setError(validationMessage);
   };
+
   const chooseStandardCycle = async (cycleId: number) => {
     if (cyclePickerRow === null || selectingCycle) return;
     const rowIndex = cyclePickerRow;
@@ -132,60 +176,122 @@ export default function OffertaEditorPage() {
     try {
       const cycle = await utils.cycle.get.fetch({ id: cycleId });
       if (!cycle) throw Error("Il ciclo selezionato non è più disponibile");
-      setOffer(prev => {
-        if (!Array.isArray(prev.righe) || !prev.righe[rowIndex]) return prev;
-        const righe: OfferRow[] = [...prev.righe];
-        righe[rowIndex] = applyStandardCycleToOfferRow(righe[rowIndex], cycle);
-        return { ...prev, righe };
+      setOffer((previous) => {
+        if (!Array.isArray(previous.righe) || !previous.righe[rowIndex]) return previous;
+        const righe = [...previous.righe];
+        righe[rowIndex] = applyStandardCycleToOfferRow(righe[rowIndex], cycle) as OfferRow;
+        try { righe[rowIndex] = withCalculatedOfferRow(righe[rowIndex]) as OfferRow; }
+        catch { /* The row remains editable and the validation message is shown below. */ }
+        return { ...previous, righe };
       });
       setCyclePickerRow(null);
       setCycleSearch("");
       setCyclePage(1);
       setError("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Impossibile caricare il ciclo selezionato");
+    } catch (caught) {
+      setError(errorMessage(caught, "Impossibile caricare il ciclo selezionato"));
     } finally {
       setSelectingCycle(false);
     }
   };
+
+  const generateListino = (index: number) => {
+    setError("");
+    try {
+      const row = offer.righe[index];
+      const price = calculateOfferLotPrice(row, Number(row.lotto));
+      const generated = generateListinoFromNet(price.netPrice, combinedDiscount(row));
+      const next = recompute({
+        ...row,
+        listino: generated.listino,
+        full_cost: price.fullCost,
+        prezzo_netto_proposto: price.netPrice,
+        listino_generato_per_netto: price.netPrice,
+        listino_generato_sconto: combinedDiscount(row),
+        tipo_listino: "Generato dal prezzo netto",
+      });
+      replaceRow(index, next);
+    } catch (caught) {
+      setError(errorMessage(caught, "Impossibile generare il listino"));
+    }
+  };
+
+  const preparedOffer = (): OfferDocument => ({
+    ...offer,
+    righe: offer.righe.map((row) => {
+      try { return cycleForOfferRow(row) ? withCalculatedOfferRow(row) as OfferRow : recompute(row); }
+      catch { return row; }
+    }),
+  });
+
   const save = async () => {
     setError("");
     if (!offer.nome?.trim()) return setError("Inserire il nome dell'offerta");
     if (!Array.isArray(offer.righe) || offer.righe.length < 1) return setError("Inserire almeno una riga");
-    if (offer.righe.some((r: OfferRow) => !String(r.descrizione ?? "").trim())) return setError("Inserire la descrizione di ogni riga");
+    if (offer.righe.some((row) => !String(row.descrizione ?? "").trim())) return setError("Inserire la descrizione di ogni riga");
     if (!isNew && !changed) return setError("Nessuna modifica rilevata");
     try {
-      for (const r of offer.righe) {
-        discountFactor(String(r.sconto_base ?? ""));
-        if (parseNumber(r.listino) < 0 || parseNumber(r.extra) < 0 || parseNumber(r.extra) >= 100) {
+      const computed = preparedOffer();
+      for (const row of computed.righe) {
+        discountFactor(String(row.sconto_base ?? ""));
+        if (parseNumber(row.listino) < 0 || parseNumber(row.extra) < 0 || parseNumber(row.extra) >= 100)
           throw Error("Listino o sconto extra non valido");
+        if (cycleForOfferRow(row)) {
+          calculateOfferLotPrice(row, Number(row.lotto));
+          if (parseNumber(row.lotto) <= 0) throw Error("Inserire un lotto di riferimento valido");
         }
       }
       const body = {
-        name: String(offer.nome),
-        client: String(offer.cliente ?? ""),
-        reference: String(offer.riferimento ?? ""),
-        notes: String(offer.note ?? ""),
-        numRows: offer.righe.length,
-        dataJson: JSON.stringify(offer),
+        name: String(computed.nome),
+        client: String(computed.cliente ?? ""),
+        reference: String(computed.riferimento ?? ""),
+        notes: String(computed.note ?? ""),
+        numRows: computed.righe.length,
+        dataJson: JSON.stringify(computed),
       };
       if (isNew) {
         const result = await create.mutateAsync(body);
         navigate("/offerte/" + result.id);
       } else {
         await update.mutateAsync({ id: numericId, ...body });
-        setBaseline(JSON.stringify(offer));
+        setOffer(computed);
+        setBaseline(JSON.stringify(computed));
         setReadOnly(true);
         window.alert("Offerta salvata. Riaprila per verificare i dati persistenti.");
         navigate("/offerte");
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Salvataggio non riuscito");
+      void utils.offer.list.invalidate().catch(() => {});
+    } catch (caught) {
+      setError(errorMessage(caught, "Salvataggio non riuscito"));
+    }
+  };
+
+  const exportPdf = (mode: OfferPrintMode) => {
+    setError("");
+    try {
+      const computed = preparedOffer();
+      if (mode === "customer" && pricePresentation === "listino_sconto") {
+        for (const row of computed.righe) {
+          if (parseNumber(row.listino) <= 0) throw Error("Generare o inserire un prezzo di listino per ogni prodotto prima dell'esportazione.");
+          discountFactor(combinedDiscount(row));
+          if (parseNumber(row.lotto) <= 0) throw Error("Inserire un lotto di riferimento valido per ogni prodotto.");
+        }
+      }
+      const html = buildCommercialOfferPrintHtml(
+        { ...computed, id: isNew ? undefined : numericId },
+        mode,
+        pricePresentation,
+        new URL("/images/ddf-logo.png", window.location.origin).toString(),
+      );
+      openCommercialOfferPrintWindow(html);
+    } catch (caught) {
+      setError(errorMessage(caught, "Impossibile generare il documento PDF"));
     }
   };
 
   if (!isNew && isLoading) return <Layout>Caricamento offerta...</Layout>;
   if (!isNew && !data) return <Layout><p>Offerta non trovata.</p><Link to="/offerte">Torna all'elenco</Link></Layout>;
+
   return <Layout>
     <div className="w-full max-w-screen-2xl mx-auto space-y-5 pb-8">
       <div className="flex justify-between items-center gap-3 flex-wrap">
@@ -193,95 +299,173 @@ export default function OffertaEditorPage() {
           <Link to="/offerte" className="p-2 border rounded"><ArrowLeft size={16}/></Link>
           <h1 className="font-bold text-2xl">{isNew ? "Nuova offerta commerciale prodotti standard" : "Offerta #" + numericId}</h1>
         </div>
-        {locked ? <button type="button" onClick={() => setReadOnly(false)} className="flex gap-2 bg-emerald-600 text-white rounded px-4 py-2"><Pencil size={16}/>Modifica</button>
-        : <button type="button" disabled={create.isPending || update.isPending || (!isNew && !changed)} onClick={save} className="flex gap-2 bg-emerald-600 disabled:opacity-40 text-white rounded px-4 py-2"><Save size={16}/>Salva offerta</button>}
+        {locked
+          ? <button type="button" onClick={() => setReadOnly(false)} className="flex gap-2 bg-emerald-600 text-white rounded px-4 py-2"><Pencil size={16}/>Modifica</button>
+          : <button type="button" disabled={create.isPending || update.isPending || (!isNew && !changed)} onClick={() => void save()} className="flex gap-2 bg-emerald-600 disabled:opacity-40 text-white rounded px-4 py-2"><Save size={16}/>Salva offerta</button>}
       </div>
       {error && <p role="alert" className="p-3 bg-red-50 border border-red-300 text-red-800 rounded">{error}</p>}
-      <p className="text-sm text-slate-600">I riferimenti dei Cicli Standard e i dati tecnici delle righe importate vengono conservati. Le modifiche vengono salvate solo dopo conferma.</p>
+      <p className="text-sm text-slate-600">Scegli un prodotto dai Cicli Standard, confronta i prezzi al variare del lotto e prepara una versione interna o una versione da inviare al cliente.</p>
+
       <section className="bg-white border rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 gap-3">
-        {([
-          ["nome","Nome offerta"],["cliente","Cliente"],["riferimento","Riferimento"],
-        ] as const).map(([k, lab]) => <label key={k} className="flex flex-col text-sm gap-1">
-          <span>{lab}</span><input disabled={locked} value={String(offer[k] ?? "")} onChange={e => edit(k,e.target.value)} className="p-2 border rounded disabled:bg-slate-100"/>
+        {([["nome", "Nome offerta"], ["cliente", "Cliente"], ["riferimento", "Riferimento"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
+          <span>{label}</span><input disabled={locked} value={String(offer[key] ?? "")} onChange={(event) => edit(key, event.target.value)} className="p-2 border rounded disabled:bg-slate-100"/>
         </label>)}
         <label className="flex flex-col text-sm gap-1 md:col-span-2">
-          <span>Note</span><textarea disabled={locked} rows={3} value={String(offer.note ?? "")} onChange={e=>edit("note",e.target.value)} className="p-2 border rounded disabled:bg-slate-100"/>
+          <span>Note interne</span><textarea disabled={locked} rows={3} value={String(offer.note ?? "")} onChange={(event) => edit("note", event.target.value)} className="p-2 border rounded disabled:bg-slate-100"/>
+        </label>
+        <label className="flex flex-col text-sm gap-1 md:col-span-2">
+          <span>Note da mostrare al cliente</span><textarea disabled={locked} rows={2} value={String(offer.note_cliente ?? "")} onChange={(event) => edit("note_cliente", event.target.value)} className="p-2 border rounded disabled:bg-slate-100"/>
         </label>
       </section>
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold">Righe ({offer.righe.length})</h2>
-        {!locked && <button className="flex gap-2 px-3 py-2 border border-emerald-600 text-emerald-700 rounded" onClick={() => edit("righe",[...offer.righe,blankRow()])}><Plus size={16}/>Aggiungi riga</button>}
+
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h2 className="text-xl font-semibold">Prodotti ({offer.righe.length})</h2>
+        {!locked && <button className="flex gap-2 px-3 py-2 border border-emerald-600 text-emerald-700 rounded" onClick={() => edit("righe", [...offer.righe, blankRow()])}><Plus size={16}/>Aggiungi prodotto</button>}
       </div>
-      {(offer.righe as OfferRow[]).map((r,i) => <section key={i} className="bg-white border rounded-xl p-5 space-y-3">
-        <div className="flex justify-between items-center">
-          <h3 className="font-semibold">Riga {i+1}{r.record_id ? " · ciclo "+ r.record_id + " rev. " + (r.rev ?? 1) : ""}</h3>
-          {!locked && offer.righe.length > 1 && <button title="Rimuovi riga" className="text-red-500" onClick={() => edit("righe",offer.righe.filter((_:OfferRow,j:number) => i!==j))}><Trash2 size={16}/></button>}
-        </div>
-        {!locked && <div className="flex flex-wrap items-center gap-3">
-          <button type="button" onClick={() => { setCyclePickerRow(i); setCycleSearch(""); setCyclePage(1); }}
-            className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">
-            <Search size={16}/>{r.record_id ? "Sostituisci prodotto da Cicli Standard" : "Scegli prodotto da Cicli Standard"}
-          </button>
-          {r.record_id && <span className="text-xs text-slate-600">Collegato a ciclo {r.codice || r.record_id}, revisione {r.rev ?? 1}{r.cycle_lot ? ` · lotto ciclo ${r.cycle_lot}` : ""}</span>}
-        </div>}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {([["codice","Codice articolo"],["descrizione","Descrizione"]] as const).map(([k,l]) => <label key={k} className="flex flex-col text-sm gap-1">
-            <span>{l}</span><input disabled={locked} className="p-2 rounded border disabled:bg-slate-100" value={r[k] ?? ""} onChange={e=>editRow(i,k,e.target.value)}/>
-          </label>)}
-          {([["lotto","Lotto"],["listino","Listino €"],["extra","Sconto extra %"]] as const).map(([k,l]) => <label key={k} className="flex flex-col text-sm gap-1">
-            <span>{l}</span><input disabled={locked} type="number" step="any" className="p-2 rounded border disabled:bg-slate-100" value={r[k] ?? ""} onChange={e=>editRow(i,k,Number(e.target.value))}/>
-          </label>)}
-          <label className="flex flex-col text-sm gap-1"><span>Sconto base (es. 40+10%)</span>
-            <input disabled={locked} className="p-2 rounded border disabled:bg-slate-100" value={r.sconto_base ?? ""} onChange={e=>editRow(i,"sconto_base",e.target.value)}/>
-          </label>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 p-3 bg-slate-50 rounded text-sm">
-          <span>Netto unitario: <b>€ {money(r.netto)}</b></span>
-          <span>Full cost unitario: <b>€ {money(r.full_cost)}</b></span>
-          <span>Margine: <b>{r.margine_pct == null ? "—" : money(r.margine_pct)+"%"}</b></span>
-        </div>
-        {Boolean(r.data) && <p className="text-xs text-slate-500">Dati del ciclo sorgente collegati e conservati.</p>}
-      </section>)}
-      {cyclePickerRow !== null && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-3 sm:p-6" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!selectingCycle)setCyclePickerRow(null);}}>
-        <section role="dialog" aria-modal="true" aria-labelledby="standard-cycle-picker-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
-          <header className="flex items-start justify-between gap-3 border-b p-4 sm:p-5">
-            <div><h2 id="standard-cycle-picker-title" className="text-lg font-semibold">Scegli un prodotto dai Cicli Standard</h2><p className="mt-1 text-sm text-slate-600">Viene usata la revisione più recente disponibile. Costi e dati tecnici restano salvati come fotografia nell’offerta.</p></div>
-            <button type="button" aria-label="Chiudi selezione cicli" disabled={selectingCycle} onClick={()=>setCyclePickerRow(null)} className="rounded p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40"><X size={18}/></button>
-          </header>
-          <div className="border-b p-4">
-            <label className="relative block">
-              <span className="sr-only">Cerca nei cicli standard</span>
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
-              <input autoFocus type="search" value={cycleSearch} onChange={e=>{setCycleSearch(e.target.value);setCyclePage(1);}}
-                placeholder="Cerca per codice, descrizione o cliente..." className="w-full rounded border py-2 pl-9 pr-3 text-sm"/>
+
+      {offer.righe.map((row, index) => {
+        const cycle = cycleForOfferRow(row);
+        let lots: number[] = [];
+        try { lots = simulationsForOfferRow(row).map((simulation) => Number(simulation.lotto)); } catch { /* Validation appears in the price summary. */ }
+        const price = lotPrice(row);
+        const netDiscount = (() => {
+          try { return parseNumber(row.listino) * discountFactor(combinedDiscount(row)); }
+          catch { return parseNumber(row.netto); }
+        })();
+        return <section key={index} className="bg-white border rounded-xl p-5 space-y-4">
+          <div className="flex justify-between items-center gap-2">
+            <h3 className="font-semibold">Prodotto {index + 1}{row.record_id ? ` · ciclo ${row.codice || row.record_id} · rev. ${row.rev ?? 1}` : ""}</h3>
+            {!locked && offer.righe.length > 1 && <button title="Rimuovi prodotto" className="text-red-500" onClick={() => edit("righe", offer.righe.filter((_, rowIndex) => index !== rowIndex))}><Trash2 size={16}/></button>}
+          </div>
+
+          {!locked && <div className="flex flex-wrap items-center gap-3">
+            <button type="button" onClick={() => { setCyclePickerRow(index); setCycleSearch(""); setCyclePage(1); }}
+              className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">
+              <Search size={16}/>{row.record_id ? "Sostituisci prodotto da Cicli Standard" : "Scegli prodotto da Cicli Standard"}
+            </button>
+            {row.record_id && <span className="text-xs text-slate-600">Snapshot ciclo {row.codice || row.record_id}, revisione {row.rev ?? 1}</span>}
+          </div>}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {([["codice", "Codice articolo"], ["descrizione", "Descrizione"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
+              <span>{label}</span><input disabled={locked} className="p-2 rounded border disabled:bg-slate-100" value={String(row[key] ?? "")} onChange={(event) => editRow(index, key, event.target.value)}/>
+            </label>)}
+            {cycle ? <label className="flex flex-col text-sm gap-1">
+              <span>Lotto di riferimento (pezzi)</span>
+              <select disabled={locked || lots.length === 0} value={String(row.lotto ?? "")} onChange={(event) => editRow(index, "lotto", Number(event.target.value))} className="p-2 rounded border disabled:bg-slate-100">
+                {lots.map((lot) => <option key={lot} value={lot}>{lot.toLocaleString("it-IT")} pz</option>)}
+              </select>
+            </label> : <label className="flex flex-col text-sm gap-1">
+              <span>Lotto di riferimento (pezzi)</span><input disabled={locked} type="number" min="1" step="1" className="p-2 rounded border disabled:bg-slate-100" value={row.lotto ?? ""} onChange={(event) => editRow(index, "lotto", event.target.value === "" ? "" : Number(event.target.value))}/>
+            </label>}
+            <label className="flex flex-col text-sm gap-1">
+              <span>Ricarico dei costi fissi (%)</span><input disabled={locked} type="number" min="0" step="0.1" className="p-2 rounded border disabled:bg-slate-100" value={String(row.ricarico_costi_fissi_pct ?? "")} onChange={(event) => editRow(index, "ricarico_costi_fissi_pct", event.target.value === "" ? "" : Number(event.target.value))}/>
+              <small className="text-xs text-slate-500">Si applica alla quota di attrezzaggi e attrezzature, ripartita sul lotto.</small>
+            </label>
+            <label className="flex flex-col text-sm gap-1">
+              <span>Margine netto desiderato (%)</span><input disabled={locked} type="number" min="0" max="99.99" step="0.1" className="p-2 rounded border disabled:bg-slate-100" value={String(row.margine_netto_desiderato_pct ?? "")} onChange={(event) => editRow(index, "margine_netto_desiderato_pct", event.target.value === "" ? "" : Number(event.target.value))}/>
             </label>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-lg bg-slate-50 p-4 text-sm">
+            {price ? <>
+              <span>Costo standard €/pz: <b>€ {money(price.simulation.costo_standard)}</b></span>
+              <span>Quota costi fissi €/pz: <b>€ {money(price.fixedCostPerPiece)}</b></span>
+              <span>Ricarico costi fissi: <b>€ {money(price.fixedCostPerPiece * price.markupPercent / 100)}</b></span>
+              <span>Costo pieno €/pz: <b>€ {money(price.fullCost)}</b></span>
+              <span>Prezzo netto proposto €/pz: <b className="text-emerald-800">€ {money(price.netPrice)}</b></span>
+              <span>Margine netto: <b>{money(price.actualMarginPercent)}%</b></span>
+            </> : <p className="md:col-span-3 text-amber-800">Seleziona un prodotto dai Cicli Standard e verifica lotto, ricarico e margine.</p>}
+          </div>
+
+          {cycle && lots.length > 0 && <div>
+            <h4 className="mb-2 font-semibold">Prezzi proposti per i lotti del ciclo</h4>
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead className="bg-slate-50"><tr>
+                  <th className="p-2 text-left">Lotto</th><th className="p-2 text-right">Costo standard €/pz</th>
+                  <th className="p-2 text-right">Costi fissi €/pz</th><th className="p-2 text-right">Costo pieno €/pz</th>
+                  <th className="p-2 text-right">Prezzo netto €/pz</th><th className="p-2 text-right">Totale lotto</th>
+                  {!locked && <th className="p-2 text-center">Scelta</th>}
+                </tr></thead>
+                <tbody>{lots.map((lot) => {
+                  let simulationPrice = null;
+                  try { simulationPrice = calculateOfferLotPrice(row, lot); } catch { /* Keep an invalid row visible for correction. */ }
+                  return <tr key={lot} className={`border-t ${Number(row.lotto) === lot ? "bg-emerald-50" : ""}`}>
+                    <td className="p-2 font-medium">{lot.toLocaleString("it-IT")} pz</td>
+                    <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.simulation.costo_standard)}</td>
+                    <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.fixedCostPerPiece)}</td>
+                    <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.fullCost)}</td>
+                    <td className="p-2 text-right font-semibold tabular-nums">€ {money(simulationPrice?.netPrice)}</td>
+                    <td className="p-2 text-right tabular-nums">€ {money((simulationPrice?.netPrice ?? 0) * lot)}</td>
+                    {!locked && <td className="p-2 text-center"><button type="button" aria-label={`Seleziona lotto ${lot}`} onClick={() => editRow(index, "lotto", lot)} className="rounded border px-2 py-1 text-xs text-emerald-800">Seleziona</button></td>}
+                  </tr>;
+                })}</tbody>
+              </table>
+            </div>
+          </div>}
+
+          <div className="rounded-lg border p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div><h4 className="font-semibold">Prezzo di listino</h4><p className="text-xs text-slate-500">Genera il listino inverso partendo dal prezzo netto proposto e dallo sconto.</p></div>
+              {!locked && <button type="button" onClick={() => generateListino(index)} disabled={!price} className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 disabled:opacity-40"><FileText size={16}/>Genera prezzo di listino</button>}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <label className="flex flex-col text-sm gap-1"><span>Listino €</span><input disabled={locked} type="number" min="0" step="0.01" className="p-2 rounded border disabled:bg-slate-100" value={row.listino ?? ""} onChange={(event) => editRow(index, "listino", Number(event.target.value))}/></label>
+              <label className="flex flex-col text-sm gap-1"><span>Sconto cliente (es. 40+10%)</span><input disabled={locked} className="p-2 rounded border disabled:bg-slate-100" value={row.sconto_base ?? ""} onChange={(event) => editRow(index, "sconto_base", event.target.value)}/></label>
+              <label className="flex flex-col text-sm gap-1"><span>Sconto extra (%)</span><input disabled={locked} type="number" min="0" max="99.99" step="0.1" className="p-2 rounded border disabled:bg-slate-100" value={row.extra ?? 0} onChange={(event) => editRow(index, "extra", Number(event.target.value))}/></label>
+              <div className="rounded bg-slate-50 p-2 text-sm"><div>Netto dopo sconto: <b>€ {money(netDiscount)}</b></div><div>Prezzo listino attuale: <b>€ {money(row.listino)}</b></div></div>
+            </div>
+            {row.listino_generato_per_netto != null && <p className={`text-xs ${generatedListinoIsCurrent(row) ? "text-emerald-700" : "text-amber-700"}`}>
+              {generatedListinoIsCurrent(row) ? "Listino allineato al prezzo netto attuale." : "Lotto, ricarico, margine o sconto sono cambiati: genera di nuovo il listino."}
+            </p>}
+          </div>
+          {Boolean(row.data) && <p className="text-xs text-slate-500">I dati del ciclo sorgente e i costi del lotto restano salvati come snapshot nell’offerta.</p>}
+        </section>;
+      })}
+
+      <section className="bg-white border rounded-xl p-5 space-y-3">
+        <h2 className="text-lg font-semibold">Esportazione PDF</h2>
+        <p className="text-sm text-slate-600">Il documento interno include i costi del ciclo e tutte le simulazioni lotto. Il documento cliente mostra solo il lotto scelto e il prezzo selezionato.</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" onClick={() => exportPdf("internal")} className="inline-flex items-center gap-2 rounded bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"><Printer size={16}/>Esporta PDF interno</button>
+          <label className="flex items-center gap-2 text-sm"><span>Prezzo cliente</span><select value={pricePresentation} onChange={(event) => setPricePresentation(event.target.value as CustomerPricePresentation)} className="rounded border px-2 py-2">
+            <option value="netto">Prezzo netto</option><option value="listino_sconto">Listino con sconto</option>
+          </select></label>
+          <button type="button" onClick={() => exportPdf("customer")} className="inline-flex items-center gap-2 rounded bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"><FileText size={16}/>Esporta PDF cliente</button>
+        </div>
+      </section>
+
+      {cyclePickerRow !== null && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-3 sm:p-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !selectingCycle) setCyclePickerRow(null); }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="standard-cycle-picker-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+          <header className="flex items-start justify-between gap-3 border-b p-4 sm:p-5">
+            <div><h2 id="standard-cycle-picker-title" className="text-lg font-semibold">Scegli un prodotto dai Cicli Standard</h2><p className="mt-1 text-sm text-slate-600">Costi e dati tecnici restano salvati come fotografia nell’offerta.</p></div>
+            <button type="button" aria-label="Chiudi selezione cicli" disabled={selectingCycle} onClick={() => setCyclePickerRow(null)} className="rounded p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40"><X size={18}/></button>
+          </header>
+          <div className="border-b p-4"><label className="relative block">
+            <span className="sr-only">Cerca nei cicli standard</span><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+            <input autoFocus type="search" value={cycleSearch} onChange={(event) => { setCycleSearch(event.target.value); setCyclePage(1); }} placeholder="Cerca per codice, descrizione o cliente..." className="w-full rounded border py-2 pl-9 pr-3 text-sm"/>
+          </label></div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {cycleDirectory.isLoading && <p className="p-6 text-center text-sm text-slate-500">Caricamento cicli...</p>}
             {cycleDirectory.isError && <p role="alert" className="p-6 text-sm text-red-700">Impossibile caricare i cicli: {cycleDirectory.error.message}</p>}
             {!cycleDirectory.isLoading && !cycleDirectory.isError && cycleDirectory.data?.groups.length === 0 && <p className="p-6 text-center text-sm text-slate-500">Nessun ciclo standard trovato.</p>}
-            <ul className="divide-y">
-              {cycleDirectory.data?.groups.map(group => {
-                const cycle = group.latest;
-                return <li key={group.key} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-900">{cycle.code || "(senza codice)"} <span className="font-normal text-slate-500">· rev. {cycle.rev ?? 1}</span></p>
-                    <p className="break-words text-sm text-slate-700">{cycle.description || "Descrizione non presente"}</p>
-                    <p className="mt-1 text-xs text-slate-500">{cycle.client || "Cliente non indicato"} · Lotto ciclo: {cycle.lot || "—"} · Costo standard: € {money(cycle.standardCost)} · Prezzo minimo: € {money(cycle.minimumPrice)}</p>
-                  </div>
-                  <button type="button" disabled={selectingCycle} onClick={()=>void chooseStandardCycle(cycle.id)} className="shrink-0 rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
-                    {selectingCycle ? "Caricamento..." : "Seleziona"}
-                  </button>
-                </li>;
-              })}
-            </ul>
+            <ul className="divide-y">{cycleDirectory.data?.groups.map((group) => {
+              const cycle = group.latest;
+              return <li key={group.key} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0"><p className="font-semibold text-slate-900">{cycle.code || "(senza codice)"} <span className="font-normal text-slate-500">· rev. {cycle.rev ?? 1}</span></p>
+                  <p className="break-words text-sm text-slate-700">{cycle.description || "Descrizione non presente"}</p>
+                  <p className="mt-1 text-xs text-slate-500">{cycle.client || "Cliente non indicato"} · Lotto ciclo: {cycle.lot || "—"} · Costo standard: € {money(cycle.standardCost)} · Prezzo minimo ciclo: € {money(cycle.minimumPrice)}</p></div>
+                <button type="button" disabled={selectingCycle} onClick={() => void chooseStandardCycle(cycle.id)} className="shrink-0 rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{selectingCycle ? "Caricamento..." : "Seleziona"}</button>
+              </li>;
+            })}</ul>
           </div>
           <footer className="flex items-center justify-between gap-3 border-t p-3 sm:px-4">
             <span className="text-xs text-slate-500">{cycleDirectory.data ? `${cycleDirectory.data.total} prodotti` : ""}</span>
             <div className="flex items-center gap-2">
-              <button type="button" disabled={cyclePage<=1||cycleDirectory.isFetching} onClick={()=>setCyclePage(p=>Math.max(1,p-1))} className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm disabled:opacity-40"><ChevronLeft size={16}/>Precedente</button>
-              <span className="text-xs tabular-nums text-slate-600">{cycleDirectory.data?.page ?? cyclePage} / {Math.max(1,Math.ceil((cycleDirectory.data?.total ?? 0)/25))}</span>
-              <button type="button" disabled={!cycleDirectory.data || cyclePage>=Math.ceil(cycleDirectory.data.total/25)||cycleDirectory.isFetching} onClick={()=>setCyclePage(p=>p+1)} className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm disabled:opacity-40">Successiva<ChevronRight size={16}/></button>
+              <button type="button" disabled={cyclePage <= 1 || cycleDirectory.isFetching} onClick={() => setCyclePage((page) => Math.max(1, page - 1))} className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm disabled:opacity-40"><ChevronLeft size={16}/>Precedente</button>
+              <span className="text-xs tabular-nums text-slate-600">{cycleDirectory.data?.page ?? cyclePage} / {Math.max(1, Math.ceil((cycleDirectory.data?.total ?? 0) / 25))}</span>
+              <button type="button" disabled={!cycleDirectory.data || cyclePage >= Math.ceil(cycleDirectory.data.total / 25) || cycleDirectory.isFetching} onClick={() => setCyclePage((page) => page + 1)} className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm disabled:opacity-40">Successiva<ChevronRight size={16}/></button>
             </div>
           </footer>
         </section>

@@ -205,6 +205,45 @@ export function calcolaAttrezzaggioTotale(ciclo: CicloEditorModel): number {
   return ciclo.righe.reduce((sum,r,i)=>sum+(r.parent_idx==null?walk(i,1):0),0);
 }
 
+/**
+ * Fixed setup and dedicated-tooling cost per finished product at a given lot.
+ * These are the cycle costs that are amortized by the production quantity.
+ */
+export function calcolaCostoFissoPerPezzo(ciclo: CicloEditorModel, lotto: number): number {
+  if (!(lotto > 0)) return 0;
+  const active = new Set<number>();
+  function fixedAt(index: number, depth: number): number {
+    if (depth > 4) throw new Error("Assieme oltre quattro livelli");
+    if (active.has(index)) throw new Error("Ciclo di parentela negli assiemi");
+    const row = ciclo.righe[index];
+    if (!row || row.considera === false) return 0;
+    active.add(index);
+    try {
+      if (row.assembly_auto === true) {
+        const children = ciclo.righe.flatMap((child, childIndex) =>
+          child.parent_idx === index ? [childIndex] : []
+        );
+        const quantity = Number(row.nr_componenti) || 0;
+        return children.reduce((sum, childIndex) => sum + fixedAt(childIndex, depth + 1), 0) * quantity;
+      }
+      if (row.categoria === "LAVORAZIONE INTERNA" && row.attrezzaggio_min > 0) {
+        const setupLot = row.lotto_voce > 0 ? row.lotto_voce : lotto;
+        return setupLot > 0 ? row.attrezzaggio_min * ciclo.costo_lavoro_min / setupLot : 0;
+      }
+      if (row.categoria === "SPESA ATTREZZATURA DEDICATA" && row.considera === true) {
+        return row.costo_unitario / lotto;
+      }
+      return 0;
+    } finally {
+      active.delete(index);
+    }
+  }
+
+  return ciclo.righe.reduce((sum, row, index) =>
+    row.parent_idx == null ? sum + fixedAt(index, 1) : sum, 0
+  );
+}
+
 export function calcolaCostoStandard(bd: Breakdown): number {
   return BREAKDOWN_KEYS.reduce((sum, cat) => sum + (bd[cat] || 0), 0);
 }
