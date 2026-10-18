@@ -164,15 +164,20 @@ export default function CicloEditorPage() {
   // Compute synchronously from the loaded baseline, not from delayed state.
   const isModified = isNew || (originalJson.length > 0 &&
     JSON.stringify(serializeCycleDataJson(model)) !== originalJson);
+  const economicInputsChanged = !!getCycle.data &&
+    economicSignature(model) !== economicSignature(parseCycleRow(getCycle.data));
   // Ephemeral simulation: never modify model or dataJson. Switching all rows
   // back on restores the exact original values without creating a revision.
+  // Recalculate the preview as soon as a lot or another economic input changes;
+  // persisted historical snapshots remain untouched until an explicit save.
   const simulatedModel = useMemo(() => {
-    if (simulationExcluded.size===0 && !model.righe.some(r=>r.assembly_auto)) return model;
+    if (simulationExcluded.size===0 && !model.righe.some(r=>r.assembly_auto) &&
+        !isNew && !economicInputsChanged) return model;
     return ricalcolaCiclo({
       ...model,
       righe:model.righe.map((r,i)=>simulationExcluded.has(i)?{...r,considera:false}:r),
     });
-  }, [model, simulationExcluded]);
+  }, [model, simulationExcluded, isNew, economicInputsChanged]);
 
   const treeOrder = useMemo(() => orderedHierarchy(model.righe), [model.righe]);
   const marketPrice = parseMarketPrice(marketPriceInput);
