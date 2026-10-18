@@ -84,10 +84,10 @@ describe("commercial offer pricing by lot", () => {
 
     const recalculated = simulationsForOfferRow(row);
     expect(recalculated[0].costo_standard).toBeCloseTo(8.4, 8);
-    expect(recalculated[1].costo_standard).toBeCloseTo(6.6, 8);
-    expect(recalculated.map((simulation) => simulation.attrezzaggio_pz)).toEqual([1.8, 1.8]);
+    expect(recalculated[1].costo_standard).toBeCloseTo(5.16, 8);
+    expect(recalculated.map((simulation) => simulation.attrezzaggio_pz)).toEqual([1.8, 0.36]);
     expect(calculateOfferLotPrice(row, 10).fixedCostPerPiece).toBeCloseTo(3.8, 8);
-    expect(calculateOfferLotPrice(row, 100).fixedCostPerPiece).toBeCloseTo(2, 8);
+    expect(calculateOfferLotPrice(row, 100).fixedCostPerPiece).toBeCloseTo(0.56, 8);
   });
 
   it("supports multiple offered lots, an added lot, and per-lot listino terms", () => {

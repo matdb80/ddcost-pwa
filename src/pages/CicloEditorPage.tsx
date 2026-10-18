@@ -83,6 +83,7 @@ export default function CicloEditorPage() {
   const [newChildParent, setNewChildParent] = useState<number | null>(null);
   const [isReadOnly, setIsReadOnly] = useState(!isNew);
   const [simulationExcluded, setSimulationExcluded] = useState<Set<number>>(new Set());
+  const [useCycleRowLotForSetup, setUseCycleRowLotForSetup] = useState(false);
   const [draggingIndex, setDraggingIndex] = useState<number|null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number|null>(null);
   // Pricing simulation is read-only and never enters a cycle revision or backup.
@@ -137,6 +138,7 @@ export default function CicloEditorPage() {
       setHasChanges(false);
       setIsReadOnly(true);
       setSimulationExcluded(new Set());
+      setUseCycleRowLotForSetup(false);
       setDraggingIndex(null);
       setDragOverIndex(null);
       setMarketPriceInput("");
@@ -171,8 +173,15 @@ export default function CicloEditorPage() {
     return ricalcolaCiclo({
       ...model,
       righe:model.righe.map((r,i)=>simulationExcluded.has(i)?{...r,considera:false}:r),
-    });
-  }, [model, simulationExcluded]);
+    }, useCycleRowLotForSetup ? "row" : "max");
+  }, [model, simulationExcluded, useCycleRowLotForSetup]);
+
+  const hasSetupRowsWithReferenceLot = model.righe.some((row) =>
+    row.categoria === "LAVORAZIONE INTERNA" && row.attrezzaggio_min > 0 && row.lotto_voce > 0
+  );
+  const setupLotControlIndex = simulatedModel.simulazioni.reduce((highestIndex, simulation, index, all) =>
+    simulation.lotto > (all[highestIndex]?.lotto ?? -Infinity) ? index : highestIndex, 0
+  );
 
   const treeOrder = useMemo(() => orderedHierarchy(model.righe), [model.righe]);
   const marketPrice = parseMarketPrice(marketPriceInput);
@@ -934,7 +943,7 @@ export default function CicloEditorPage() {
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h2 className="text-sm font-semibold text-slate-700 mb-4">Simulazioni per Lotto</h2>
           <p className="text-xs text-slate-500 mb-3">
-            Quota attrezzaggio per pezzo = (Attrezzaggio min × Costo Lavoro €/min) ÷ Lotto Voce; se Lotto Voce manca o vale zero, si usa il lotto della simulazione. Attrezzaggio vuoto o zero: nessun costo. Questa anteprima non modifica i dati archiviati.
+            Quota attrezzaggio per pezzo = (Attrezzaggio min × Costo Lavoro €/min) ÷ il maggiore tra Lotto Voce e lotto simulato. Puoi forzare Lotto Voce per tutte le simulazioni con il pulsante accanto al lotto più alto. Attrezzaggio vuoto o zero: nessun costo. Questa anteprima non modifica i dati archiviati.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -954,7 +963,21 @@ export default function CicloEditorPage() {
                     <td className="px-3 py-2 text-right font-mono">{formatMoney(s.costo_standard)}</td>
                     <td className="px-3 py-2 text-right font-mono">{formatMoney(s.full_cost)}</td>
                     <td className="px-3 py-2 text-right font-mono">{formatMoney(s.prezzo_minimo)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{formatMoney(s.attrezzaggio_pz)}</td>
+                    <td className="px-3 py-2 text-right font-mono">
+                      <div className="flex flex-col items-end gap-1">
+                        <span>{formatMoney(s.attrezzaggio_pz)}</span>
+                        {i === setupLotControlIndex && hasSetupRowsWithReferenceLot && (
+                          <button
+                            type="button"
+                            aria-pressed={useCycleRowLotForSetup}
+                            onClick={() => setUseCycleRowLotForSetup((active) => !active)}
+                            className="whitespace-nowrap rounded border border-sky-200 px-2 py-1 text-xs font-sans text-sky-800 hover:bg-sky-50"
+                          >
+                            {useCycleRowLotForSetup ? "Usa lotto simulato" : "Usa lotto voce del ciclo"}
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

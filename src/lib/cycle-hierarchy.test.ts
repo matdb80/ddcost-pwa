@@ -74,7 +74,7 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    expect(b.costo_standard).toBe(0);
    expect(b.simulazioni[0].attrezzaggio_pz).toBe(0);
  });
- it("prefers a nonzero row lot and falls back to the simulated lot",()=>{
+ it("uses the larger row or simulated lot and can force the row lot",()=>{
    const setupRow={
      ...row("Setup",0),
      categoria:"LAVORAZIONE INTERNA" as const,
@@ -83,9 +83,12 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    };
    const cycle={...make([setupRow]),lotti_personalizzati:[10,100],costo_lavoro_min:0.6};
    const withReference=ricalcolaCiclo(cycle);
-   expect(withReference.costo_standard).toBeCloseTo(0.3,10);
-   expect(withReference.simulazioni.map((s)=>s.costo_standard)).toEqual([0.3,0.3]);
-   expect(withReference.simulazioni.map((s)=>s.attrezzaggio_pz)).toEqual([0.3,0.3]);
+   expect(withReference.costo_standard).toBeCloseTo(0.06,10);
+   expect(withReference.simulazioni.map((s)=>s.costo_standard)).toEqual([0.3,0.06]);
+   expect(withReference.simulazioni.map((s)=>s.attrezzaggio_pz)).toEqual([0.3,0.06]);
+   const forcedToRowLot=ricalcolaCiclo(cycle,"row");
+   expect(forcedToRowLot.costo_standard).toBeCloseTo(0.3,10);
+   expect(forcedToRowLot.simulazioni.map((s)=>s.costo_standard)).toEqual([0.3,0.3]);
 
    const bySimulation=ricalcolaCiclo({...cycle,righe:[{...setupRow,lotto_voce:0}]});
    expect(bySimulation.simulazioni.map((s)=>s.costo_standard)).toEqual([0.6,0.06]);
@@ -101,8 +104,9 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    const cycle={...make([setupRow]),costo_lavoro_min:24/60,lotti_personalizzati:[100,200]};
    const fixedReference=ricalcolaCiclo(cycle);
    expect(fixedReference.costo_standard).toBeCloseTo(0.04,10);
-   expect(fixedReference.simulazioni.map((simulation)=>simulation.costo_standard)).toEqual([0.04,0.04]);
-   expect(fixedReference.simulazioni.map((simulation)=>simulation.attrezzaggio_pz)).toEqual([0.04,0.04]);
+   expect(fixedReference.simulazioni.map((simulation)=>simulation.costo_standard)).toEqual([0.04,0.02]);
+   expect(fixedReference.simulazioni.map((simulation)=>simulation.attrezzaggio_pz)).toEqual([0.04,0.02]);
+   expect(ricalcolaCiclo(cycle,"row").simulazioni.map((simulation)=>simulation.attrezzaggio_pz)).toEqual([0.04,0.04]);
 
    const emptyReference=ricalcolaCiclo({...cycle,righe:[{...setupRow,lotto_voce:0}]});
    expect(emptyReference.simulazioni.map((simulation)=>simulation.costo_standard)).toEqual([0.04,0.02]);
@@ -126,10 +130,9 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    const lots=[25,50,100,250,500,1000];
    const cycle={...make([setupRow,fallbackSetupRow]),costo_lavoro_min:0.32,lotti_personalizzati:lots};
    const calculated=ricalcolaCiclo(cycle);
-   const fixedRowSetup=20*0.32/300;
-   const expectedSetup=lots.map((lot)=>fixedRowSetup+(40*0.32)/lot);
-   const expectedStandard=lots.map((lot)=>0.128+fixedRowSetup+(40*0.32)/lot);
-   expect(calculated.costo_standard).toBeCloseTo(0.128+fixedRowSetup+(40*0.32)/100,10);
+   const expectedSetup=lots.map((lot)=>20*0.32/Math.max(300,lot)+(40*0.32)/lot);
+   const expectedStandard=lots.map((lot)=>0.128+20*0.32/Math.max(300,lot)+(40*0.32)/lot);
+   expect(calculated.costo_standard).toBeCloseTo(0.128+20*0.32/300+(40*0.32)/100,10);
    expectedSetup.forEach((expected,index)=>
      expect(calculated.simulazioni[index].attrezzaggio_pz).toBeCloseTo(expected,10)
    );
@@ -139,6 +142,10 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    expect(calculated.simulazioni[0].costo_standard).toBeGreaterThan(
      calculated.simulazioni[calculated.simulazioni.length-1].costo_standard,
    );
+   const forced=ricalcolaCiclo(cycle,"row");
+   lots.forEach((lot,index)=>expect(forced.simulazioni[index].attrezzaggio_pz).toBeCloseTo(
+     20*0.32/300+(40*0.32)/lot,10,
+   ));
    const noSetup=ricalcolaCiclo({...cycle,righe:cycle.righe.map((setup)=>({...setup,attrezzaggio_min:0}))});
    noSetup.simulazioni.forEach((simulation)=>expect(simulation.costo_standard).toBeCloseTo(0.128,10));
  });

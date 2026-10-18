@@ -5,9 +5,8 @@
  * - LAVORAZIONE INTERNA uses ciclo.costo_lavoro_min (NOT riga.costo_min)
  *   Formula: costo_lavoro_min / colpi_min * nr_componenti
  *   (colpi_min = pieces per minute; costo_lavoro_min = €/minute)
- * - Attrezzaggio in the row/base cycle cost: attrezzaggio_min * costo_lavoro_min,
- *   distributed over lotto_voce if present, else the cycle lot
- * - Lot simulations: use lotto_voce when set, otherwise the simulated lot
+ * - Attrezzaggio is distributed over the larger of lotto_voce and the
+ *   cycle/simulation lot; the preview can explicitly force lotto_voce
  * - MATERIA PRIMA: peso_kg * nr_componenti * costo_unitario * (1 + sfrido/100)
  *   If peso_kg==0 but dimensions exist, estimate weight = L*l*s*7.85e-6
  * - LAVORAZIONE A PESO / TERZISTA A PESO: peso_kg * nr_componenti * costo_unitario
@@ -56,7 +55,20 @@ export function isRigaConsiderata(r: RigaCiclo): boolean {
   return r.considera !== false;
 }
 
-export function calcolaCostoRiga(r: RigaCiclo, costoLavoroMin: number, lotto: number | string): number {
+export type SetupLotMode = "max" | "row";
+
+function getSetupLot(r: RigaCiclo, lottoSimulazione: number, mode: SetupLotMode = "max"): number {
+  const lottoVoce = Number(r.lotto_voce) || 0;
+  if (mode === "row" && lottoVoce > 0) return lottoVoce;
+  return Math.max(lottoVoce, Number(lottoSimulazione) || 0);
+}
+
+export function calcolaCostoRiga(
+  r: RigaCiclo,
+  costoLavoroMin: number,
+  lotto: number | string,
+  setupLotMode: SetupLotMode = "max",
+): number {
   if (!isRigaConsiderata(r)) return 0;
   const lot = typeof lotto === "string" ? parseFloat(lotto) || 100 : lotto;
 
@@ -81,7 +93,7 @@ export function calcolaCostoRiga(r: RigaCiclo, costoLavoroMin: number, lotto: nu
         costo += (costoLavoroMin / r.colpi_min) * nr;
       }
       if (r.attrezzaggio_min && r.attrezzaggio_min > 0) {
-        const lottoAtt = r.lotto_voce && r.lotto_voce > 0 ? r.lotto_voce : lot;
+        const lottoAtt = getSetupLot(r, lot, setupLotMode);
         if (lottoAtt > 0) {
           costo += (r.attrezzaggio_min * costoLavoroMin) / lottoAtt;
         }
@@ -112,7 +124,13 @@ export function calcolaCostoRiga(r: RigaCiclo, costoLavoroMin: number, lotto: nu
 /** Price per final item of an auto-assembly, using its direct and nested components.
  * Legacy detail expansions (parent_idx only) remain excluded from regular totals.
  */
-export function costoRigaGerarchico(righe: RigaCiclo[], index: number, clm:number, lotto:number|string):number {
+export function costoRigaGerarchico(
+  righe: RigaCiclo[],
+  index: number,
+  clm: number,
+  lotto: number | string,
+  setupLotMode: SetupLotMode = "max",
+): number {
   const active=new Set<number>();
   function evalAt(i:number,depth:number):number {
     if(depth>4) throw new Error("Assieme oltre quattro livelli");
@@ -130,7 +148,7 @@ export function costoRigaGerarchico(righe: RigaCiclo[], index: number, clm:numbe
       }
       // Omit parent_idx only for computing the raw detail value, not for
       // top-level accounting; the caller decides which rows are top level.
-      return calcolaCostoRiga({...r,parent_idx:null},clm,lotto);
+      return calcolaCostoRiga({...r,parent_idx:null},clm,lotto,setupLotMode);
     } finally { active.delete(i); }
   }
   return evalAt(index,1);
@@ -144,7 +162,7 @@ export function calcolaAttrezzaggioRiga(r: RigaCiclo, costoLavoroMin: number): n
   return 0;
 }
 
-export function calcolaBreakdown(ciclo: CicloEditorModel): Breakdown {
+export function calcolaBreakdown(ciclo: CicloEditorModel, setupLotMode: SetupLotMode = "max"): Breakdown {
   const bd = emptyBreakdown();
   const clm = ciclo.costo_lavoro_min;
   const lotto = ciclo.lotto;
@@ -154,8 +172,8 @@ export function calcolaBreakdown(ciclo: CicloEditorModel): Breakdown {
 
     const index = ciclo.righe.indexOf(r);
     const costo = r.assembly_auto
-      ? costoRigaGerarchico(ciclo.righe,index,clm,lotto)
-      : calcolaCostoRiga(r, clm, lotto);
+      ? costoRigaGerarchico(ciclo.righe,index,clm,lotto,setupLotMode)
+      : calcolaCostoRiga(r, clm, lotto,setupLotMode);
     switch (r.categoria) {
       case "COMPONENTE":
         bd.COMPONENTE += costo;
@@ -207,8 +225,12 @@ export function calcolaAttrezzaggioTotale(ciclo: CicloEditorModel): number {
   return ciclo.righe.reduce((sum,r,i)=>sum+(r.parent_idx==null?walk(i,1):0),0);
 }
 
-/** Setup cost per item, using the row lot when set or the simulation lot otherwise. */
-export function calcolaAttrezzaggioPerPezzo(ciclo: CicloEditorModel, lotto: number): number {
+/** Setup cost per item using the larger of row and simulation lots by default. */
+export function calcolaAttrezzaggioPerPezzo(
+  ciclo: CicloEditorModel,
+  lotto: number,
+  setupLotMode: SetupLotMode = "max",
+): number {
   if (!(lotto > 0)) return 0;
   const active = new Set<number>();
   function setupAt(index: number, depth: number): number {
@@ -226,7 +248,7 @@ export function calcolaAttrezzaggioPerPezzo(ciclo: CicloEditorModel, lotto: numb
         return children.reduce((sum, childIndex) => sum + setupAt(childIndex, depth + 1), 0) * quantity;
       }
       if (row.categoria !== "LAVORAZIONE INTERNA" || !(row.attrezzaggio_min > 0)) return 0;
-      const setupLot = row.lotto_voce > 0 ? row.lotto_voce : lotto;
+      const setupLot = getSetupLot(row, lotto, setupLotMode);
       return setupLot > 0 ? row.attrezzaggio_min * ciclo.costo_lavoro_min / setupLot : 0;
     } finally {
       active.delete(index);
@@ -239,7 +261,11 @@ export function calcolaAttrezzaggioPerPezzo(ciclo: CicloEditorModel, lotto: numb
 }
 
 /** Fixed setup and dedicated-tooling cost per finished product at a given lot. */
-export function calcolaCostoFissoPerPezzo(ciclo: CicloEditorModel, lotto: number): number {
+export function calcolaCostoFissoPerPezzo(
+  ciclo: CicloEditorModel,
+  lotto: number,
+  setupLotMode: SetupLotMode = "max",
+): number {
   if (!(lotto > 0)) return 0;
   const active = new Set<number>();
   function fixedAt(index: number, depth: number): number {
@@ -257,7 +283,7 @@ export function calcolaCostoFissoPerPezzo(ciclo: CicloEditorModel, lotto: number
         return children.reduce((sum, childIndex) => sum + fixedAt(childIndex, depth + 1), 0) * quantity;
       }
       if (row.categoria === "LAVORAZIONE INTERNA" && row.attrezzaggio_min > 0) {
-        const setupLot = row.lotto_voce > 0 ? row.lotto_voce : lotto;
+        const setupLot = getSetupLot(row, lotto, setupLotMode);
         return setupLot > 0 ? row.attrezzaggio_min * ciclo.costo_lavoro_min / setupLot : 0;
       }
       if (row.categoria === "SPESA ATTREZZATURA DEDICATA" && row.considera === true) {
@@ -287,7 +313,10 @@ export function calcolaPrezzoMinimo(fullCost: number, margineMinimo: number): nu
   return fullCost / (1 - margineMinimo);
 }
 
-export function calcolaSimulazioni(ciclo: CicloEditorModel): SimulazioneLotto[] {
+export function calcolaSimulazioni(
+  ciclo: CicloEditorModel,
+  setupLotMode: SetupLotMode = "max",
+): SimulazioneLotto[] {
   const lotti = ciclo.lotti_personalizzati?.length
     ? ciclo.lotti_personalizzati
     : [25, 50, 100, 250, 500, 1000];
@@ -298,13 +327,13 @@ export function calcolaSimulazioni(ciclo: CicloEditorModel): SimulazioneLotto[] 
   // only explicit assemblies need the recursive breakdown.
   if (ciclo.righe.some(r=>r.assembly_auto)) {
     return lotti.map((lotto)=>{
-      const bd=calcolaBreakdown({...ciclo,lotto:String(lotto)});
+      const bd=calcolaBreakdown({...ciclo,lotto:String(lotto)},setupLotMode);
       const costoStandard=calcolaCostoStandard(bd);
       const fullCost=calcolaFullCost(costoStandard,ciclo.ricarico_spese);
       return {
         lotto, breakdown:bd, costo_standard:costoStandard, full_cost:fullCost,
         prezzo_minimo:calcolaPrezzoMinimo(fullCost,ciclo.margine_minimo),
-        attrezzaggio_pz: calcolaAttrezzaggioPerPezzo(ciclo, lotto),
+        attrezzaggio_pz: calcolaAttrezzaggioPerPezzo(ciclo, lotto, setupLotMode),
       };
     });
   }
@@ -338,7 +367,7 @@ export function calcolaSimulazioni(ciclo: CicloEditorModel): SimulazioneLotto[] 
             costo += (clm / r.colpi_min) * nr;
           }
           if (r.attrezzaggio_min && r.attrezzaggio_min > 0) {
-            const lottoAtt = r.lotto_voce && r.lotto_voce > 0 ? r.lotto_voce : lotto;
+            const lottoAtt = getSetupLot(r, lotto, setupLotMode);
             if (lottoAtt > 0) {
               costo += (r.attrezzaggio_min * clm) / lottoAtt;
             }
@@ -373,7 +402,7 @@ export function calcolaSimulazioni(ciclo: CicloEditorModel): SimulazioneLotto[] 
     const costoStandard = calcolaCostoStandard(bd);
     const fullCost = calcolaFullCost(costoStandard, ciclo.ricarico_spese);
     const prezzoMinimo = calcolaPrezzoMinimo(fullCost, ciclo.margine_minimo);
-    const attrezzaggioPz = calcolaAttrezzaggioPerPezzo(ciclo, lotto);
+    const attrezzaggioPz = calcolaAttrezzaggioPerPezzo(ciclo, lotto, setupLotMode);
 
     return {
       lotto,
@@ -386,12 +415,12 @@ export function calcolaSimulazioni(ciclo: CicloEditorModel): SimulazioneLotto[] 
   });
 }
 
-export function ricalcolaCiclo(ciclo: CicloEditorModel): CicloEditorModel {
-  const bd = calcolaBreakdown(ciclo);
+export function ricalcolaCiclo(ciclo: CicloEditorModel, setupLotMode: SetupLotMode = "max"): CicloEditorModel {
+  const bd = calcolaBreakdown(ciclo, setupLotMode);
   const costoStandard = calcolaCostoStandard(bd);
   const fullCost = calcolaFullCost(costoStandard, ciclo.ricarico_spese);
   const prezzoMinimo = calcolaPrezzoMinimo(fullCost, ciclo.margine_minimo);
-  const simulazioni = calcolaSimulazioni(ciclo);
+  const simulazioni = calcolaSimulazioni(ciclo, setupLotMode);
 
   return {
     ...ciclo,
