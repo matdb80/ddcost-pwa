@@ -1,7 +1,9 @@
 import {useMemo,useState} from "react";
 import {Eye,EyeOff} from "lucide-react";
+import FormulaTooltip from "@/components/FormulaTooltip";
 import type {CicloEditorModel} from "@/types/cycle";
 import {categoryReductionTarget,calculateCostReductionTarget} from "@/lib/cycle-cost-reduction";
+import {CALCULATION_FORMULAS,cycleCategoryFormula} from "@/lib/calculation-formulas";
 
 function money(v:number):string {
   return v.toLocaleString("it-IT",{minimumFractionDigits:4,maximumFractionDigits:4});
@@ -37,19 +39,19 @@ export default function CostReductionBreakdown({
     <>
       {target && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-950">
-          <p className="font-semibold">Obiettivo di riduzione dei costi industriali</p>
+          <p className="font-semibold">Obiettivo di riduzione dei costi industriali<FormulaTooltip label="Obiettivo di riduzione dei costi" formula={CALCULATION_FORMULAS.cycle.costReductionTarget}/></p>
           <p className="mt-1">
-            Margine reale: <strong>{percentage(target.actualMarginPercent)}</strong> ·
+            Margine reale: <strong>{percentage(target.actualMarginPercent)}<FormulaTooltip label="Margine netto effettivo" formula={CALCULATION_FORMULAS.cycle.marketNetPercent}/></strong> ·
             obiettivo: <strong>{percentage(target.targetMarginPercent)}</strong>.
           </p>
           <p className="mt-1">
             Al prezzo di mercato di € {money(target.marketPrice)}, occorre ridurre
-            il costo industriale complessivo di <strong>€ {money(target.directSavings)} per pezzo</strong>
-            (−{percentage(target.overallReductionPercent)}).
+            il costo industriale complessivo di <strong>€ {money(target.directSavings)} per pezzo<FormulaTooltip label="Risparmio diretto richiesto per pezzo" formula={CALCULATION_FORMULAS.cycle.costReductionTarget}/></strong>
+            (−{percentage(target.overallReductionPercent)}<FormulaTooltip label="Riduzione percentuale complessiva" formula={CALCULATION_FORMULAS.cycle.costReductionPercent}/>).
           </p>
           <p className="mt-1 text-xs text-amber-900">
             Con il ricarico delle spese generali invariato al {percentage(cycle.ricarico_spese*100)},
-            il nuovo costo industriale obiettivo è € {money(target.targetDirectCost)}.
+            il nuovo costo industriale obiettivo è € {money(target.targetDirectCost)}<FormulaTooltip label="Costo industriale obiettivo per pezzo" formula={CALCULATION_FORMULAS.cycle.costReductionTarget}/>.
           </p>
           <p className="mt-2 text-xs">
             <strong>Premi l'occhio vicino a una categoria:</strong> vedrai quanto dovrebbe diminuire
@@ -68,7 +70,7 @@ export default function CostReductionBreakdown({
               <div className="flex justify-between items-center gap-2">
                 <span className="text-slate-500 min-w-0">{cat}</span>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="font-mono tabular-nums">{money(val)}</span>
+                  <span className="font-mono tabular-nums">{money(val)}<FormulaTooltip label={`Valore categoria ${cat}`} formula={cycleCategoryFormula(cat)}/></span>
                   {alternative && (
                     <button type="button"
                       aria-label={(isShown?"Nascondi":"Vedi")+" % riduzione necessaria per "+cat}
@@ -93,6 +95,7 @@ export default function CostReductionBreakdown({
                   {alternative.feasibleAlone
                     ? "Riduzione necessaria solo su questa categoria: −"+percentage(alternative.reductionPercent)
                     : "−"+percentage(alternative.reductionPercent)+" — impossibile agendo solo su questa categoria (>100%)."}
+                  <FormulaTooltip label={`Riduzione necessaria per ${cat}`} formula={CALCULATION_FORMULAS.cycle.costReductionPercent}/>
                 </p>
               )}
             </div>
@@ -100,7 +103,7 @@ export default function CostReductionBreakdown({
         })}
         <div className="border-t pt-2 flex justify-between font-semibold text-slate-800">
           <span>Totale</span>
-          <span className="font-mono">{money(cycle.costo_standard)}</span>
+          <span className="font-mono">{money(cycle.costo_standard)}<FormulaTooltip label="Costo industriale standard totale" formula={CALCULATION_FORMULAS.cycle.standardCost}/></span>
         </div>
       </div>
 

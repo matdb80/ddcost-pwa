@@ -5,8 +5,10 @@ import {
   Plus, Save, Settings2, Trash2,
 } from "lucide-react";
 import QuoteNumericInput from "@/components/QuoteNumericInput";
+import FormulaTooltip from "@/components/FormulaTooltip";
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
+import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
 import {type Product, type QuoteDocument} from "@/lib/quote-calculation";
 import {
   buildQuoteWizardSteps, quoteWizardStepError,
@@ -160,15 +162,15 @@ export default function QuoteMobileWizard(props:Props){
             <p className="text-sm font-medium">{product.descrizione||"Prodotto senza descrizione"}</p>
             <dl className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 text-sm">
               <div><dt className="text-slate-500">Quantità</dt><dd className="font-semibold">{product.quantita} pz</dd></div>
-              <div><dt className="text-slate-500">Costo pieno €/pz</dt><dd className="font-semibold">{hasPreview?euro(preview?.prodotti?.[productIndex]?.full_cost):"—"}</dd></div>
-              <div><dt className="text-slate-500">Prezzo €/pz</dt><dd className="font-semibold">{hasPreview?euro(preview?.prodotti?.[productIndex]?.prezzo_netto_unitario_finale):"—"}</dd></div>
-              <div><dt className="text-slate-500">Totale prodotto</dt><dd className="font-semibold">{hasPreview?"€ "+euro(preview?.prodotti?.[productIndex]?.totale_finale):"—"}</dd></div>
+              <div><dt className="text-slate-500">Costo pieno €/pz</dt><dd className="font-semibold">{hasPreview?euro(preview?.prodotti?.[productIndex]?.full_cost):"—"}{hasPreview&&<FormulaTooltip label="Full cost del prodotto" formula={CALCULATION_FORMULAS.quote.productFullCost}/>}</dd></div>
+              <div><dt className="text-slate-500">Prezzo €/pz</dt><dd className="font-semibold">{hasPreview?euro(preview?.prodotti?.[productIndex]?.prezzo_netto_unitario_finale):"—"}{hasPreview&&<FormulaTooltip label="Prezzo finale unitario" formula={CALCULATION_FORMULAS.quote.productFinalPrice}/>}</dd></div>
+              <div><dt className="text-slate-500">Totale prodotto</dt><dd className="font-semibold">{hasPreview?"€ "+euro(preview?.prodotti?.[productIndex]?.totale_finale):"—"}{hasPreview&&<FormulaTooltip label="Totale riga prodotto" formula={CALCULATION_FORMULAS.quote.productTotal}/>}</dd></div>
             </dl>
             {Array.isArray(product.oggetto_modifica)&&product.oggetto_modifica.length>0&&
               <p className="text-xs text-slate-600"><strong>Oggetto della modifica:</strong> {product.oggetto_modifica.join(", ")}</p>}
             {product.costo_materiale_noto===false &&
               <p className="text-xs text-slate-600">
-                Costo materiale calcolato da peso: {hasPreview?"€ "+euro(preview?.prodotti?.[productIndex]?.materiale_calcolato_cad):"da completare"} /pz.
+                Costo materiale calcolato da peso: {hasPreview?"€ "+euro(preview?.prodotti?.[productIndex]?.materiale_calcolato_cad):"da completare"}{hasPreview&&<FormulaTooltip label="Costo materiale per pezzo" formula={CALCULATION_FORMULAS.material.materialCost}/>} /pz.
                 Il calcolo usa il peso teorico del grezzo rettangolare.
               </p>}
             {!locked && <div className="grid grid-cols-2 gap-2">
@@ -186,8 +188,8 @@ export default function QuoteMobileWizard(props:Props){
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-slate-50 p-4 text-sm">
               <div><dt className="text-slate-500">Cliente</dt><dd className="break-words font-semibold">{doc.cliente||"—"}</dd></div>
               <div><dt className="text-slate-500">Prodotti / pezzi</dt><dd className="font-semibold">{doc.prodotti.length} / {preview?.quantita??"—"}</dd></div>
-              <div><dt className="text-slate-500">Totale preventivo</dt><dd className="font-semibold">{hasPreview?"€ "+price:"Da calcolare"}</dd></div>
-              <div><dt className="text-slate-500">Margine netto</dt><dd className="font-semibold">{hasPreview?cashMargin.toFixed(1).replace(".",",")+"%":"—"}</dd></div>
+              <div><dt className="text-slate-500">Totale preventivo</dt><dd className="font-semibold">{hasPreview?"€ "+price:"Da calcolare"}{hasPreview&&<FormulaTooltip label="Totale preventivo" formula={CALCULATION_FORMULAS.quote.quoteTotal}/>}</dd></div>
+              <div><dt className="text-slate-500">Margine netto</dt><dd className="font-semibold">{hasPreview?cashMargin.toFixed(1).replace(".",",")+"%":"—"}{hasPreview&&<FormulaTooltip label="Margine netto complessivo" formula={CALCULATION_FORMULAS.quote.netMarginPercent}/>}</dd></div>
             </dl>
             {costVersion>=2 && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
@@ -209,6 +211,7 @@ export default function QuoteMobileWizard(props:Props){
                     {hasPreview
                       ? "€ "+euro((preview?.prodotti as Product[]).reduce((sum:number,p:Product)=>sum+Number(p.trattamenti_tot??0),0))
                       : "Da calcolare"}
+                    {hasPreview&&<FormulaTooltip label="Totale trattamenti applicati" formula="Somma dei costi trattamento dei prodotti. In modalità globale coincide con il costo totale trattamenti inserito; in modalità per prodotto è la somma di costo trattamento €/pz × quantità per ciascun prodotto."/>}
                   </strong>
                 </div>
                 {!locked && <button type="button" onClick={()=>goto("trattamenti_modalita")}
@@ -218,12 +221,14 @@ export default function QuoteMobileWizard(props:Props){
               </div>
             )}
             <div className="space-y-2">
-              {(doc.prodotti as Product[]).map((p,i)=><button type="button" key={i}
-                onClick={()=>goto("p:"+i+":descrizione")}
-                className="flex w-full min-h-12 items-center justify-between rounded-lg border border-slate-200 p-3 text-left text-sm">
-                <span className="min-w-0 truncate">{i+1}. {p.descrizione||"Prodotto da completare"}</span>
-                <span className="shrink-0 pl-2 font-semibold">{hasPreview?"€ "+euro(preview?.prodotti?.[i]?.totale_finale):"—"}</span>
-              </button>)}
+              {(doc.prodotti as Product[]).map((p,i)=><div key={i} className="flex min-h-12 items-center rounded-lg border border-slate-200 p-3 text-sm">
+                <button type="button" onClick={()=>goto("p:"+i+":descrizione")}
+                  className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
+                  <span className="min-w-0 truncate">{i+1}. {p.descrizione||"Prodotto da completare"}</span>
+                  <span className="shrink-0 font-semibold">{hasPreview?"€ "+euro(preview?.prodotti?.[i]?.totale_finale):"—"}</span>
+                </button>
+                <FormulaTooltip label={`Totale prodotto ${i+1}`} formula={CALCULATION_FORMULAS.quote.productTotal}/>
+              </div>)}
             </div>
             {!locked && <button type="button" onClick={addAnotherProduct}
               className={actionClass+" w-full border border-emerald-600 text-emerald-800"}><Plus size={17}/> Aggiungi un altro prodotto</button>}
@@ -329,9 +334,9 @@ export default function QuoteMobileWizard(props:Props){
             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();next();}}}/>
         ):null}
         {current.kind==="number" && field==="costo_progettazione_ora" &&
-          <p className="mt-2 text-xs text-slate-500">Il costo di progettazione è unico per il preventivo. Sarà distribuito sul totale dei pezzi.</p>}
+            <p className="mt-2 text-xs text-slate-500">Il costo di progettazione è unico per il preventivo. Sarà distribuito sul totale dei pezzi.<FormulaTooltip label="Progettazione per pezzo" formula={CALCULATION_FORMULAS.quote.engineeringPerPiece}/></p>}
         {current.kind==="number" && field==="trattamenti_totale_euro" &&
-          <p className="mt-2 text-xs text-slate-500">Quota per pezzo: € {euro(preview?.costi_comuni_riepilogo?.trattamenti_globali_cad)}</p>}
+          <p className="mt-2 text-xs text-slate-500">Quota per pezzo: € {euro(preview?.costi_comuni_riepilogo?.trattamenti_globali_cad)}<FormulaTooltip label="Trattamenti comuni per pezzo" formula={CALCULATION_FORMULAS.quote.globalTreatmentPerPiece}/></p>}
         {localError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm font-medium text-red-700">{localError}</p>}
       </div>
     </section>
@@ -342,10 +347,10 @@ export default function QuoteMobileWizard(props:Props){
 
     <div className="rounded-xl border border-slate-200 bg-white p-3">
       <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="flex items-center gap-1.5 font-medium text-slate-600"><FileText size={16}/> Totale provvisorio</span>
+        <span className="flex items-center gap-1.5 font-medium text-slate-600"><FileText size={16}/> Totale provvisorio<FormulaTooltip label="Totale preventivo provvisorio" formula={CALCULATION_FORMULAS.quote.quoteTotal}/></span>
         <strong className="text-lg tabular-nums">{hasPreview?"€ "+price:"Da calcolare"}</strong>
       </div>
-      {hasPreview && <p className="mt-1 text-xs text-slate-500">Margine netto: {cashMargin.toFixed(1).replace(".",",")}%</p>}
+      {hasPreview && <p className="mt-1 text-xs text-slate-500">Margine netto: {cashMargin.toFixed(1).replace(".",",")}%<FormulaTooltip label="Margine netto complessivo" formula={CALCULATION_FORMULAS.quote.netMarginPercent}/></p>}
       {!locked && current.id!=="riepilogo" && <button type="button" disabled={busy||!unsavedChanges}
         onClick={onSaveDraft} className="mt-3 min-h-11 w-full rounded-lg border border-emerald-600 font-semibold text-emerald-800 disabled:opacity-40">
         <Save size={16} className="mr-2 inline"/> {busy?"Salvataggio...":"Salva bozza"}

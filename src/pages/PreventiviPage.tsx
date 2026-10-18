@@ -3,6 +3,8 @@ import {trpc} from "@/providers/trpc";
 import {useState} from "react";
 import {Link} from "react-router";
 import {Plus,Search} from "lucide-react";
+import FormulaTooltip from "@/components/FormulaTooltip";
+import {CALCULATION_FORMULAS} from "@/lib/calculation-formulas";
 import {quoteIsDraft} from "@/lib/quote-draft-state";
 import type {QuoteOutcome} from "@/lib/quote-outcomes";
 
@@ -42,16 +44,16 @@ export default function PreventiviPage(){
           return <div key={card.key} className={`rounded-xl border bg-white px-4 py-3 ${card.border}`}>
             <p className="text-sm font-medium text-slate-600">{card.label}</p>
             <p className={`mt-1 text-2xl font-semibold tabular-nums ${card.text}`}>
-              {loadingSummary?"...":formatEuro(values?.value??0)}
+              {loadingSummary?"...":formatEuro(values?.value??0)}<FormulaTooltip label={`Valore totale ${card.label.toLowerCase()}`} formula={CALCULATION_FORMULAS.quote.outcomeSummary}/>
             </p>
-            <p className="text-xs text-slate-600">{values?.count??0} preventivi
+            <p className="text-xs text-slate-600">{values?.count??0} preventivi<FormulaTooltip label={`Conteggio ${card.label.toLowerCase()}`} formula={CALCULATION_FORMULAS.quote.outcomeCount}/>
               {values?.unpriced? ` · ${values.unpriced} senza importo disponibile` : ""}
             </p>
           </div>;
         })}
       </div>
       {totals&&<p className="text-xs text-slate-600">
-        Totale preventivi definitivi: {totals.total.count} · Valore complessivo: {formatEuro(totals.total.value)}
+        Totale preventivi definitivi: {totals.total.count}<FormulaTooltip label="Conteggio dei preventivi definitivi" formula={CALCULATION_FORMULAS.quote.definitiveCount}/> · Valore complessivo: {formatEuro(totals.total.value)}<FormulaTooltip label="Valore complessivo dei preventivi definitivi" formula={CALCULATION_FORMULAS.quote.definitiveTotal}/>
         {totals.total.unpriced>0?` · Attenzione: ${totals.total.unpriced} preventivi senza importo non contribuiscono al valore in euro.`:""}
       </p>}
       {summaryError&&<div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">Le statistiche non sono disponibili. Verifica la connessione prima di cambiare gli esiti.</div>}
@@ -87,7 +89,7 @@ export default function PreventiviPage(){
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
               <span className="text-xs font-medium text-slate-500">Totale</span>
-              <strong className="text-lg tabular-nums">{draft?"Da completare":q.totalFinal!==null?formatEuro(Number(q.totalFinal)):"—"}</strong>
+              <strong className="text-lg tabular-nums">{draft?"Da completare":q.totalFinal!==null?formatEuro(Number(q.totalFinal)):"—"}<FormulaTooltip label="Totale preventivo" formula={CALCULATION_FORMULAS.quote.quoteTotal}/></strong>
             </div>
             {!draft&&latest&&
               <label className="flex items-center justify-between gap-2 text-xs text-slate-600">
@@ -135,7 +137,7 @@ export default function PreventiviPage(){
                 </td>
                 <td className="p-3 text-slate-600">{q.reference}</td>
                 <td className="p-3 text-slate-500">{q.rev}</td>
-                <td className="p-3 text-right font-mono text-slate-700">{draft?"Da completare":q.totalFinal!==null?formatEuro(Number(q.totalFinal)):"—"}</td>
+                <td className="p-3 text-right font-mono text-slate-700">{draft?"Da completare":q.totalFinal!==null?formatEuro(Number(q.totalFinal)):"—"}<FormulaTooltip label="Totale preventivo" formula={CALCULATION_FORMULAS.quote.quoteTotal}/></td>
                 <td className="p-3">
                   {draft?<span className="text-xs text-amber-800">Bozza, non conteggiata</span>:
                     latest?<select

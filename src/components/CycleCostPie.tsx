@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import FormulaTooltip from "@/components/FormulaTooltip";
 import type { CicloEditorModel } from "@/types/cycle";
 import { calculateCyclePieCosts } from "@/lib/cycle-cost-pie";
+import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
 
 const COLORS = {
   terzisti: "#2563eb",
@@ -50,7 +52,16 @@ export default function CycleCostPie({cycle}: {cycle: CicloEditorModel}) {
                   label={({percent})=>pct((percent ?? 0)*100)+"%"}>
                   {slices.map(x=><Cell key={x.name} fill={x.color}/>)}
                 </Pie>
-                <Tooltip formatter={(value)=>"€ "+eur(Number(value))}/>
+                <Tooltip content={({active,payload})=>{
+                  if(!active || !payload?.length)return null;
+                  const value=Number(payload[0]?.value??0);
+                  const name=String(payload[0]?.name??"Costo categoria");
+                  return <div className="max-w-72 rounded border border-slate-200 bg-white p-3 text-xs shadow-lg">
+                    <strong>{name}: € {eur(value)}</strong>
+                    <p className="mt-1">{pct(100*value/costs.totaleClassificato)}% sul totale classificato.</p>
+                    <p className="mt-1 text-slate-600">{CALCULATION_FORMULAS.cycle.costPieShare}</p>
+                  </div>;
+                }}/>
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -59,16 +70,16 @@ export default function CycleCostPie({cycle}: {cycle: CicloEditorModel}) {
               <div key={x.name} className="flex gap-2 items-center justify-between text-xs">
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="h-3 w-3 shrink-0 rounded-sm" style={{backgroundColor:x.color}}/>
-                  <span>{x.name}</span>
+                  <span>{x.name}<FormulaTooltip label={`Quota di ${x.name}`} formula={CALCULATION_FORMULAS.cycle.costPieShare}/></span>
                 </span>
                 <span className="font-medium whitespace-nowrap tabular-nums">
-                  {pct(100*x.value/costs.totaleClassificato)}% · € {eur(x.value)}
+                  {pct(100*x.value/costs.totaleClassificato)}% · € {eur(x.value)}<FormulaTooltip label={`Importo e percentuale ${x.name}`} formula={CALCULATION_FORMULAS.cycle.costPieShare}/>
                 </span>
               </div>
             ))}
           </div>
           <p className="mt-3 border-t pt-2 text-xs text-slate-600">
-            Totale delle categorie rappresentate: <strong>€ {eur(costs.totaleClassificato)}</strong>
+            Totale delle categorie rappresentate: <strong>€ {eur(costs.totaleClassificato)}<FormulaTooltip label="Totale delle categorie rappresentate" formula={CALCULATION_FORMULAS.cycle.costPieTotal}/></strong>
           </p>
         </>
       ) : (
@@ -76,13 +87,13 @@ export default function CycleCostPie({cycle}: {cycle: CicloEditorModel}) {
       )}
       {costs.nonClassificati>0 && (
         <p className="mt-2 rounded bg-slate-100 p-2 text-xs text-slate-600">
-          Altri costi senza classificazione nel grafico: <strong>€ {eur(costs.nonClassificati)}</strong>.
+          Altri costi senza classificazione nel grafico: <strong>€ {eur(costs.nonClassificati)}<FormulaTooltip label="Costi non classificati" formula="Somma delle righe incluse che non sono attrezzature dedicate, lavorazioni interne o terzisti e non hanno un fornitore indicato."/></strong>.
           Per attribuirli ai fornitori non terzisti, compilare il campo Fornitore nelle relative righe.
         </p>
       )}
       {costs.esclusiAttrezzatura>0 && (
         <p className="mt-2 text-xs text-slate-500">
-          Attrezzatura dedicata esclusa dalla torta: € {eur(costs.esclusiAttrezzatura)}
+          Attrezzatura dedicata esclusa dalla torta: € {eur(costs.esclusiAttrezzatura)}<FormulaTooltip label="Attrezzature dedicate escluse dalla torta" formula={CALCULATION_FORMULAS.cycle.costPieDedicatedExcluded}/>
         </p>
       )}
     </div>

@@ -1,8 +1,10 @@
 import Layout from "@/components/Layout";
+import FormulaTooltip from "@/components/FormulaTooltip";
 import {trpc} from "@/providers/trpc";
 import {Fragment,useState} from "react";
 import {Link} from "react-router";
 import {Plus,Search,Trash2,RotateCcw,Pencil,ChevronLeft,ChevronRight} from "lucide-react";
+import {CALCULATION_FORMULAS} from "@/lib/calculation-formulas";
 
 const PAGE_SIZE=25;
 const fmt=(value:string|number|null|undefined)=>{
@@ -106,8 +108,8 @@ export default function CicliPage(){
                   <td className="p-3 text-slate-600">{last.client}</td>
                   <td className="p-3">{last.lot}</td>
                   <td className="p-3 font-semibold">{last.rev}</td>
-                  <td className="p-3 text-right tabular-nums">{last.standardCost!=null?`€ ${fmt(last.standardCost)}`:"—"}</td>
-                  <td className="p-3 text-right tabular-nums">{last.minimumPrice!=null?`€ ${fmt(last.minimumPrice)}`:"—"}</td>
+                  <td className="p-3 text-right tabular-nums">{last.standardCost!=null?<>€ {fmt(last.standardCost)}<FormulaTooltip label="Costo industriale standard del ciclo" formula={CALCULATION_FORMULAS.cycle.standardCost}/></>:"—"}</td>
+                  <td className="p-3 text-right tabular-nums">{last.minimumPrice!=null?<>€ {fmt(last.minimumPrice)}<FormulaTooltip label="Prezzo minimo del ciclo" formula={CALCULATION_FORMULAS.cycle.minimumPrice}/></>:"—"}</td>
                   <td className="p-3 text-center"><Link to={`/cicli/${last.id}`} className="text-emerald-700 hover:underline">Apri ultima</Link></td>
                 </tr>
                 {open&&g.revisions.map(c=><tr key={c.id} className={`border-b border-slate-100 ${c.deleted===1?"bg-red-50":"bg-slate-50/70"}`}>
@@ -118,8 +120,8 @@ export default function CicliPage(){
                   <td className="p-2 text-slate-600">{c.client}</td>
                   <td className="p-2">{c.lot}</td>
                   <td className="p-2">{c.rev}</td>
-                  <td className="p-2 text-right tabular-nums">{c.standardCost!=null?`€ ${fmt(c.standardCost)}`:"—"}</td>
-                  <td className="p-2 text-right tabular-nums">{c.minimumPrice!=null?`€ ${fmt(c.minimumPrice)}`:"—"}</td>
+                  <td className="p-2 text-right tabular-nums">{c.standardCost!=null?<>€ {fmt(c.standardCost)}<FormulaTooltip label="Costo industriale standard del ciclo" formula={CALCULATION_FORMULAS.cycle.standardCost}/></>:"—"}</td>
+                  <td className="p-2 text-right tabular-nums">{c.minimumPrice!=null?<>€ {fmt(c.minimumPrice)}<FormulaTooltip label="Prezzo minimo del ciclo" formula={CALCULATION_FORMULAS.cycle.minimumPrice}/></>:"—"}</td>
                   <td className="p-2">{actions(c)}</td>
                 </tr>)}
               </Fragment>;

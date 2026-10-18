@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
+import FormulaTooltip from "@/components/FormulaTooltip";
 import { trpc } from "@/providers/trpc";
 import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy } from "lucide-react";
 import { formatQuoteForCopy } from "@/lib/quote-copy";
@@ -12,6 +13,7 @@ import {
   blankProduct, blankQuote, calculateQuote, migrateQuoteToEngineeringHours,
   type Product, type QuoteDocument,
 } from "@/lib/quote-calculation";
+import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
 const val = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const euro = (v: unknown) => val(v).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const euroDetailed = (v: unknown) => val(v).toLocaleString("it-IT", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
@@ -546,9 +548,9 @@ export default function PreventivoEditorPage() {
                   </label>
                 </div>
                 <p className="text-xs text-slate-600">
-                  Costo comune: <strong>€ {euro(preview?.costi_comuni_riepilogo?.progettazione_totale)}</strong>
+                  Costo comune: <strong>€ {euro(preview?.costi_comuni_riepilogo?.progettazione_totale)}<FormulaTooltip label="Costo totale di progettazione" formula={CALCULATION_FORMULAS.quote.engineeringTotal}/></strong>
                   {" "}(ore × tariffa), diviso tra {preview?.costi_comuni_riepilogo?.quantita_totale ?? "—"} pezzi:
-                  <strong> € {euroDetailed(preview?.costi_comuni_riepilogo?.progettazione_cad)}/pz</strong>.
+                  <strong> € {euroDetailed(preview?.costi_comuni_riepilogo?.progettazione_cad)}<FormulaTooltip label="Quota di progettazione per pezzo" formula={CALCULATION_FORMULAS.quote.engineeringPerPiece}/>/pz</strong>.
                 </p>
               </div>
             )}
@@ -569,7 +571,7 @@ export default function PreventivoEditorPage() {
                     disabled={locked} onChange={value=>update("trattamenti_totale_euro",value,true)}
                     className="w-full min-w-0 rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-100"/>
                   <span className="text-xs text-slate-500">
-                    Quota ripartita: € {euroDetailed(preview?.costi_comuni_riepilogo?.trattamenti_globali_cad)} /pz.
+                    Quota ripartita: € {euroDetailed(preview?.costi_comuni_riepilogo?.trattamenti_globali_cad)}<FormulaTooltip label="Trattamenti comuni per pezzo" formula={CALCULATION_FORMULAS.quote.globalTreatmentPerPiece}/> /pz.
                   </span>
                 </label>
               ) : (
@@ -612,9 +614,9 @@ export default function PreventivoEditorPage() {
               ? buildListino(doc.listino ?? {}, preview ?? doc, priceProductIndex)
               : doc.listino;
             return <div className="grid grid-cols-1 md:grid-cols-3 gap-2 bg-slate-50 rounded p-3 text-sm">
-              <span>Netto di riferimento: <b>€ {euro(data.prezzo_minimo_riferimento)}</b></span>
-              <span>Listino lordo: <b>€ {euro(data.prezzo_listino_generato)}</b></span>
-              <span>Netto dopo sconto: <b>€ {euro(data.rows?.[0]?.netto)}</b></span>
+              <span>Netto di riferimento: <b>€ {euro(data.prezzo_minimo_riferimento)}<FormulaTooltip label="Netto di riferimento del prodotto" formula={CALCULATION_FORMULAS.quote.productFinalPrice}/></b></span>
+              <span>Listino lordo: <b>€ {euro(data.prezzo_listino_generato)}<FormulaTooltip label="Listino lordo" formula={CALCULATION_FORMULAS.quote.listPrice}/></b></span>
+              <span>Netto dopo sconto: <b>€ {euro(data.rows?.[0]?.netto)}<FormulaTooltip label="Netto dopo sconto" formula={CALCULATION_FORMULAS.quote.netAfterDiscount}/></b></span>
             </div>;
           } catch (err) { return <p className="text-red-700 text-sm">{err instanceof Error?err.message:"Sconto non valido"}</p>; }
         })()}
@@ -722,11 +724,11 @@ export default function PreventivoEditorPage() {
             </label>
           </div>
           <div className="bg-slate-50 rounded px-3 py-2 text-xs grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-x-3 gap-y-1">
-            <span>Costo primo €/pz: <b>{euro(preview?.prodotti?.[index]?.costo_primo_cad)}</b></span>
-            {!legacyCostModel && <span>Progettazione comune €/pz: <b>{euroDetailed(preview?.prodotti?.[index]?.progettazione_comune_cad)}</b></span>}
-            {!legacyCostModel && sharedTreatmentMode === "globale" && <span>Trattamenti comuni €/pz: <b>{euroDetailed(preview?.prodotti?.[index]?.trattamenti_globali_cad)}</b></span>}
-            <span>Full cost €/pz: <b>{euro(preview?.prodotti?.[index]?.full_cost)}</b></span>
-            <span>Prezzo finale €/pz: <b>{euro(preview?.prodotti?.[index]?.prezzo_netto_unitario_finale)}</b></span>
+            <span>Costo primo €/pz: <b>{euro(preview?.prodotti?.[index]?.costo_primo_cad)}<FormulaTooltip label="Costo primo per pezzo" formula={CALCULATION_FORMULAS.quote.productDirectCost}/></b></span>
+            {!legacyCostModel && <span>Progettazione comune €/pz: <b>{euroDetailed(preview?.prodotti?.[index]?.progettazione_comune_cad)}<FormulaTooltip label="Progettazione comune per pezzo" formula={CALCULATION_FORMULAS.quote.engineeringPerPiece}/></b></span>}
+            {!legacyCostModel && sharedTreatmentMode === "globale" && <span>Trattamenti comuni €/pz: <b>{euroDetailed(preview?.prodotti?.[index]?.trattamenti_globali_cad)}<FormulaTooltip label="Trattamenti comuni per pezzo" formula={CALCULATION_FORMULAS.quote.globalTreatmentPerPiece}/></b></span>}
+            <span>Full cost €/pz: <b>{euro(preview?.prodotti?.[index]?.full_cost)}<FormulaTooltip label="Full cost del prodotto" formula={CALCULATION_FORMULAS.quote.productFullCost}/></b></span>
+            <span>Prezzo finale €/pz: <b>{euro(preview?.prodotti?.[index]?.prezzo_netto_unitario_finale)}<FormulaTooltip label="Prezzo finale unitario" formula={CALCULATION_FORMULAS.quote.productFinalPrice}/></b></span>
             <label className="flex min-w-0 flex-col gap-1" title="Imposta un prezzo unitario manuale: sostituisce il prezzo calcolato della riga">
               <span className="font-medium text-slate-600">Prezzo manuale €/pz</span>
               <QuoteNumericInput kind="euro" optional disabled={locked}
@@ -734,7 +736,7 @@ export default function PreventivoEditorPage() {
                 className={compactInputClass+" "+normalInputClass+" max-w-36"}
                 onChange={value=>updateProduct(index,"prezzo_manuale",value)}/>
             </label>
-            <span>Totale riga €: <b>{euro(preview?.prodotti?.[index]?.totale_finale)}</b></span>
+            <span>Totale riga €: <b>{euro(preview?.prodotti?.[index]?.totale_finale)}<FormulaTooltip label="Totale riga prodotto" formula={CALCULATION_FORMULAS.quote.productTotal}/></b></span>
           </div>
         </section>)}
       <section className="bg-white border rounded-xl p-3 md:p-4 space-y-3">
@@ -744,7 +746,7 @@ export default function PreventivoEditorPage() {
           <textarea rows={2} disabled={locked} className="border rounded p-2 disabled:bg-slate-100" value={doc[key]??""} onChange={e=>update(key,e.target.value)}/>
         </label>)}
         {Array.isArray(doc.attachments)&&doc.attachments.length>0&&<p className="text-sm text-amber-700">{doc.attachments.length} allegati storici presenti: i riferimenti vengono mantenuti nelle revisioni, ma i file originali Windows non sono ospitati sul server.</p>}
-        <div className="border-t pt-3 text-right text-lg font-bold">Totale preventivo: € {euro(preview?.totale_finale)}</div>
+        <div className="border-t pt-3 text-right text-lg font-bold">Totale preventivo: € {euro(preview?.totale_finale)}<FormulaTooltip label="Totale preventivo" formula={CALCULATION_FORMULAS.quote.quoteTotal}/></div>
         {dirtyCalculation && <p className="text-amber-700 text-sm">Anteprima del ricalcolo; salvando i nuovi valori saranno memorizzati in una nuova revisione.</p>}
       </section>
         </>

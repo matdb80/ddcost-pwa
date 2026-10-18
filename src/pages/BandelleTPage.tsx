@@ -1,7 +1,9 @@
 import Layout from "@/components/Layout";
 import { useState } from "react";
 import { Calculator, Copy } from "lucide-react";
+import FormulaTooltip from "@/components/FormulaTooltip";
 import { quoteBandellaT, type TKind, type TPosition, type TRequest, type TResponse, PRICES } from "@/lib/bandelle-t-listino";
+import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
 
 const AMBITI: Array<{ id: TKind; title: string; desc: string; img: string }> = [
   { id:"standard", title:"Occhio standard", desc:"Occhio centrale o decentrato con posizionamento standard", img:"/images/occhio standard.png" },
@@ -123,14 +125,14 @@ export default function BandelleTPage() {
           <div><dt className="text-slate-500">Codice listino</dt><dd className="font-mono font-semibold">{response.code}</dd></div>
           <div><dt className="text-slate-500">Collo selezionato</dt><dd className="font-semibold">{response.size} mm</dd></div>
           <div><dt className="text-slate-500">Fascia lotto</dt><dd className="font-semibold">{response.tier} pz</dd></div>
-          <div><dt className="text-slate-500">Prezzo base</dt><dd className="font-semibold">{prices3(response.base)} €/pz</dd></div>
-          <div><dt className="text-slate-500">Supplementi complessivi</dt><dd className="font-semibold">{prices2(response.additions.reduce((s,a)=>s+a.euro,0))} €/pz</dd></div>
-          <div><dt className="text-slate-500">Prezzo netto unitario</dt><dd className="font-semibold text-lg text-emerald-700">{prices3(response.unit)} €/pz</dd></div>
+          <div><dt className="text-slate-500">Prezzo base</dt><dd className="font-semibold">{prices3(response.base)} €/pz<FormulaTooltip label="Prezzo base da listino" formula={CALCULATION_FORMULAS.bandelleT.basePrice}/></dd></div>
+          <div><dt className="text-slate-500">Supplementi complessivi</dt><dd className="font-semibold">{prices2(response.additions.reduce((s,a)=>s+a.euro,0))} €/pz<FormulaTooltip label="Supplementi complessivi per pezzo" formula={CALCULATION_FORMULAS.bandelleT.additions}/></dd></div>
+          <div><dt className="text-slate-500">Prezzo netto unitario</dt><dd className="font-semibold text-lg text-emerald-700">{prices3(response.unit)} €/pz<FormulaTooltip label="Prezzo netto unitario" formula={CALCULATION_FORMULAS.bandelleT.unitPrice}/></dd></div>
         </dl>
         {response.additions.length>0&&<div className="border-t pt-2 text-sm">
-          {response.additions.map((a,i)=><p key={i}>{a.description}: +{prices2(a.euro)} €/pz</p>)}
+          {response.additions.map((a,i)=><p key={i}>{a.description}: +{prices2(a.euro)} €/pz<FormulaTooltip label={`Supplemento ${a.description}`} formula={CALCULATION_FORMULAS.bandelleT.additions}/></p>)}
         </div>}
-        <p className="text-2xl font-bold text-emerald-800 border-t pt-3">Totale lotto ({req.quantity} pz): € {prices2(response.total)}</p>
+        <p className="text-2xl font-bold text-emerald-800 border-t pt-3">Totale lotto ({req.quantity} pz): € {prices2(response.total)}<FormulaTooltip label="Totale lotto" formula={CALCULATION_FORMULAS.bandelleT.lotTotal}/></p>
         {response.notes.map((n,i)=><p className="text-sm text-slate-600" key={i}>{n}</p>)}
         <p className="text-xs text-amber-800 bg-amber-50 rounded p-3">Il risultato è basato soltanto sulle combinazioni disponibili nel listino. Per misure e lavorazioni fuori standard è necessaria una verifica tecnico-commerciale; i valori non vengono salvati automaticamente come preventivi aziendali.</p>
       </section>}

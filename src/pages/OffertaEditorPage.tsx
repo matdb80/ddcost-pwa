@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
+import FormulaTooltip from "@/components/FormulaTooltip";
 import { trpc } from "@/providers/trpc";
 import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, FileText, Pencil, Plus, Printer, Save, Search, Trash2, X } from "lucide-react";
 import { applyStandardCycleToOfferRow } from "@/lib/commercial-offer-cycle";
+import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
 import {
   calculateOfferLotPrice,
   cycleForOfferRow,
@@ -429,13 +431,13 @@ export default function OffertaEditorPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-lg bg-slate-50 p-4 text-sm">
             {price ? <>
-              <span>Costo industriale standard €/pz: <b>€ {money(price.simulation.costo_standard)}</b></span>
+              <span>Costo industriale standard €/pz: <b>€ {money(price.simulation.costo_standard)}<FormulaTooltip label="Costo industriale standard" formula={CALCULATION_FORMULAS.cycle.standardCost}/></b></span>
               <span>Lotto principale: <b>{Number(row.lotto).toLocaleString("it-IT")} pz</b></span>
-              <span>Quota costi fissi €/pz: <b>€ {money(price.fixedCostPerPiece)}</b></span>
-              <span>Spese generali ({money(price.markupPercent)}%) €/pz: <b>€ {money(price.overheadPerPiece)}</b></span>
-              <span>Costo pieno €/pz: <b>€ {money(price.fullCost)}</b></span>
-              <span>Prezzo netto proposto €/pz: <b className="text-emerald-800">€ {money(price.netPrice)}</b></span>
-              <span>Margine netto: <b>{money(price.actualMarginPercent)}%</b></span>
+              <span>Quota costi fissi €/pz: <b>€ {money(price.fixedCostPerPiece)}<FormulaTooltip label="Quota costi fissi per pezzo" formula={CALCULATION_FORMULAS.commercialOffer.fixedCostPerPiece}/></b></span>
+              <span>Spese generali ({money(price.markupPercent)}%) €/pz: <b>€ {money(price.overheadPerPiece)}<FormulaTooltip label="Spese generali per pezzo" formula={CALCULATION_FORMULAS.commercialOffer.overheadPerPiece}/></b></span>
+              <span>Costo pieno €/pz: <b>€ {money(price.fullCost)}<FormulaTooltip label="Costo pieno dell’offerta" formula={CALCULATION_FORMULAS.commercialOffer.fullCost}/></b></span>
+              <span>Prezzo netto proposto €/pz: <b className="text-emerald-800">€ {money(price.netPrice)}<FormulaTooltip label="Prezzo netto proposto" formula={CALCULATION_FORMULAS.commercialOffer.netPrice}/></b></span>
+              <span>Margine netto: <b>{money(price.actualMarginPercent)}%<FormulaTooltip label="Margine netto effettivo" formula={CALCULATION_FORMULAS.commercialOffer.actualMargin}/></b></span>
             </> : <p className="md:col-span-3 text-amber-800">Seleziona un prodotto dai Cicli Standard e verifica lotto, ricarico e margine.</p>}
           </div>
 
@@ -452,8 +454,11 @@ export default function OffertaEditorPage() {
               <table className="w-full min-w-[900px] text-sm">
                 <thead className="bg-slate-50"><tr>
                   <th className="p-2 text-left">Lotto</th><th className="p-2 text-right">Costo industriale standard €/pz</th>
-                  <th className="p-2 text-right">Costi fissi €/pz</th><th className="p-2 text-right">Spese generali €/pz</th><th className="p-2 text-right">Costo pieno €/pz</th>
-                  <th className="p-2 text-right">Prezzo netto €/pz</th><th className="p-2 text-right">Totale lotto</th>
+                  <th className="p-2 text-right">Costi fissi €/pz</th>
+                  <th className="p-2 text-right">Spese generali €/pz</th>
+                  <th className="p-2 text-right">Costo pieno €/pz</th>
+                  <th className="p-2 text-right">Prezzo netto €/pz</th>
+                  <th className="p-2 text-right">Totale lotto</th>
                   {!locked && <th className="p-2 text-center">In offerta</th>}
                 </tr></thead>
                 <tbody>{lots.map((lot) => {
@@ -463,12 +468,12 @@ export default function OffertaEditorPage() {
                     !simulationsForOfferRow(row).some((simulation) => Number(simulation.lotto) === lot);
                   return <tr key={lot} className={selectedLots.includes(lot) ? "border-t bg-emerald-50" : "border-t"}>
                     <td className="p-2 font-medium">{lot.toLocaleString("it-IT")} pz</td>
-                    <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.simulation.costo_standard)}</td>
-                    <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.fixedCostPerPiece)}</td>
-                    <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.overheadPerPiece)}</td>
-                    <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.fullCost)}</td>
-                    <td className="p-2 text-right font-semibold tabular-nums">€ {money(simulationPrice?.netPrice)}</td>
-                    <td className="p-2 text-right tabular-nums">€ {money((simulationPrice?.netPrice ?? 0) * lot)}</td>
+                    <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.simulation.costo_standard)}<FormulaTooltip label={`Costo industriale standard per lotto ${lot}`} formula={CALCULATION_FORMULAS.cycle.standardCost}/></td>
+                    <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.fixedCostPerPiece)}<FormulaTooltip label={`Costi fissi per pezzo al lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.fixedCostPerPiece}/></td>
+                    <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.overheadPerPiece)}<FormulaTooltip label={`Spese generali per pezzo al lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.overheadPerPiece}/></td>
+                    <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.fullCost)}<FormulaTooltip label={`Costo pieno per pezzo al lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.fullCost}/></td>
+                    <td className="p-2 text-right font-semibold tabular-nums">€ {money(simulationPrice?.netPrice)}<FormulaTooltip label={`Prezzo netto per pezzo al lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.netPrice}/></td>
+                    <td className="p-2 text-right tabular-nums">€ {money((simulationPrice?.netPrice ?? 0) * lot)}<FormulaTooltip label={`Totale del lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.lotTotal}/></td>
                     {!locked && <td className="p-2 text-center">
                       <input type="checkbox" aria-label={"Includi lotto " + lot + " nell'offerta cliente"} checked={selectedLots.includes(lot)} onChange={(event) => selectLot(index, lot, event.target.checked)} className="h-4 w-4 accent-emerald-700"/>
                       {custom && <button type="button" aria-label={"Rimuovi lotto aggiuntivo " + lot} onClick={() => removeOfferLot(index, lot)} className="ml-2 text-xs text-red-700">Rimuovi</button>}
@@ -494,9 +499,9 @@ export default function OffertaEditorPage() {
                   let proposedNet = 0;
                   try { proposedNet = calculateOfferLotPrice(row, lot).netPrice; } catch { /* The row validation explains the error. */ }
                   const current = generatedListinoIsCurrent(row, lot);
-                  return <tr key={lot} className="border-t"><td className="p-2">{lot.toLocaleString("it-IT")} pz</td><td className="p-2 text-right">€ {money(proposedNet)}</td>
+                  return <tr key={lot} className="border-t"><td className="p-2">{lot.toLocaleString("it-IT")} pz</td><td className="p-2 text-right">€ {money(proposedNet)}<FormulaTooltip label={`Prezzo netto proposto per lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.netPrice}/></td>
                     <td className="p-2 text-right"><input aria-label={"Prezzo di listino per lotto " + lot} disabled={locked} type="number" min="0" step="0.01" className="w-32 rounded border p-2 text-right disabled:bg-slate-100" value={terms.listino ?? ""} onChange={(event) => editLotListino(index, lot, event.target.value === "" ? "" : Number(event.target.value))}/></td>
-                    <td className="p-2 text-right">€ {money(netAfterDiscount)}</td><td className={current ? "p-2 text-xs text-emerald-700" : "p-2 text-xs text-amber-700"}>{current ? "Allineato al netto" : "Da generare o aggiornare"}</td></tr>;
+                    <td className="p-2 text-right">€ {money(netAfterDiscount)}<FormulaTooltip label={`Netto dopo sconto per lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.netAfterDiscount}/></td><td className={current ? "p-2 text-xs text-emerald-700" : "p-2 text-xs text-amber-700"}>{current ? "Allineato al netto" : "Da generare o aggiornare"}</td></tr>;
                 })}</tbody>
               </table>
             </div>}
@@ -545,7 +550,7 @@ export default function OffertaEditorPage() {
               return <li key={group.key} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0"><p className="font-semibold text-slate-900">{cycle.code || "(senza codice)"} <span className="font-normal text-slate-500">· rev. {cycle.rev ?? 1}</span></p>
                   <p className="break-words text-sm text-slate-700">{cycle.description || "Descrizione non presente"}</p>
-                  <p className="mt-1 text-xs text-slate-500">{cycle.client || "Cliente non indicato"} · Lotto ciclo: {cycle.lot || "—"} · Costo industriale standard: € {money(cycle.standardCost)} · Prezzo minimo ciclo: € {money(cycle.minimumPrice)}</p></div>
+                  <p className="mt-1 text-xs text-slate-500">{cycle.client || "Cliente non indicato"} · Lotto ciclo: {cycle.lot || "—"} · Costo industriale standard: € {money(cycle.standardCost)}<FormulaTooltip label="Costo industriale standard" formula={CALCULATION_FORMULAS.cycle.standardCost}/> · Prezzo minimo ciclo: € {money(cycle.minimumPrice)}<FormulaTooltip label="Prezzo minimo del ciclo" formula={CALCULATION_FORMULAS.cycle.minimumPrice}/></p></div>
                 <button type="button" disabled={selectingCycle} onClick={() => void chooseStandardCycle(cycle.id)} className="shrink-0 rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{selectingCycle ? "Caricamento..." : "Seleziona"}</button>
               </li>;
             })}</ul>

@@ -1,6 +1,8 @@
 import QuoteNumericInput from "@/components/QuoteNumericInput";
+import FormulaTooltip from "@/components/FormulaTooltip";
 import { calculateMaterialByWeight, type MaterialName } from "@/lib/quote-material-weight";
 import type { Product } from "@/lib/quote-calculation";
+import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
 
 type Props={
   product:Product;
@@ -59,8 +61,8 @@ export default function QuoteMaterialCostFields({product,disabled,onChange,mobil
       </div>
       {result?
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-emerald-900" role="status">
-          <span>Peso teorico: <strong>{amount(result.theoreticalWeightKg,4)} kg/pz</strong></span>
-          <span>Costo materiale calcolato: <strong>€ {amount(result.materialCostPerPiece,4)}/pz</strong></span>
+          <span>Peso teorico: <strong>{amount(result.theoreticalWeightKg,4)} kg/pz<FormulaTooltip label="Peso teorico del materiale" formula={CALCULATION_FORMULAS.material.theoreticalWeight}/></strong></span>
+          <span>Costo materiale calcolato: <strong>€ {amount(result.materialCostPerPiece,4)}/pz<FormulaTooltip label="Costo materiale per pezzo" formula={CALCULATION_FORMULAS.material.materialCost}/></strong></span>
         </div>
       : <p className="text-xs text-amber-800" role="status">{validationMessage}</p>}
       <p className="text-[11px] text-slate-500">

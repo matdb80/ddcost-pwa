@@ -4,6 +4,7 @@ import { trpc } from "@/providers/trpc";
 import Layout from "@/components/Layout";
 import CycleCostPie from "@/components/CycleCostPie";
 import CostReductionBreakdown from "@/components/CostReductionBreakdown";
+import FormulaTooltip from "@/components/FormulaTooltip";
 import {
   ArrowLeft,
   Plus,
@@ -31,6 +32,7 @@ import {
 import { ricalcolaCiclo, calcolaCostoRiga, costoRigaGerarchico } from "@/lib/cycle-calculator";
 import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, detachFromAssembly, orderedHierarchy, removeLeaf, moveRowAmongSiblings, childrenOf } from "@/lib/cycle-hierarchy";
 import { calculateSaleMargins, explainSalePrice, parseMarketPrice } from "@/lib/cycle-price-margins";
+import { CALCULATION_FORMULAS, cycleCategoryFormula } from "@/lib/calculation-formulas";
 
 /** Canonical snapshot of cost-related inputs; legacy JSON lotto is numeric, DB lot is text. */
 function economicSignature(m: CicloEditorModel): string {
@@ -669,7 +671,7 @@ export default function CicloEditorPage() {
                   <th className="text-left px-3 py-2 font-medium text-slate-600">Codice</th>
                   <th className="text-left px-3 py-2 font-medium text-slate-600">Descrizione</th>
                   <th className="text-right px-3 py-2 font-medium text-slate-600">Nr</th>
-                  <th className="text-right px-3 py-2 font-medium text-slate-600">Costo</th>
+                  <th className="text-right px-3 py-2 font-medium text-slate-600">Costo riga<FormulaTooltip label="Costo della riga ciclo" formula="Il costo è calcolato in base alla categoria della riga, alle quantità e ai costi unitari inseriti. Il dettaglio mostra la formula specifica per categoria."/></th>
                   <th className="text-center px-3 py-2 font-medium text-slate-600">Simula / Azioni</th>
                 </tr>
               </thead>
@@ -749,7 +751,7 @@ export default function CicloEditorPage() {
                       <td className="px-3 py-2 text-xs max-w-xs truncate">{r.descrizione}</td>
                       <td className="px-3 py-2 text-right text-xs">{r.nr_componenti}</td>
                       <td className={"px-3 py-2 text-right text-xs font-mono "+(cost===0&&simulationExcluded.size?"text-amber-700":"")}>
-                        {formatMoney(cost)}
+                        <span className="inline-flex items-center justify-end">{formatMoney(cost)}<FormulaTooltip label={`Costo riga ${r.categoria}`} formula={cycleCategoryFormula(r.categoria)}/></span>
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-center gap-1">
@@ -803,11 +805,11 @@ export default function CicloEditorPage() {
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Costo industriale standard</span>
-                <span className="font-mono">{formatMoney(simulatedModel.costo_standard)}</span>
+                <span className="font-mono">{formatMoney(simulatedModel.costo_standard)}<FormulaTooltip label="Costo industriale standard" formula={CALCULATION_FORMULAS.cycle.standardCost}/></span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Full Cost</span>
-                <span className="font-mono">{formatMoney(simulatedModel.full_cost)}</span>
+                <span className="font-mono">{formatMoney(simulatedModel.full_cost)}<FormulaTooltip label="Full cost" formula={CALCULATION_FORMULAS.cycle.fullCost}/></span>
               </div>
               <div className="flex justify-between items-center gap-2 font-semibold text-slate-800">
                 <span>Prezzo Minimo</span>
@@ -816,7 +818,7 @@ export default function CicloEditorPage() {
                     aria-label="Prezzo minimo: mostra il calcolo del margine netto"
                     aria-describedby="minimum-margin-formula"
                     title="Passa sopra o seleziona per vedere la formula del margine netto">
-                    {formatMoney(simulatedModel.prezzo_minimo)}
+                    {formatMoney(simulatedModel.prezzo_minimo)}<FormulaTooltip label="Prezzo minimo" formula={CALCULATION_FORMULAS.cycle.minimumPrice}/>
                   </button>
                   <div id="minimum-margin-formula" role="tooltip"
                     className="pointer-events-none invisible group-hover:visible group-focus-within:visible absolute right-0 bottom-full mb-2 z-20 w-72 max-w-[calc(100vw-3rem)] rounded-lg bg-slate-900 text-white shadow-lg p-3 text-xs font-normal leading-relaxed">
@@ -824,8 +826,8 @@ export default function CicloEditorPage() {
                     {minimumMargins ? <>
                       <div className="mt-2">Prezzo minimo: € {formatMoney(simulatedModel.prezzo_minimo)}</div>
                       <div>Full cost (con spese generali): € {formatMoney(simulatedModel.full_cost)}</div>
-                      <div>Differenza: € {formatMoney(minimumMargins.netEuro)}</div>
-                      <div className="mt-1 font-semibold">Margine netto: {formatMarginPercent(minimumMargins.netPercent)}</div>
+                      <div>Differenza: € {formatMoney(minimumMargins.netEuro)}<FormulaTooltip label="Margine sul prezzo minimo in euro" formula={CALCULATION_FORMULAS.cycle.minimumMarginEuro}/></div>
+                      <div className="mt-1 font-semibold">Margine netto: {formatMarginPercent(minimumMargins.netPercent)}<FormulaTooltip label="Margine netto sul prezzo minimo" formula={CALCULATION_FORMULAS.cycle.minimumMarginPercent}/></div>
                       {minimumExplanation && (
                         <p className="mt-2 border-t border-slate-600 pt-2 text-white">
                           {minimumExplanation.message}
@@ -855,18 +857,16 @@ export default function CicloEditorPage() {
                   <div className="rounded-lg bg-emerald-50/70 border border-emerald-100 p-3">
                     <div className="flex justify-between items-baseline gap-2">
                       <span className="font-medium text-sm">Margine lordo</span>
-                      <strong className={marketMargins.grossPercent<0?"text-red-700":"text-emerald-800"}>{formatMarginPercent(marketMargins.grossPercent)}</strong>
+                      <strong className={marketMargins.grossPercent<0?"text-red-700":"text-emerald-800"}>{formatMarginPercent(marketMargins.grossPercent)}<FormulaTooltip label="Margine lordo percentuale" formula={CALCULATION_FORMULAS.cycle.marketGrossPercent}/></strong>
                     </div>
-                    <div className="mt-1 text-xs text-slate-600">€ {formatMoney(marketMargins.grossEuro)} · prima delle spese generali</div>
-                    <div className="text-xs text-slate-500">(Prezzo − costo industriale standard) / prezzo × 100</div>
+                    <div className="mt-1 text-xs text-slate-600">€ {formatMoney(marketMargins.grossEuro)}<FormulaTooltip label="Margine lordo in euro" formula={CALCULATION_FORMULAS.cycle.marketGrossEuro}/> · prima delle spese generali</div>
                   </div>
                   <div className="rounded-lg bg-sky-50/70 border border-sky-100 p-3">
                     <div className="flex justify-between items-baseline gap-2">
                       <span className="font-medium text-sm">Margine netto</span>
-                      <strong className={marketMargins.netPercent<0?"text-red-700":"text-sky-800"}>{formatMarginPercent(marketMargins.netPercent)}</strong>
+                      <strong className={marketMargins.netPercent<0?"text-red-700":"text-sky-800"}>{formatMarginPercent(marketMargins.netPercent)}<FormulaTooltip label="Margine netto industriale percentuale" formula={CALCULATION_FORMULAS.cycle.marketNetPercent}/></strong>
                     </div>
-                    <div className="mt-1 text-xs text-slate-600">€ {formatMoney(marketMargins.netEuro)} · dopo spese generali</div>
-                    <div className="text-xs text-slate-500">(Prezzo − full cost) / prezzo × 100</div>
+                    <div className="mt-1 text-xs text-slate-600">€ {formatMoney(marketMargins.netEuro)}<FormulaTooltip label="Margine netto industriale in euro" formula={CALCULATION_FORMULAS.cycle.marketNetEuro}/> · dopo spese generali</div>
                   </div>
                   {marketExplanation && (
                     <div role="status" className={
@@ -880,11 +880,11 @@ export default function CicloEditorPage() {
                             : "bg-emerald-50 border-emerald-200 text-emerald-950")
                     }>
                       <p className="font-semibold">In parole semplici: {marketExplanation.title}</p>
-                      <p className="mt-1 leading-relaxed">{marketExplanation.message}</p>
+                      <p className="mt-1 leading-relaxed">{marketExplanation.message}<FormulaTooltip label="Calcolo del confronto con il prezzo di mercato" formula={CALCULATION_FORMULAS.cycle.marketExplanation}/></p>
                     </div>
                   )}
                   <p className="text-xs text-slate-500">
-                    Spese generali incluse nel full cost: € {formatMoney(marketMargins.overheadEuro)}.
+                    Spese generali incluse nel full cost: € {formatMoney(marketMargins.overheadEuro)}<FormulaTooltip label="Spese generali per pezzo" formula={CALCULATION_FORMULAS.cycle.overheadEuro}/>.
                     Margine netto industriale prima di imposte e oneri finanziari.
                   </p>
                 </div>
@@ -968,12 +968,12 @@ export default function CicloEditorPage() {
                   <Fragment key={i}>
                     <tr className="border-b border-slate-100">
                       <td className="px-3 py-2">{s.lotto}</td>
-                      <td className="px-3 py-2 text-right font-mono">{formatMoney(s.costo_standard)}</td>
-                      <td className="px-3 py-2 text-right font-mono">{formatMoney(s.full_cost)}</td>
-                      <td className="px-3 py-2 text-right font-mono">{formatMoney(s.prezzo_minimo)}</td>
+                      <td className="px-3 py-2 text-right font-mono">{formatMoney(s.costo_standard)}<FormulaTooltip label={`Costo industriale standard per lotto ${s.lotto}`} formula={CALCULATION_FORMULAS.cycle.standardCost}/></td>
+                      <td className="px-3 py-2 text-right font-mono">{formatMoney(s.full_cost)}<FormulaTooltip label={`Full cost per lotto ${s.lotto}`} formula={CALCULATION_FORMULAS.cycle.fullCost}/></td>
+                      <td className="px-3 py-2 text-right font-mono">{formatMoney(s.prezzo_minimo)}<FormulaTooltip label={`Prezzo minimo per lotto ${s.lotto}`} formula={CALCULATION_FORMULAS.cycle.minimumPrice}/></td>
                       <td className="px-3 py-2 text-right font-mono">
                         <div className="flex flex-col items-end gap-1">
-                          <span>{formatMoney(s.attrezzaggio_pz)}</span>
+                          <span>{formatMoney(s.attrezzaggio_pz)}<FormulaTooltip label={`Quota attrezzaggio per pezzo al lotto ${s.lotto}`} formula={CALCULATION_FORMULAS.cycle.setupPerPiece}/></span>
                           {hasSetupRowsWithReferenceLot && (
                             <button
                               type="button"
