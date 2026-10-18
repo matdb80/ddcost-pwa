@@ -7,7 +7,7 @@
  *   (colpi_min = pieces per minute; costo_lavoro_min = €/minute)
  * - Attrezzaggio in the row/base cycle cost: attrezzaggio_min * costo_lavoro_min,
  *   distributed over lotto_voce if present, else the cycle lot
- * - Lot simulations: always distribute setup over the simulated production lot
+ * - Lot simulations: use lotto_voce when set, otherwise the simulated lot
  * - MATERIA PRIMA: peso_kg * nr_componenti * costo_unitario * (1 + sfrido/100)
  *   If peso_kg==0 but dimensions exist, estimate weight = L*l*s*7.85e-6
  * - LAVORAZIONE A PESO / TERZISTA A PESO: peso_kg * nr_componenti * costo_unitario
@@ -207,7 +207,7 @@ export function calcolaAttrezzaggioTotale(ciclo: CicloEditorModel): number {
   return ciclo.righe.reduce((sum,r,i)=>sum+(r.parent_idx==null?walk(i,1):0),0);
 }
 
-/** Setup cost per finished item, amortized over the requested production lot. */
+/** Setup cost per item, using the row lot when set or the simulation lot otherwise. */
 export function calcolaAttrezzaggioPerPezzo(ciclo: CicloEditorModel, lotto: number): number {
   if (!(lotto > 0)) return 0;
   const active = new Set<number>();
@@ -226,7 +226,8 @@ export function calcolaAttrezzaggioPerPezzo(ciclo: CicloEditorModel, lotto: numb
         return children.reduce((sum, childIndex) => sum + setupAt(childIndex, depth + 1), 0) * quantity;
       }
       if (row.categoria !== "LAVORAZIONE INTERNA" || !(row.attrezzaggio_min > 0)) return 0;
-      return row.attrezzaggio_min * ciclo.costo_lavoro_min / lotto;
+      const setupLot = row.lotto_voce > 0 ? row.lotto_voce : lotto;
+      return setupLot > 0 ? row.attrezzaggio_min * ciclo.costo_lavoro_min / setupLot : 0;
     } finally {
       active.delete(index);
     }
@@ -237,7 +238,7 @@ export function calcolaAttrezzaggioPerPezzo(ciclo: CicloEditorModel, lotto: numb
   );
 }
 
-/** Fixed setup and dedicated-tooling cost per finished product for a simulated lot. */
+/** Fixed setup and dedicated-tooling cost per finished product at a given lot. */
 export function calcolaCostoFissoPerPezzo(ciclo: CicloEditorModel, lotto: number): number {
   if (!(lotto > 0)) return 0;
   const active = new Set<number>();
@@ -256,7 +257,8 @@ export function calcolaCostoFissoPerPezzo(ciclo: CicloEditorModel, lotto: number
         return children.reduce((sum, childIndex) => sum + fixedAt(childIndex, depth + 1), 0) * quantity;
       }
       if (row.categoria === "LAVORAZIONE INTERNA" && row.attrezzaggio_min > 0) {
-        return row.attrezzaggio_min * ciclo.costo_lavoro_min / lotto;
+        const setupLot = row.lotto_voce > 0 ? row.lotto_voce : lotto;
+        return setupLot > 0 ? row.attrezzaggio_min * ciclo.costo_lavoro_min / setupLot : 0;
       }
       if (row.categoria === "SPESA ATTREZZATURA DEDICATA" && row.considera === true) {
         return row.costo_unitario / lotto;
@@ -296,24 +298,13 @@ export function calcolaSimulazioni(ciclo: CicloEditorModel): SimulazioneLotto[] 
   // only explicit assemblies need the recursive breakdown.
   if (ciclo.righe.some(r=>r.assembly_auto)) {
     return lotti.map((lotto)=>{
-      // A simulation represents one production order: amortize every setup
-      // over this simulated quantity, even when the source row has a reference lot.
-      const scenario = {
-        ...ciclo,
-        lotto: String(lotto),
-        righe: ciclo.righe.map((row) =>
-          row.categoria === "LAVORAZIONE INTERNA" && row.attrezzaggio_min > 0
-            ? { ...row, lotto_voce: 0 }
-            : row
-        ),
-      };
-      const bd=calcolaBreakdown(scenario);
+      const bd=calcolaBreakdown({...ciclo,lotto:String(lotto)});
       const costoStandard=calcolaCostoStandard(bd);
       const fullCost=calcolaFullCost(costoStandard,ciclo.ricarico_spese);
       return {
         lotto, breakdown:bd, costo_standard:costoStandard, full_cost:fullCost,
         prezzo_minimo:calcolaPrezzoMinimo(fullCost,ciclo.margine_minimo),
-        attrezzaggio_pz: calcolaAttrezzaggioPerPezzo(scenario, lotto),
+        attrezzaggio_pz: calcolaAttrezzaggioPerPezzo(ciclo, lotto),
       };
     });
   }
@@ -347,7 +338,10 @@ export function calcolaSimulazioni(ciclo: CicloEditorModel): SimulazioneLotto[] 
             costo += (clm / r.colpi_min) * nr;
           }
           if (r.attrezzaggio_min && r.attrezzaggio_min > 0) {
-            costo += (r.attrezzaggio_min * clm) / lotto;
+            const lottoAtt = r.lotto_voce && r.lotto_voce > 0 ? r.lotto_voce : lotto;
+            if (lottoAtt > 0) {
+              costo += (r.attrezzaggio_min * clm) / lottoAtt;
+            }
           }
           bd["LAVORAZIONE INTERNA"] += costo;
           break;

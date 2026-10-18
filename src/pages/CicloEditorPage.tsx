@@ -934,7 +934,7 @@ export default function CicloEditorPage() {
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h2 className="text-sm font-semibold text-slate-700 mb-4">Simulazioni per Lotto</h2>
           <p className="text-xs text-slate-500 mb-3">
-            Ogni simulazione ripartisce gli attrezzaggi sul lotto indicato; il campo Lotto Voce vale per il costo base della riga. Questa anteprima non modifica i dati archiviati.
+            Quota attrezzaggio per pezzo = (Attrezzaggio min × Costo Lavoro €/min) ÷ Lotto Voce; se Lotto Voce manca o vale zero, si usa il lotto della simulazione. Attrezzaggio vuoto o zero: nessun costo. Questa anteprima non modifica i dati archiviati.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
