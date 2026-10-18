@@ -94,6 +94,25 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    expect(bySimulation.simulazioni.map((s)=>s.costo_standard)).toEqual([0.6,0.06]);
    expect(bySimulation.simulazioni.map((s)=>s.attrezzaggio_pz)).toEqual([0.6,0.06]);
  });
+ it("forces the cycle lot only for the selected simulation row",()=>{
+   const setupRow={
+     ...row("Invito",0),
+     categoria:"LAVORAZIONE INTERNA" as const,
+     attrezzaggio_min:20,
+     lotto_voce:300,
+   };
+   const cycle={...make([setupRow]),costo_lavoro_min:0.32,lotti_personalizzati:[25,500,1000]};
+   const automatic=ricalcolaCiclo(cycle);
+   const selected=ricalcolaCiclo(cycle,"max",new Set([1]));
+   expect(automatic.simulazioni.map((simulation)=>simulation.attrezzaggio_pz)).toEqual([
+     20*0.32/300,20*0.32/500,20*0.32/1000,
+   ]);
+   expect(selected.simulazioni.map((simulation)=>simulation.attrezzaggio_pz)).toEqual([
+     20*0.32/300,20*0.32/300,20*0.32/1000,
+   ]);
+   expect(selected.simulazioni[0].costo_standard).toBe(automatic.simulazioni[0].costo_standard);
+   expect(selected.simulazioni[2].costo_standard).toBe(automatic.simulazioni[2].costo_standard);
+ });
  it("uses the row lot for setup, then the simulation lot when the row lot is zero",()=>{
    const setupRow={
      ...row("Setup",0),

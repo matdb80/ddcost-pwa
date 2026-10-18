@@ -316,6 +316,7 @@ export function calcolaPrezzoMinimo(fullCost: number, margineMinimo: number): nu
 export function calcolaSimulazioni(
   ciclo: CicloEditorModel,
   setupLotMode: SetupLotMode = "max",
+  forceCycleLotSimulationRows: ReadonlySet<number> = new Set(),
 ): SimulazioneLotto[] {
   const lotti = ciclo.lotti_personalizzati?.length
     ? ciclo.lotti_personalizzati
@@ -326,18 +327,20 @@ export function calcolaSimulazioni(
   // Keep the legacy row aggregation for cycles without auto-assemblies;
   // only explicit assemblies need the recursive breakdown.
   if (ciclo.righe.some(r=>r.assembly_auto)) {
-    return lotti.map((lotto)=>{
-      const bd=calcolaBreakdown({...ciclo,lotto:String(lotto)},setupLotMode);
+    return lotti.map((lotto, simulationIndex)=>{
+      const rowSetupLotMode = forceCycleLotSimulationRows.has(simulationIndex) ? "row" : setupLotMode;
+      const bd=calcolaBreakdown({...ciclo,lotto:String(lotto)},rowSetupLotMode);
       const costoStandard=calcolaCostoStandard(bd);
       const fullCost=calcolaFullCost(costoStandard,ciclo.ricarico_spese);
       return {
         lotto, breakdown:bd, costo_standard:costoStandard, full_cost:fullCost,
         prezzo_minimo:calcolaPrezzoMinimo(fullCost,ciclo.margine_minimo),
-        attrezzaggio_pz: calcolaAttrezzaggioPerPezzo(ciclo, lotto, setupLotMode),
+        attrezzaggio_pz: calcolaAttrezzaggioPerPezzo(ciclo, lotto, rowSetupLotMode),
       };
     });
   }
-  return lotti.map((lotto) => {
+  return lotti.map((lotto, simulationIndex) => {
+    const rowSetupLotMode = forceCycleLotSimulationRows.has(simulationIndex) ? "row" : setupLotMode;
     const bd = emptyBreakdown();
 
     for (const r of ciclo.righe) {
@@ -367,7 +370,7 @@ export function calcolaSimulazioni(
             costo += (clm / r.colpi_min) * nr;
           }
           if (r.attrezzaggio_min && r.attrezzaggio_min > 0) {
-            const lottoAtt = getSetupLot(r, lotto, setupLotMode);
+            const lottoAtt = getSetupLot(r, lotto, rowSetupLotMode);
             if (lottoAtt > 0) {
               costo += (r.attrezzaggio_min * clm) / lottoAtt;
             }
@@ -402,7 +405,7 @@ export function calcolaSimulazioni(
     const costoStandard = calcolaCostoStandard(bd);
     const fullCost = calcolaFullCost(costoStandard, ciclo.ricarico_spese);
     const prezzoMinimo = calcolaPrezzoMinimo(fullCost, ciclo.margine_minimo);
-    const attrezzaggioPz = calcolaAttrezzaggioPerPezzo(ciclo, lotto, setupLotMode);
+    const attrezzaggioPz = calcolaAttrezzaggioPerPezzo(ciclo, lotto, rowSetupLotMode);
 
     return {
       lotto,
@@ -415,12 +418,16 @@ export function calcolaSimulazioni(
   });
 }
 
-export function ricalcolaCiclo(ciclo: CicloEditorModel, setupLotMode: SetupLotMode = "max"): CicloEditorModel {
+export function ricalcolaCiclo(
+  ciclo: CicloEditorModel,
+  setupLotMode: SetupLotMode = "max",
+  forceCycleLotSimulationRows: ReadonlySet<number> = new Set(),
+): CicloEditorModel {
   const bd = calcolaBreakdown(ciclo, setupLotMode);
   const costoStandard = calcolaCostoStandard(bd);
   const fullCost = calcolaFullCost(costoStandard, ciclo.ricarico_spese);
   const prezzoMinimo = calcolaPrezzoMinimo(fullCost, ciclo.margine_minimo);
-  const simulazioni = calcolaSimulazioni(ciclo, setupLotMode);
+  const simulazioni = calcolaSimulazioni(ciclo, setupLotMode, forceCycleLotSimulationRows);
 
   return {
     ...ciclo,
