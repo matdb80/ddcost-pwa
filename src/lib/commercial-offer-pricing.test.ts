@@ -71,7 +71,7 @@ describe("commercial offer pricing by lot", () => {
     expect(() => generateListinoFromNet(10, "100%" )).toThrow();
   });
 
-  it("recalculates stale saved simulations and gives the cycle row lot precedence for setup", () => {
+  it("recalculates stale saved simulations and amortizes setup over each offered lot", () => {
     const row = offerRow();
     const snapshot = JSON.parse(String(row.data.dataJson)) as Record<string, unknown>;
     snapshot.simulazioni = [
@@ -83,9 +83,11 @@ describe("commercial offer pricing by lot", () => {
     row.data.dataJson = JSON.stringify(snapshot);
 
     const recalculated = simulationsForOfferRow(row);
-    expect(recalculated[0].costo_standard).toBeCloseTo(8.4, 8);
-    expect(recalculated[1].costo_standard).toBeCloseTo(6.6, 8);
-    expect(recalculated.map((simulation) => simulation.attrezzaggio_pz)).toEqual([1.8, 1.8]);
+    expect(recalculated[0].costo_standard).toBeCloseTo(10.2, 8);
+    expect(recalculated[1].costo_standard).toBeCloseTo(5.16, 8);
+    expect(recalculated.map((simulation) => simulation.attrezzaggio_pz)).toEqual([3.6, 0.36]);
+    expect(calculateOfferLotPrice(row, 10).fixedCostPerPiece).toBeCloseTo(5.6, 8);
+    expect(calculateOfferLotPrice(row, 100).fixedCostPerPiece).toBeCloseTo(0.56, 8);
   });
 
   it("supports multiple offered lots, an added lot, and per-lot listino terms", () => {

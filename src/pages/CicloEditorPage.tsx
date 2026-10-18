@@ -164,20 +164,15 @@ export default function CicloEditorPage() {
   // Compute synchronously from the loaded baseline, not from delayed state.
   const isModified = isNew || (originalJson.length > 0 &&
     JSON.stringify(serializeCycleDataJson(model)) !== originalJson);
-  const economicInputsChanged = !!getCycle.data &&
-    economicSignature(model) !== economicSignature(parseCycleRow(getCycle.data));
-  // Ephemeral simulation: never modify model or dataJson. Switching all rows
-  // back on restores the exact original values without creating a revision.
-  // Recalculate the preview as soon as a lot or another economic input changes;
-  // persisted historical snapshots remain untouched until an explicit save.
+  // Always calculate the visible preview from the cycle's source rows. This
+  // refreshes stale historical lot simulations without changing the archived
+  // model, its JSON snapshot, or revision history.
   const simulatedModel = useMemo(() => {
-    if (simulationExcluded.size===0 && !model.righe.some(r=>r.assembly_auto) &&
-        !isNew && !economicInputsChanged) return model;
     return ricalcolaCiclo({
       ...model,
       righe:model.righe.map((r,i)=>simulationExcluded.has(i)?{...r,considera:false}:r),
     });
-  }, [model, simulationExcluded, isNew, economicInputsChanged]);
+  }, [model, simulationExcluded]);
 
   const treeOrder = useMemo(() => orderedHierarchy(model.righe), [model.righe]);
   const marketPrice = parseMarketPrice(marketPriceInput);
@@ -938,6 +933,9 @@ export default function CicloEditorPage() {
         {/* Simulazioni */}
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h2 className="text-sm font-semibold text-slate-700 mb-4">Simulazioni per Lotto</h2>
+          <p className="text-xs text-slate-500 mb-3">
+            Ogni simulazione ripartisce gli attrezzaggi sul lotto indicato; il campo Lotto Voce vale per il costo base della riga. Questa anteprima non modifica i dati archiviati.
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">

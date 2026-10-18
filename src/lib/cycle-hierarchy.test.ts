@@ -60,19 +60,19 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    let r=[row("Assembly",0),{
      ...row("Internal work",0),
      categoria:"LAVORAZIONE INTERNA" as const,
-     colpi_min:2,attrezzaggio_min:20,lotto_voce:0,
+     colpi_min:2,attrezzaggio_min:20,lotto_voce:300,
    }];
    r=attachToAssembly(r,1,0);
    const cycle=make(r);
    const a=ricalcolaCiclo(cycle);
-   expect(a.costo_standard).toBeCloseTo(0.175+0.07,10);
+   expect(a.costo_standard).toBeCloseTo(0.175+7/300,10);
    expect(a.simulazioni[0].costo_standard).toBeCloseTo(0.175+0.28,10);
    expect(a.simulazioni[0].attrezzaggio_pz).toBeCloseTo(0.28,10);
    const b=ricalcolaCiclo({...cycle,righe:r.map((v,i)=>i===1?{...v,considera:false}:v)});
    expect(b.costo_standard).toBe(0);
    expect(b.simulazioni[0].attrezzaggio_pz).toBe(0);
  });
- it("uses a row reference lot for setup when present, otherwise the simulated lot",()=>{
+ it("uses the simulated lot for setup while preserving the row lot in the base cycle",()=>{
    const setupRow={
      ...row("Setup",0),
      categoria:"LAVORAZIONE INTERNA" as const,
@@ -81,14 +81,15 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    };
    const cycle={...make([setupRow]),lotti_personalizzati:[10,100],costo_lavoro_min:0.6};
    const withReference=ricalcolaCiclo(cycle);
-   expect(withReference.simulazioni.map((s)=>s.costo_standard)).toEqual([0.3,0.3]);
-   expect(withReference.simulazioni.map((s)=>s.attrezzaggio_pz)).toEqual([0.3,0.3]);
+   expect(withReference.costo_standard).toBeCloseTo(0.3,10);
+   expect(withReference.simulazioni.map((s)=>s.costo_standard)).toEqual([0.6,0.06]);
+   expect(withReference.simulazioni.map((s)=>s.attrezzaggio_pz)).toEqual([0.6,0.06]);
 
    const bySimulation=ricalcolaCiclo({...cycle,righe:[{...setupRow,lotto_voce:0}]});
    expect(bySimulation.simulazioni.map((s)=>s.costo_standard)).toEqual([0.6,0.06]);
    expect(bySimulation.simulazioni.map((s)=>s.attrezzaggio_pz)).toEqual([0.6,0.06]);
  });
- it("amortizes ten setup minutes at €24/hour by the row lot or, when empty, by each simulated lot",()=>{
+ it("amortizes setup over each simulated lot even when a row reference lot is set",()=>{
    const setupRow={
      ...row("Setup",0),
      categoria:"LAVORAZIONE INTERNA" as const,
@@ -96,12 +97,36 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
      lotto_voce:100,
    };
    const cycle={...make([setupRow]),costo_lavoro_min:24/60,lotti_personalizzati:[100,200]};
-   const fixedReference=ricalcolaCiclo(cycle);
-   expect(fixedReference.simulazioni.map((simulation)=>simulation.costo_standard)).toEqual([0.04,0.04]);
+   const simulatedReference=ricalcolaCiclo(cycle);
+   expect(simulatedReference.costo_standard).toBeCloseTo(0.04,10);
+   expect(simulatedReference.simulazioni.map((simulation)=>simulation.costo_standard)).toEqual([0.04,0.02]);
+   expect(simulatedReference.simulazioni.map((simulation)=>simulation.attrezzaggio_pz)).toEqual([0.04,0.02]);
 
-   const simulationReference=ricalcolaCiclo({...cycle,righe:[{...setupRow,lotto_voce:0}]});
-   expect(simulationReference.simulazioni.map((simulation)=>simulation.costo_standard)).toEqual([0.04,0.02]);
-   expect(simulationReference.simulazioni.map((simulation)=>simulation.attrezzaggio_pz)).toEqual([0.04,0.02]);
+   const emptyReference=ricalcolaCiclo({...cycle,righe:[{...setupRow,lotto_voce:0}]});
+   expect(emptyReference.simulazioni.map((simulation)=>simulation.costo_standard)).toEqual([0.04,0.02]);
+   expect(emptyReference.simulazioni.map((simulation)=>simulation.attrezzaggio_pz)).toEqual([0.04,0.02]);
+ });
+ it("reduces standard cost with simulated lot when setup exists, but not when it is zero",()=>{
+   const setupRow={
+     ...row("Invito",0),
+     categoria:"LAVORAZIONE INTERNA" as const,
+     colpi_min:5,
+     attrezzaggio_min:20,
+     lotto_voce:300,
+   };
+   const cycle={...make([setupRow]),costo_lavoro_min:0.32,lotti_personalizzati:[25,50,100,250,500,1000]};
+   const calculated=ricalcolaCiclo(cycle);
+   expect(calculated.costo_standard).toBeCloseTo(0.32/5+(20*0.32)/300,10);
+   [0.256,0.128,0.064,0.0256,0.0128,0.0064].forEach((expected,index)=>
+     expect(calculated.simulazioni[index].attrezzaggio_pz).toBeCloseTo(expected,10)
+   );
+   [0.32,0.192,0.128,0.0896,0.0768,0.0704].forEach((expected,index)=>
+     expect(calculated.simulazioni[index].costo_standard).toBeCloseTo(expected,10)
+   );
+   const noSetup=ricalcolaCiclo({...cycle,righe:[{...setupRow,attrezzaggio_min:0}]});
+   expect(noSetup.simulazioni.map((simulation)=>simulation.costo_standard)).toEqual([
+     0.064,0.064,0.064,0.064,0.064,0.064,
+   ]);
  });
  it("adds a direct component by + and keeps cost, parent and independent rows after a reload",()=>{
    const old=[row("Assembly",0),row("Other row",3)];
