@@ -133,12 +133,12 @@ function internalProductSection(row: CommercialOfferRow, index: number): string 
   const markup = percentValue(row.ricarico_costi_fissi_pct, cycle.ricarico_spese * 100);
   const margin = percentValue(row.margine_netto_desiderato_pct, cycle.margine_minimo * 100);
   const cycleDetails = `<p class="muted">Ciclo ${escapeHtml(cycle.codice)} · revisione ${escapeHtml(String(cycle.rev ?? row.rev ?? 1))} · lotto base ${escapeHtml(String(cycle.lotto || "—"))} · costo lavoro € ${money(cycle.costo_lavoro_min)}/min · ricarico spese del ciclo ${money(cycle.ricarico_spese * 100)}% · margine minimo del ciclo ${money(cycle.margine_minimo * 100)}%.</p>`;
-  const pricingDetails = `<p>Parametri offerta: ricarico costi ${money(markup)}% · margine netto desiderato ${money(margin)}% · lotti selezionati ${offeredLots} pz.</p>`;
+  const pricingDetails = `<p>Parametri offerta: spese generali sul costo industriale ${money(markup)}% · margine netto desiderato ${money(margin)}% · lotti selezionati ${offeredLots} pz.</p>`;
   const allLots = offerLotsForRow(row).map((lot) => calculateOfferLotPrice(row, lot).simulation);
   const groups = chunk(allLots.length ? allLots : simulations, 5);
   const tables = groups.map((group, groupIndex) => costMatrix(row, group, groupIndex, groups.length)).join("");
   const sourceLines = sourceCycleLines(cycle.righe);
-  return `<section class="product">${heading}${cycleDetails}${pricingDetails}<p class="footnote">Le voci per categoria compongono il costo industriale standard. Le quote fisse e variabili sono una ripartizione analitica dello stesso costo e non vanno sommate di nuovo.</p><h3>Costi e prezzi per tutti i lotti del ciclo e dell’offerta</h3>${tables}<h3 class="page-break">Riferimenti tecnici e costi unitari salvati nel ciclo</h3>${sourceLines}${cycle.note_generali ? `<p><b>Note del ciclo:</b> ${escapeHtml(cycle.note_generali)}</p>` : ""}</section>`;
+  return `<section class="product">${heading}${cycleDetails}${pricingDetails}<p class="footnote">Le voci per categoria compongono il costo industriale standard. Le quote fisse e variabili sono una ripartizione analitica dello stesso costo e non vanno sommate di nuovo. Le spese generali sono calcolate sull’intero costo industriale standard del lotto.</p><h3>Costi e prezzi per tutti i lotti del ciclo e dell’offerta</h3>${tables}<h3 class="page-break">Riferimenti tecnici e costi unitari salvati nel ciclo</h3>${sourceLines}${cycle.note_generali ? `<p><b>Note del ciclo:</b> ${escapeHtml(cycle.note_generali)}</p>` : ""}</section>`;
 }
 
 function costMatrix(
@@ -147,6 +147,9 @@ function costMatrix(
   groupIndex: number,
   groupCount: number,
 ): string {
+  const markup = simulations.length
+    ? calculateOfferLotPrice(offerRow, Number(simulations[0].lotto)).markupPercent
+    : 0;
   const headers = simulations.map((simulation) => `<th class="num">${formatNumber(simulation.lotto)} pz</th>`).join("");
   const row = (label: string, getValue: (simulation: SimulationsItem) => unknown, total = false) =>
     `<tr${total ? ` class="total"` : ""}><th>${label}</th>${simulations.map((simulation) => `<td>${money(getValue(simulation))}</td>`).join("")}</tr>`;
@@ -156,10 +159,11 @@ function costMatrix(
   const fixed = row("Costi fissi ammortizzati €/pz", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).fixedCostPerPiece);
   const variable = row("Costi variabili €/pz", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).variableCostPerPiece);
   const full = row("Costo pieno offerta €/pz", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).fullCost, true);
+  const overhead = row(`Spese generali (${money(markup)}%) €/pz`, (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).overheadPerPiece);
   const net = row("Prezzo netto proposto €/pz", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).netPrice, true);
   const cycleFull = row("Full cost ciclo €/pz", (simulation) => simulation.full_cost);
   const cycleMin = row("Prezzo minimo ciclo €/pz", (simulation) => simulation.prezzo_minimo);
-  return `<p class="muted">Lotti ${groupIndex * 5 + 1}–${Math.min(groupIndex * 5 + simulations.length, groupIndex * 5 + 5)}${groupCount > 1 ? ` · tabella ${groupIndex + 1}/${groupCount}` : ""}</p><table class="cost-matrix"><thead><tr><th>Voce di costo / prezzo</th>${headers}</tr></thead><tbody>${rows}${setup}${fixed}${variable}${standardRow}${cycleFull}${cycleMin}${full}${net}</tbody></table>`;
+  return `<p class="muted">Lotti ${groupIndex * 5 + 1}–${Math.min(groupIndex * 5 + simulations.length, groupIndex * 5 + 5)}${groupCount > 1 ? ` · tabella ${groupIndex + 1}/${groupCount}` : ""}</p><table class="cost-matrix"><thead><tr><th>Voce di costo / prezzo</th>${headers}</tr></thead><tbody>${rows}${setup}${fixed}${variable}${standardRow}${overhead}${cycleFull}${cycleMin}${full}${net}</tbody></table>`;
 }
 
 type SimulationsItem = ReturnType<typeof simulationsForOfferRow>[number];

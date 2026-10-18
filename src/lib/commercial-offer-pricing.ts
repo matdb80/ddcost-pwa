@@ -17,6 +17,7 @@ export type OfferLotPrice = {
   targetMarginPercent: number;
   fixedCostPerPiece: number;
   variableCostPerPiece: number;
+  overheadPerPiece: number;
   fullCost: number;
   netPrice: number;
   actualMarginPercent: number;
@@ -188,15 +189,16 @@ export function calculateOfferLotPrice(row: CommercialOfferRow, lot: number): Of
   if (!Number.isFinite(targetMarginPercent) || targetMarginPercent < 0 || targetMarginPercent >= 100)
     throw new Error("Il margine netto desiderato deve essere tra 0% e 99,99%");
 
-  // Tooling and setup are the lot-dependent fixed share inside standard cost.
-  // Apply the offer's fixed-cost loading only to that share, then target the
-  // requested net margin over the resulting full cost.
+  // The standard industrial cost is the complete direct cost for this lot,
+  // including its amortized setup/tooling share. General expenses apply to
+  // the entire direct cost, not just to its fixed-cost component.
   const fixedCostPerPiece = Math.min(
     simulation.costo_standard,
     Math.max(0, calcolaCostoFissoPerPezzo(cycle, lot)),
   );
   const variableCostPerPiece = Math.max(0, simulation.costo_standard - fixedCostPerPiece);
-  const fullCost = variableCostPerPiece + fixedCostPerPiece * (1 + markupPercent / 100);
+  const overheadPerPiece = simulation.costo_standard * markupPercent / 100;
+  const fullCost = simulation.costo_standard + overheadPerPiece;
   const theoreticalNet = fullCost / (1 - targetMarginPercent / 100);
   // The required margin is a floor; round the offer price up to cents so the
   // displayed value never erodes that margin.
@@ -208,6 +210,7 @@ export function calculateOfferLotPrice(row: CommercialOfferRow, lot: number): Of
     targetMarginPercent,
     fixedCostPerPiece,
     variableCostPerPiece,
+    overheadPerPiece,
     fullCost,
     netPrice,
     actualMarginPercent: netPrice > 0 ? (netPrice - fullCost) / netPrice * 100 : 0,
@@ -223,6 +226,7 @@ export function withCalculatedOfferRow(row: CommercialOfferRow): CommercialOffer
       lotto: selectedLot,
       costo_industriale_standard: selectedPrice.simulation.costo_standard,
       costi_fissi_per_pezzo: selectedPrice.fixedCostPerPiece,
+      spese_generali_per_pezzo: selectedPrice.overheadPerPiece,
       costo_pieno: selectedPrice.fullCost,
       prezzo_netto_proposto: selectedPrice.netPrice,
       totale_lotto: selectedPrice.netPrice * selectedLot,

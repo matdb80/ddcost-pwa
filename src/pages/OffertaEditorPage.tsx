@@ -419,8 +419,8 @@ export default function OffertaEditorPage() {
               <span>Lotto di riferimento (pezzi)</span><input disabled={locked} type="number" min="1" step="1" className="p-2 rounded border disabled:bg-slate-100" value={row.lotto ?? ""} onChange={(event) => editRow(index, "lotto", event.target.value === "" ? "" : Number(event.target.value))}/>
             </label>}
             <label className="flex flex-col text-sm gap-1">
-              <span>Ricarico dei costi fissi (%)</span><input disabled={locked} type="number" min="0" step="0.1" className="p-2 rounded border disabled:bg-slate-100" value={String(row.ricarico_costi_fissi_pct ?? "")} onChange={(event) => editRow(index, "ricarico_costi_fissi_pct", event.target.value === "" ? "" : Number(event.target.value))}/>
-              <small className="text-xs text-slate-500">Si applica alla quota di attrezzaggi e attrezzature, ripartita sul lotto.</small>
+              <span>Spese generali sul costo industriale (%)</span><input disabled={locked} type="number" min="0" step="0.1" className="p-2 rounded border disabled:bg-slate-100" value={String(row.ricarico_costi_fissi_pct ?? "")} onChange={(event) => editRow(index, "ricarico_costi_fissi_pct", event.target.value === "" ? "" : Number(event.target.value))}/>
+              <small className="text-xs text-slate-500">Si applica all’intero costo industriale standard del lotto, inclusa la quota di attrezzaggi e attrezzature.</small>
             </label>
             <label className="flex flex-col text-sm gap-1">
               <span>Margine netto desiderato (%)</span><input disabled={locked} type="number" min="0" max="99.99" step="0.1" className="p-2 rounded border disabled:bg-slate-100" value={String(row.margine_netto_desiderato_pct ?? "")} onChange={(event) => editRow(index, "margine_netto_desiderato_pct", event.target.value === "" ? "" : Number(event.target.value))}/>
@@ -432,7 +432,7 @@ export default function OffertaEditorPage() {
               <span>Costo industriale standard €/pz: <b>€ {money(price.simulation.costo_standard)}</b></span>
               <span>Lotto principale: <b>{Number(row.lotto).toLocaleString("it-IT")} pz</b></span>
               <span>Quota costi fissi €/pz: <b>€ {money(price.fixedCostPerPiece)}</b></span>
-              <span>Ricarico costi fissi: <b>€ {money(price.fixedCostPerPiece * price.markupPercent / 100)}</b></span>
+              <span>Spese generali ({money(price.markupPercent)}%) €/pz: <b>€ {money(price.overheadPerPiece)}</b></span>
               <span>Costo pieno €/pz: <b>€ {money(price.fullCost)}</b></span>
               <span>Prezzo netto proposto €/pz: <b className="text-emerald-800">€ {money(price.netPrice)}</b></span>
               <span>Margine netto: <b>{money(price.actualMarginPercent)}%</b></span>
@@ -449,10 +449,10 @@ export default function OffertaEditorPage() {
               </div>}
             </div>
             <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full min-w-[760px] text-sm">
+              <table className="w-full min-w-[900px] text-sm">
                 <thead className="bg-slate-50"><tr>
                   <th className="p-2 text-left">Lotto</th><th className="p-2 text-right">Costo industriale standard €/pz</th>
-                  <th className="p-2 text-right">Costi fissi €/pz</th><th className="p-2 text-right">Costo pieno €/pz</th>
+                  <th className="p-2 text-right">Costi fissi €/pz</th><th className="p-2 text-right">Spese generali €/pz</th><th className="p-2 text-right">Costo pieno €/pz</th>
                   <th className="p-2 text-right">Prezzo netto €/pz</th><th className="p-2 text-right">Totale lotto</th>
                   {!locked && <th className="p-2 text-center">In offerta</th>}
                 </tr></thead>
@@ -465,6 +465,7 @@ export default function OffertaEditorPage() {
                     <td className="p-2 font-medium">{lot.toLocaleString("it-IT")} pz</td>
                     <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.simulation.costo_standard)}</td>
                     <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.fixedCostPerPiece)}</td>
+                    <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.overheadPerPiece)}</td>
                     <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.fullCost)}</td>
                     <td className="p-2 text-right font-semibold tabular-nums">€ {money(simulationPrice?.netPrice)}</td>
                     <td className="p-2 text-right tabular-nums">€ {money((simulationPrice?.netPrice ?? 0) * lot)}</td>

@@ -49,18 +49,40 @@ describe("commercial offer pricing by lot", () => {
     expect(small.simulation.costo_standard).toBeCloseTo(10.2, 8);
     expect(small.fixedCostPerPiece).toBeCloseTo(5.6, 8);
     expect(small.variableCostPerPiece).toBeCloseTo(4.6, 8);
-    expect(small.fullCost).toBeCloseTo(11.32, 8);
-    expect(small.netPrice).toBe(15.1);
+    expect(small.overheadPerPiece).toBeCloseTo(2.04, 8);
+    expect(small.fullCost).toBeCloseTo(12.24, 8);
+    expect(small.netPrice).toBe(16.32);
     expect(large.fixedCostPerPiece).toBeCloseTo(0.56, 8);
-    expect(large.fullCost).toBeCloseTo(5.272, 8);
-    expect(large.netPrice).toBe(7.03);
+    expect(large.overheadPerPiece).toBeCloseTo(1.032, 8);
+    expect(large.fullCost).toBeCloseTo(6.192, 8);
+    expect(large.netPrice).toBe(8.26);
     expect(large.netPrice).toBeLessThan(small.netPrice);
 
     const persisted = JSON.parse(JSON.stringify(withCalculatedOfferRow({ ...row, lotto: 100 })));
     expect(persisted.costo_standard_lotto).toBeCloseTo(5.16, 8);
-    expect(persisted.full_cost).toBeCloseTo(5.272, 8);
-    expect(persisted.prezzo_netto_proposto).toBe(7.03);
+    expect(persisted.full_cost).toBeCloseTo(6.192, 8);
+    expect(persisted.prezzo_netto_proposto).toBe(8.26);
+    expect((persisted.prezzi_proposti_lotti as Array<{ spese_generali_per_pezzo: number }>)[0].spese_generali_per_pezzo).toBeCloseTo(1.032, 8);
     expect(persisted.data.dataJson).toContain('"ART-01"');
+  });
+
+  it("applies 75% general expenses to the whole industrial cost before the net margin", () => {
+    const row = offerRow();
+    row.ricarico_costi_fissi_pct = 75;
+    row.margine_netto_desiderato_pct = 20;
+    const snapshot = JSON.parse(String(row.data.dataJson)) as Record<string, unknown>;
+    snapshot.lotti_personalizzati = [25];
+    snapshot.righe = [
+      { categoria: "COMPONENTE", codice_articolo: "MP-01", descrizione: "Componente", nr_componenti: 1, costo_unitario: 1.76, considera: true },
+    ];
+    row.data.dataJson = JSON.stringify(snapshot);
+
+    const price = calculateOfferLotPrice(row, 25);
+    expect(price.simulation.costo_standard).toBeCloseTo(1.76, 8);
+    expect(price.overheadPerPiece).toBeCloseTo(1.32, 8);
+    expect(price.fullCost).toBeCloseTo(3.08, 8);
+    expect(price.netPrice).toBe(3.85);
+    expect(price.actualMarginPercent).toBeCloseTo(20, 8);
   });
 
   it("inverts chained discounts and rounds the list price up to a cent", () => {
@@ -125,6 +147,7 @@ describe("commercial offer print documents", () => {
 
     expect(html).toContain("DIDIEFFE GROUP srl");
     expect(html).toContain("Costo industriale standard €/pz");
+    expect(html).toContain("Spese generali (20,00%) €/pz");
     expect(html).toContain("Numero offerta");
     expect(html).not.toContain("#42");
     expect(html).toContain("10 pz");
@@ -152,6 +175,7 @@ describe("commercial offer print documents", () => {
     expect(html).not.toContain("Costo standard €/pz");
     expect(html).not.toContain("ATT-01");
     expect(html).not.toContain("Nota interna riservata");
+    expect(html).not.toContain("Spese generali");
   });
 
   it("prints every selected customer lot with its own listino and no misleading combined total", () => {
