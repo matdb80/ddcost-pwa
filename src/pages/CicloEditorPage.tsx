@@ -8,6 +8,9 @@ import FormulaTooltip from "@/components/FormulaTooltip";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
   Plus,
   Trash2,
   ArrowUp,
@@ -21,6 +24,7 @@ import {
   GripVertical,
   CornerDownRight,
   RotateCcw,
+  Search,
 } from "lucide-react";
 import type { RigaCiclo, CicloEditorModel } from "@/types/cycle";
 import {
@@ -33,6 +37,7 @@ import {
 import { ricalcolaCiclo, calcolaCostoRiga, costoRigaGerarchico } from "@/lib/cycle-calculator";
 import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, detachFromAssembly, orderedHierarchy, removeLeaf, moveRowAmongSiblings, childrenOf } from "@/lib/cycle-hierarchy";
 import { calculateSaleMargins, explainSalePrice, parseMarketPrice } from "@/lib/cycle-price-margins";
+import { copyCycleAsNewDraft } from "@/lib/cycle-copy";
 import { CALCULATION_FORMULAS, cycleCategoryFormula } from "@/lib/calculation-formulas";
 
 /** Canonical snapshot of cost-related inputs; legacy JSON lotto is numeric, DB lot is text. */
@@ -91,6 +96,12 @@ export default function CicloEditorPage() {
   const [dragOverIndex, setDragOverIndex] = useState<number|null>(null);
   // Pricing simulation is read-only and never enters a cycle revision or backup.
   const [marketPriceInput, setMarketPriceInput] = useState("");
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importSearch, setImportSearch] = useState("");
+  const [importPage, setImportPage] = useState(1);
+  const [importingCycle, setImportingCycle] = useState(false);
+  const [importedCycleLabel, setImportedCycleLabel] = useState("");
+  const utils = trpc.useUtils();
 
   const getCycle = trpc.cycle.get.useQuery(
     { id: numericId! },
@@ -102,6 +113,11 @@ export default function CicloEditorPage() {
   const latestRevision = trpc.cycle.latestForSource.useQuery(
     { id: numericId! },
     { enabled: !isNew && !!numericId }
+  );
+
+  const importDirectory = trpc.cycle.listGrouped.useQuery(
+    { search: importSearch || undefined, page: importPage, pageSize: 25 },
+    { enabled: isNew && importDialogOpen }
   );
 
   const createCycle = trpc.cycle.create.useMutation({
@@ -377,6 +393,39 @@ export default function CicloEditorPage() {
     }
   };
 
+  const importCycleAsDraft = async (cycleId: number) => {
+    if (importingCycle) return;
+    const blank = emptyCicloEditorModel();
+    const hasDraftContent = JSON.stringify(serializeCycleDataJson(model)) !==
+      JSON.stringify(serializeCycleDataJson(blank));
+    if (hasDraftContent && !window.confirm("L'importazione sostituirà i dati già inseriti in questo nuovo ciclo. Continuare?")) return;
+
+    setImportingCycle(true);
+    try {
+      const source = await utils.cycle.get.fetch({ id: cycleId });
+      if (!source || source.deleted === 1) throw new Error("Il ciclo selezionato non è più disponibile.");
+      const draft = copyCycleAsNewDraft(source);
+      setModel(draft);
+      setOriginalJson("");
+      setOriginalDbDataJson(null);
+      setHasRecalculated(false);
+      setLastRecalculatedSignature(null);
+      setHasChanges(true);
+      setIsReadOnly(false);
+      setSimulationExcluded(new Set());
+      setCycleLotForcedSimulationRows(new Set());
+      setMarketPriceInput("");
+      setImportedCycleLabel(`${source.code || "(senza codice)"} · ${source.description || "senza descrizione"} · rev. ${source.rev ?? 1}`);
+      setImportDialogOpen(false);
+      setImportSearch("");
+      setImportPage(1);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Impossibile importare il ciclo selezionato.");
+    } finally {
+      setImportingCycle(false);
+    }
+  };
+
   const confirmSaveRevision = (mode: "revision" | "overwrite") => {
     if (!numericId || !getCycle.data || createRevision.isPending || overwriteLatest.isPending) return;
     if (!isModified) {
@@ -517,6 +566,16 @@ export default function CicloEditorPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {isNew && (
+              <button
+                type="button"
+                onClick={() => { setImportSearch(""); setImportPage(1); setImportDialogOpen(true); }}
+                className="flex items-center gap-2 px-4 py-2 border border-emerald-700 text-emerald-800 rounded-lg text-sm font-medium hover:bg-emerald-50"
+              >
+                <Copy className="h-4 w-4" />
+                Importa ciclo esistente
+              </button>
+            )}
             {!isNew && isReadOnly && (
               <button
                 onClick={enableEdit}
@@ -548,6 +607,17 @@ export default function CicloEditorPage() {
             )}
           </div>
         </div>
+
+        {isNew && importedCycleLabel && (
+          <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+            <span>
+              Base importata da <strong>{importedCycleLabel}</strong>. È stato creato un nuovo ciclo indipendente; il codice è vuoto per assegnarne uno nuovo. Verifica anagrafica e costi prima di salvare.
+            </span>
+            <button type="button" aria-label="Chiudi avviso importazione" onClick={() => setImportedCycleLabel("")} className="rounded p-1 hover:bg-sky-100">
+              <X size={16}/>
+            </button>
+          </div>
+        )}
 
         {/* Anagrafica */}
         <div className="bg-white rounded-xl border border-slate-200 p-6">
@@ -1328,20 +1398,6 @@ export default function CicloEditorPage() {
                     Il costo unitario manuale precedente viene mantenuto nello storico ma non sommato.
                   </div>
                 )}
-                {(false) && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">
-                    Costo/min €
-                  </label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    value={rigaEdit.costo_min}
-                    onChange={(e) => handleRigaChange("costo_min", parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                  />
-                </div>
-                )}
                 {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Sfrido %</label>
@@ -1386,6 +1442,65 @@ export default function CicloEditorPage() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {importDialogOpen && isNew && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-3 sm:p-6"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !importingCycle) setImportDialogOpen(false);
+            }}
+          >
+            <section role="dialog" aria-modal="true" aria-labelledby="cycle-import-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+              <header className="flex items-start justify-between gap-3 border-b p-4 sm:p-5">
+                <div>
+                  <h2 id="cycle-import-title" className="text-lg font-semibold">Importa un ciclo come base</h2>
+                  <p className="mt-1 text-sm text-slate-600">Viene proposta la revisione più recente di ogni ciclo. L’importazione crea una copia modificabile e indipendente.</p>
+                </div>
+                <button type="button" aria-label="Chiudi importazione ciclo" disabled={importingCycle} onClick={() => setImportDialogOpen(false)} className="rounded p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40">
+                  <X size={18}/>
+                </button>
+              </header>
+              <div className="border-b p-4">
+                <label className="relative block">
+                  <span className="sr-only">Cerca il ciclo da importare</span>
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                  <input autoFocus type="search" value={importSearch} onChange={(event) => { setImportSearch(event.target.value); setImportPage(1); }} placeholder="Cerca per codice, descrizione o cliente..." className="w-full rounded border py-2 pl-9 pr-3 text-sm"/>
+                </label>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {importDirectory.isLoading && <p className="p-6 text-center text-sm text-slate-500">Caricamento cicli...</p>}
+                {importDirectory.isError && <p role="alert" className="p-6 text-sm text-red-700">Impossibile caricare i cicli: {importDirectory.error.message}</p>}
+                {!importDirectory.isLoading && !importDirectory.isError && importDirectory.data?.groups.length === 0 && <p className="p-6 text-center text-sm text-slate-500">Nessun ciclo trovato.</p>}
+                <ul className="divide-y">
+                  {importDirectory.data?.groups.map((group) => {
+                    const cycle = group.latest;
+                    return (
+                      <li key={group.key} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900">{cycle.code || "(senza codice)"} <span className="font-normal text-slate-500">· rev. {cycle.rev ?? 1}</span></p>
+                          <p className="break-words text-sm text-slate-700">{cycle.description || "Descrizione non presente"}</p>
+                          <p className="mt-1 text-xs text-slate-500">{cycle.client || "Cliente non indicato"} · Lotto: {cycle.lot || "—"} · Costo industriale: € {formatMoney(Number(cycle.standardCost) || 0)}</p>
+                        </div>
+                        <button type="button" disabled={importingCycle} onClick={() => void importCycleAsDraft(cycle.id)} className="shrink-0 rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+                          {importingCycle ? "Importazione..." : "Usa come base"}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+              <footer className="flex items-center justify-between gap-3 border-t p-3 sm:px-4">
+                <span className="text-xs text-slate-500">{importDirectory.data ? `${importDirectory.data.total} cicli` : ""}</span>
+                <div className="flex items-center gap-2">
+                  <button type="button" disabled={importPage <= 1 || importDirectory.isFetching} onClick={() => setImportPage((page) => Math.max(1, page - 1))} className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm disabled:opacity-40"><ChevronLeft size={16}/>Precedente</button>
+                  <span className="text-xs tabular-nums text-slate-600">{importDirectory.data?.page ?? importPage} / {Math.max(1, Math.ceil((importDirectory.data?.total ?? 0) / 25))}</span>
+                  <button type="button" disabled={!importDirectory.data || importPage >= Math.ceil(importDirectory.data.total / 25) || importDirectory.isFetching} onClick={() => setImportPage((page) => page + 1)} className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm disabled:opacity-40">Successiva<ChevronRight size={16}/></button>
+                </div>
+              </footer>
+            </section>
           </div>
         )}
 
