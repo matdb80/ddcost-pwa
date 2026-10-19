@@ -162,7 +162,7 @@ function internalProductSection(row: CommercialOfferRow, index: number): string 
   const groups = chunk(allLots.length ? allLots : simulations, 5);
   const tables = groups.map((group, groupIndex) => costMatrix(row, group, groupIndex, groups.length)).join("");
   const sourceLines = sourceCycleLines(cycle.righe);
-  return `<section class="product">${heading}${cycleDetails}${pricingDetails}<p class="footnote">Le voci per categoria compongono il costo industriale standard. Le quote fisse e variabili sono una ripartizione analitica dello stesso costo e non vanno sommate di nuovo. Le spese generali sono calcolate sull’intero costo industriale standard del lotto.</p><h3>Costi e prezzi per tutti i lotti del ciclo e dell’offerta</h3>${tables}<h3 class="page-break">Riferimenti tecnici e costi unitari salvati nel ciclo</h3>${sourceLines}${cycle.note_generali ? `<p><b>Note del ciclo:</b> ${escapeHtml(cycle.note_generali)}</p>` : ""}</section>`;
+  return `<section class="product">${heading}${cycleDetails}${pricingDetails}<p class="footnote">Le voci per categoria compongono il costo industriale standard. Le quote fisse e variabili sono una ripartizione analitica dello stesso costo e non vanno sommate di nuovo. Le spese generali sono calcolate sull’intero costo industriale standard del lotto. Il margine lordo effettivo è (prezzo netto finale − costo industriale standard) / prezzo netto finale; il margine netto effettivo è (prezzo netto finale − costo pieno offerta) / prezzo netto finale.</p><h3>Costi e prezzi per tutti i lotti del ciclo e dell’offerta</h3>${tables}<h3 class="page-break">Riferimenti tecnici e costi unitari salvati nel ciclo</h3>${sourceLines}${cycle.note_generali ? `<p><b>Note del ciclo:</b> ${escapeHtml(cycle.note_generali)}</p>` : ""}</section>`;
 }
 
 function costMatrix(
@@ -186,10 +186,18 @@ function costMatrix(
   const overhead = row(`Spese generali (${money(markup)}%) €/pz`, (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).overheadPerPiece);
   const calculatedNet = row("Prezzo netto calcolato prima di modifiche €/pz", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).calculatedNetPrice);
   const net = row("Prezzo netto finale €/pz", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).netPrice, true);
+  const grossMarginPerPiece = row("Margine lordo effettivo €/pz", (simulation) => {
+    const price = calculateOfferLotPrice(offerRow, Number(simulation.lotto));
+    return price.netPrice - price.simulation.costo_standard;
+  });
+  const grossMarginPercent = row("Margine lordo effettivo %", (simulation) => {
+    const price = calculateOfferLotPrice(offerRow, Number(simulation.lotto));
+    return price.netPrice > 0 ? (price.netPrice - price.simulation.costo_standard) / price.netPrice * 100 : 0;
+  });
   const marginRow = row("Margine netto effettivo %", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).actualMarginPercent);
   const cycleFull = row("Full cost ciclo €/pz", (simulation) => simulation.full_cost);
   const cycleMin = row("Prezzo minimo ciclo €/pz", (simulation) => simulation.prezzo_minimo);
-  return `<p class="muted">Lotti ${groupIndex * 5 + 1}–${Math.min(groupIndex * 5 + simulations.length, groupIndex * 5 + 5)}${groupCount > 1 ? ` · tabella ${groupIndex + 1}/${groupCount}` : ""}</p><table class="cost-matrix"><thead><tr><th>Voce di costo / prezzo</th>${headers}</tr></thead><tbody>${rows}${setup}${fixed}${variable}${standardRow}${overhead}${cycleFull}${cycleMin}${full}${calculatedNet}${net}${marginRow}</tbody></table>`;
+  return `<p class="muted">Lotti ${groupIndex * 5 + 1}–${Math.min(groupIndex * 5 + simulations.length, groupIndex * 5 + 5)}${groupCount > 1 ? ` · tabella ${groupIndex + 1}/${groupCount}` : ""}</p><table class="cost-matrix"><thead><tr><th>Voce di costo / prezzo</th>${headers}</tr></thead><tbody>${rows}${setup}${fixed}${variable}${standardRow}${overhead}${cycleFull}${cycleMin}${full}${calculatedNet}${net}${grossMarginPerPiece}${grossMarginPercent}${marginRow}</tbody></table>`;
 }
 
 type SimulationsItem = ReturnType<typeof simulationsForOfferRow>[number];
