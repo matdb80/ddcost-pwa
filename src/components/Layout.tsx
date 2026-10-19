@@ -75,7 +75,7 @@ export default function Layout({ children, mobileWizard = false }: { children: R
       <aside
         id="ddcost-sidebar"
         aria-label="Navigazione principale"
-        className={`shrink-0 bg-slate-900 text-white flex flex-col transition-[width] duration-200 ease-in-out ${mobileWizard ? "hidden" : collapsed ? "w-16" : "w-64"}`}
+        className={`shrink-0 bg-[#464F56] text-white flex flex-col transition-[width] duration-200 ease-in-out ${mobileWizard ? "hidden" : collapsed ? "w-16" : "w-64"}`}
       >
         <div className={`border-b border-slate-700 ${collapsed ? "p-2" : "px-4 py-5"}`}>
           <div className={`flex ${collapsed ? "flex-col items-center gap-1" : "items-center justify-between gap-2"}`}>
