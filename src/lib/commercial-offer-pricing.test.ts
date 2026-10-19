@@ -175,13 +175,14 @@ describe("commercial offer pricing by lot", () => {
 
 describe("commercial offer print documents", () => {
   it("shows all cycle lots and technical cost references in the internal export", () => {
+    const row = withOfferLotTerms(offerRow(), 10, { prezzo_netto_manuale: 2.2 });
     const html = buildCommercialOfferPrintHtml({
       id: 42,
       nome: "Offerta di prova",
       note_cliente: "Consegna da concordare",
       cliente: "Cliente",
       note: "Nota interna riservata",
-      righe: [offerRow()],
+      righe: [row],
     }, "internal");
 
     expect(html).toContain("DIDIEFFE GROUP srl");
@@ -193,6 +194,10 @@ describe("commercial offer print documents", () => {
     expect(html).toContain("100 pz");
     expect(html).not.toContain("250 pz");
     expect(html).toContain("ATT-01");
+    expect(html).toContain("Prezzo netto calcolato prima di modifiche €/pz");
+    expect(html).toContain("Prezzo netto finale €/pz");
+    expect(html).toContain("Margine netto effettivo %");
+    expect(html).toContain("2,20");
     expect(html).toContain("Nota interna riservata");
     expect(html).toContain("Consegna da concordare");
   });
