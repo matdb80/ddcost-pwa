@@ -278,6 +278,8 @@ describe("commercial offer print documents", () => {
     const customerHtml = buildCommercialOfferPrintHtml(offer, "customer", "netto");
     const internalHtml = buildCommercialOfferPrintHtml(offer, "internal");
 
+    expect(customerHtml).toContain("<span>Intestazione</span>");
+    expect(customerHtml).not.toContain("Testata");
     expect(customerHtml.match(/data-section-icon="[^"]+"/g)).toEqual([
       'data-section-icon="person"',
       'data-section-icon="products"',
