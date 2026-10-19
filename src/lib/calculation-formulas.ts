@@ -122,7 +122,7 @@ export function cycleCategoryFormula(category: string): string {
     case "MATERIA PRIMA DA TRASFORMARE":
       return "Costo riga €/pz = peso kg × numero componenti × costo €/kg × (1 + sfrido % ÷ 100). Se il peso manca, è stimato dalle dimensioni come L × larghezza × spessore × 7,85×10⁻⁶ kg/mm³.";
     case "LAVORAZIONE INTERNA":
-      return "Costo riga €/pz = (costo lavoro €/min ÷ colpi/min × numero componenti) + (attrezzaggio min × costo lavoro €/min ÷ lotto applicato). Lotto applicato = maggiore tra Lotto voce e lotto simulato; l'override usa Lotto voce per quella simulazione.";
+      return "Costo riga €/pz: lavorazione standard = (costo lavoro €/min ÷ pezzi/min) × numero componenti; confezionamento = (tempo confezionamento min/scatola ÷ pezzi/scatola) × costo lavoro €/min. In entrambi i casi si aggiunge l'attrezzaggio: attrezzaggio min × costo lavoro €/min ÷ lotto applicato. Lotto applicato = maggiore tra Lotto voce e lotto simulato; l'override usa Lotto voce per quella simulazione.";
     case "LAVORAZIONE A PESO":
     case "LAVORAZIONE TERZISTA A PESO":
       return "Costo riga €/pz = peso kg × numero componenti × costo unitario €/kg. Se il peso manca, è stimato dalle dimensioni del pezzo.";

@@ -41,6 +41,12 @@ export interface RigaCiclo {
   peso_kg: number;
   nr_componenti: number;
   colpi_min: number;
+  /** When true, internal work time is captured per package instead of pieces/min. */
+  confezionamento?: boolean;
+  /** Finished pieces in one package. */
+  quantita_per_conf?: number;
+  /** Direct labor time in minutes per package. */
+  tempo_confezionamento_min?: number;
   lotto_voce: number;
   attrezzaggio_min: number;
   fornitore: string;
@@ -157,6 +163,9 @@ export function emptyRiga(): RigaCiclo {
     peso_kg: 0,
     nr_componenti: 1,
     colpi_min: 0,
+    confezionamento: false,
+    quantita_per_conf: 0,
+    tempo_confezionamento_min: 0,
     lotto_voce: 0,
     attrezzaggio_min: 0,
     fornitore: "",

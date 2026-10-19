@@ -3,8 +3,8 @@
  *
  * CORRECTED formulas after cross-check with original SQLite data:
  * - LAVORAZIONE INTERNA uses ciclo.costo_lavoro_min (NOT riga.costo_min)
- *   Formula: costo_lavoro_min / colpi_min * nr_componenti
- *   (colpi_min = pieces per minute; costo_lavoro_min = €/minute)
+ *   Standard: costo_lavoro_min / colpi_min * nr_componenti. Packaging:
+ *   tempo_confezionamento_min / quantita_per_conf * costo_lavoro_min.
  * - Attrezzaggio is distributed over the larger of lotto_voce and the
  *   cycle/simulation lot; the preview can explicitly force lotto_voce
  * - MATERIA PRIMA: peso_kg * nr_componenti * costo_unitario * (1 + sfrido/100)
@@ -63,6 +63,17 @@ function getSetupLot(r: RigaCiclo, lottoSimulazione: number, mode: SetupLotMode 
   return Math.max(lottoVoce, Number(lottoSimulazione) || 0);
 }
 
+function costoLavoroInternoPerPezzo(r: RigaCiclo, costoLavoroMin: number): number {
+  if (r.confezionamento === true) {
+    const pezziPerConfezione = Number(r.quantita_per_conf) || 0;
+    const minutiPerConfezione = Number(r.tempo_confezionamento_min) || 0;
+    if (pezziPerConfezione <= 0 || minutiPerConfezione <= 0) return 0;
+    return (minutiPerConfezione / pezziPerConfezione) * costoLavoroMin;
+  }
+  if (r.colpi_min > 0) return costoLavoroMin / r.colpi_min * r.nr_componenti;
+  return 0;
+}
+
 export function calcolaCostoRiga(
   r: RigaCiclo,
   costoLavoroMin: number,
@@ -87,11 +98,8 @@ export function calcolaCostoRiga(
     }
 
     case "LAVORAZIONE INTERNA": {
-      let costo = 0;
-      if (r.colpi_min && r.colpi_min > 0) {
-        // costo per componente = (€/min) / (pezzi/min) = €/pezzo
-        costo += (costoLavoroMin / r.colpi_min) * nr;
-      }
+      // Packaging time is per finished product; standard operations remain based on pieces/min.
+      let costo = costoLavoroInternoPerPezzo(r, costoLavoroMin);
       if (r.attrezzaggio_min && r.attrezzaggio_min > 0) {
         const lottoAtt = getSetupLot(r, lot, setupLotMode);
         if (lottoAtt > 0) {
@@ -365,10 +373,7 @@ export function calcolaSimulazioni(
           break;
         }
         case "LAVORAZIONE INTERNA": {
-          let costo = 0;
-          if (r.colpi_min && r.colpi_min > 0) {
-            costo += (clm / r.colpi_min) * nr;
-          }
+          let costo = costoLavoroInternoPerPezzo(r, clm);
           if (r.attrezzaggio_min && r.attrezzaggio_min > 0) {
             const lottoAtt = getSetupLot(r, lotto, rowSetupLotMode);
             if (lottoAtt > 0) {

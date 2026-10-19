@@ -5,6 +5,7 @@ import Layout from "@/components/Layout";
 import CycleCostPie from "@/components/CycleCostPie";
 import CostReductionBreakdown from "@/components/CostReductionBreakdown";
 import FormulaTooltip from "@/components/FormulaTooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   ArrowLeft,
   Plus,
@@ -277,6 +278,18 @@ export default function CicloEditorPage() {
 
   const saveRiga = () => {
     if (!rigaEdit) return;
+    if (rigaEdit.categoria === "LAVORAZIONE INTERNA" && rigaEdit.confezionamento === true) {
+      const piecesPerPackage = Number(rigaEdit.quantita_per_conf);
+      const minutesPerPackage = Number(rigaEdit.tempo_confezionamento_min);
+      if (!Number.isInteger(piecesPerPackage) || piecesPerPackage <= 0) {
+        alert("La quantità per confezione deve essere un numero intero maggiore di zero.");
+        return;
+      }
+      if (!Number.isFinite(minutesPerPackage) || minutesPerPackage <= 0) {
+        alert("Inserire un tempo di confezionamento maggiore di zero.");
+        return;
+      }
+    }
     if(rigaIndex!=null && model.righe[rigaIndex]?.assembly_auto &&
        rigaEdit.categoria!=="COMPONENTE/ASSIEME") {
       alert("Per un assieme calcolato dai componenti la categoria deve rimanere COMPONENTE/ASSIEME. Sgancia prima i componenti.");
@@ -748,7 +761,12 @@ export default function CicloEditorPage() {
                         {r.categoria}{r.assembly_auto&&<span className="block font-semibold text-emerald-700">Assieme automatico</span>}
                       </td>
                       <td className="px-3 py-2 text-xs">{r.codice_articolo}</td>
-                      <td className="px-3 py-2 text-xs max-w-xs truncate">{r.descrizione}</td>
+                      <td className="px-3 py-2 text-xs max-w-xs">
+                        <span className="block truncate">{r.descrizione}</span>
+                        {r.categoria === "LAVORAZIONE INTERNA" && r.confezionamento === true && <span className="block text-[10px] text-slate-500">
+                          Confezionamento: {r.tempo_confezionamento_min} min/scatola · {r.quantita_per_conf} pz/scatola
+                        </span>}
+                      </td>
                       <td className="px-3 py-2 text-right text-xs">{r.nr_componenti}</td>
                       <td className={"px-3 py-2 text-right text-xs font-mono "+(cost===0&&simulationExcluded.size?"text-amber-700":"")}>
                         <span className="inline-flex items-center justify-end">{formatMoney(cost)}<FormulaTooltip label={`Costo riga ${r.categoria}`} formula={cycleCategoryFormula(r.categoria)}/></span>
@@ -1197,6 +1215,17 @@ export default function CicloEditorPage() {
                   />
                 </div>
                 {(rigaEdit.categoria === "LAVORAZIONE INTERNA") && (
+                <label className="col-span-2 md:col-span-3 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={rigaEdit.confezionamento === true}
+                    onChange={(e) => handleRigaChange("confezionamento", e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  <span>Confezionamento?</span>
+                </label>
+                )}
+                {(rigaEdit.categoria === "LAVORAZIONE INTERNA" && rigaEdit.confezionamento !== true) && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     Colpi/min (pezzi/min)
@@ -1209,6 +1238,44 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
+                {(rigaEdit.categoria === "LAVORAZIONE INTERNA" && rigaEdit.confezionamento === true) && (
+                <>
+                  <div>
+                    <label htmlFor="cycle-package-quantity" className="block text-xs font-medium text-slate-500 mb-1">Qtà per conf.</label>
+                    <input
+                      id="cycle-package-quantity"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={rigaEdit.quantita_per_conf ?? 0}
+                      onChange={(e) => handleRigaChange("quantita_per_conf", parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center gap-1">
+                      <label htmlFor="cycle-package-time" className="text-xs font-medium text-slate-500">Tempo confezionamento (min/scatola)</label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button type="button" aria-label="Informazioni sul tempo di confezionamento" onClick={(event) => event.stopPropagation()} className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-400 text-[10px] font-bold text-slate-600 hover:bg-slate-100">?</button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" sideOffset={6} className="max-w-80 whitespace-normal text-left leading-relaxed">
+                          Il tempo indicato è quello necessario per confezionare una scatola. Tempo per pezzo = tempo confezionamento ÷ quantità per confezione.
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <input
+                      id="cycle-package-time"
+                      type="number"
+                      min="0.01"
+                      step="0.1"
+                      value={rigaEdit.tempo_confezionamento_min ?? 0}
+                      onChange={(e) => handleRigaChange("tempo_confezionamento_min", parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                    />
+                  </div>
+                </>
                 )}
                 {(rigaEdit.categoria === "LAVORAZIONE INTERNA") && (
                 <div>

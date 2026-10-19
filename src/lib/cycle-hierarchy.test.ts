@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyRiga, emptyCicloEditorModel, parseCycleRow, serializeCycleDataJson, type RigaCiclo } from "@/types/cycle";
 import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, childrenOf, detachFromAssembly, orderedHierarchy, removeLeaf, moveRowAmongSiblings, swapRows } from "./cycle-hierarchy";
-import { ricalcolaCiclo, calcolaBreakdown, costoRigaGerarchico } from "./cycle-calculator";
+import { ricalcolaCiclo, calcolaBreakdown, calcolaCostoRiga, costoRigaGerarchico } from "./cycle-calculator";
 
 const row=(desc:string,unit:number,nr=1):RigaCiclo=>({
   ...emptyRiga(), descrizione:desc, costo_unitario:unit,nr_componenti:nr,
@@ -93,6 +93,42 @@ describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
    const bySimulation=ricalcolaCiclo({...cycle,righe:[{...setupRow,lotto_voce:0}]});
    expect(bySimulation.simulazioni.map((s)=>s.costo_standard)).toEqual([0.6,0.06]);
    expect(bySimulation.simulazioni.map((s)=>s.attrezzaggio_pz)).toEqual([0.6,0.06]);
+ });
+ it("calculates packaging labor per finished piece and preserves it through a save/revision round trip",()=>{
+   const packagingRow={
+     ...row("Confezionamento",0,4),
+     categoria:"LAVORAZIONE INTERNA" as const,
+     colpi_min:2,
+     confezionamento:true,
+     quantita_per_conf:25,
+     tempo_confezionamento_min:10,
+     attrezzaggio_min:15,
+     lotto_voce:0,
+   };
+   const cycle={...make([packagingRow]),lotto:"25",costo_lavoro_min:0.34,lotti_personalizzati:[25,100]};
+   const calculated=ricalcolaCiclo(cycle);
+   expect(calcolaCostoRiga(packagingRow,0.34,25)).toBeCloseTo(0.34,10);
+   expect(calculated.simulazioni.map((simulation)=>simulation.costo_standard)).toEqual([
+     expect.closeTo(0.34,10),expect.closeTo(0.187,10),
+   ]);
+   expect(calculated.simulazioni.map((simulation)=>simulation.breakdown["LAVORAZIONE INTERNA"])).toEqual([
+     expect.closeTo(0.34,10),expect.closeTo(0.187,10),
+   ]);
+
+   const savedJson=JSON.stringify(serializeCycleDataJson(calculated));
+   const reopened=parseCycleRow({code:"PKG",lot:"25",standardCost:String(calculated.costo_standard),dataJson:savedJson});
+   expect(reopened.righe[0]).toMatchObject({
+     confezionamento:true,quantita_per_conf:25,tempo_confezionamento_min:10,colpi_min:2,
+   });
+   const revision=ricalcolaCiclo(reopened);
+   expect(revision.simulazioni.map((simulation)=>simulation.costo_standard)).toEqual([
+     expect.closeTo(0.34,10),expect.closeTo(0.187,10),
+   ]);
+
+   const historicalRow=Object.fromEntries(Object.entries(packagingRow)
+     .filter(([key])=>!(["confezionamento","quantita_per_conf","tempo_confezionamento_min"] as string[]).includes(key))) as unknown as RigaCiclo;
+   historicalRow.attrezzaggio_min=0;
+   expect(calcolaCostoRiga(historicalRow,0.34,25)).toBeCloseTo(0.68,10);
  });
  it("forces the cycle lot only for the selected simulation row",()=>{
    const setupRow={

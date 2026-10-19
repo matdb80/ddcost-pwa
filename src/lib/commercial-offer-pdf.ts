@@ -16,6 +16,8 @@ export type CommercialOfferPrintDocument = {
   nome?: string;
   cliente?: string;
   riferimento?: string;
+  pagamento?: string;
+  trasporto?: string;
   note?: string;
   note_cliente?: string;
   righe: CommercialOfferRow[];
@@ -47,6 +49,7 @@ export function buildCommercialOfferPrintHtml(
   mode: OfferPrintMode,
   pricePresentation: CustomerPricePresentation = "netto",
   logoUrl = "/images/ddf-logo.png",
+  options: { hideDocumentTotal?: boolean } = {},
 ): string {
   const internal = mode === "internal";
   const title = internal ? "Analisi interna dell’offerta" : "Offerta commerciale";
@@ -56,7 +59,7 @@ export function buildCommercialOfferPrintHtml(
   const rows = Array.isArray(offer.righe) ? offer.righe : [];
   const body = internal
     ? rows.map((row, index) => internalProductSection(row, index)).join("")
-    : customerOfferTable(rows, pricePresentation);
+    : customerOfferTable(rows, pricePresentation, options.hideDocumentTotal === true);
   const noteSection = (heading: string, raw: unknown) => {
     const note = String(raw ?? "").trim();
     return note ? `<section class="notes"><h2>${heading}</h2><p>${escapeHtml(note).replace(/\n/g, "<br>")}</p></section>` : "";
@@ -64,6 +67,7 @@ export function buildCommercialOfferPrintHtml(
   const noteBlock = internal
     ? noteSection("Note interne", offer.note) + noteSection("Note da mostrare al cliente", offer.note_cliente)
     : noteSection("Note", offer.note_cliente);
+  const paymentTransportBlock = internal ? "" : customerTerms(offer.pagamento, offer.trasporto);
   const companyDetails = [COMPANY.address, COMPANY.vat, COMPANY.registry, COMPANY.phone, COMPANY.email]
     .map((line) => `<div>${escapeHtml(line)}</div>`).join("");
 
@@ -101,6 +105,8 @@ export function buildCommercialOfferPrintHtml(
   .customer-lines td { padding: 8px; }
   .customer-total { text-align: right; font-size: 13pt; margin-top: 14px; font-weight: 700; }
   .notes { margin-top: 18px; border-top: 1px solid #cbd1d5; padding-top: 8px; }
+  .commercial-terms { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; margin-top: 22px; border-top: 1px solid #cbd1d5; padding-top: 10px; page-break-inside: avoid; }
+  .commercial-terms b { display: block; color: #58636a; font-size: 8pt; margin-bottom: 3px; }
   .footnote { font-size: 7.5pt; color: #647078; margin-top: 12px; }
   .nowrap { white-space: nowrap; }
   @media screen { body { padding: 18px; max-width: 1100px; margin: 0 auto; } }
@@ -108,8 +114,8 @@ export function buildCommercialOfferPrintHtml(
 <header><img src="${escapeAttribute(logoUrl)}" alt="DDF Didieffe Group"><div class="company"><strong>${COMPANY.name}</strong>${companyDetails}</div></header>
 <h1>${title}</h1>
 <section class="meta"><div><b>Numero offerta</b>${offerName}</div><div><b>Data</b>${new Date().toLocaleDateString("it-IT")}</div><div><b>Cliente</b>${client || "—"}</div><div><b>Riferimento</b>${reference || "—"}</div></section>
-${body}${noteBlock}
-<div class="footnote">Documento generato da DDCost · ${internal ? "Uso interno: contiene dati economici e tecnici riservati." : "Importi espressi in Euro."}</div>
+${body}${noteBlock}${paymentTransportBlock}
+${internal ? `<div class="footnote">Documento generato da DDCost · Uso interno: contiene dati economici e tecnici riservati.</div>` : ""}
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>
 </body></html>`;
 }
@@ -185,15 +191,15 @@ function sourceCycleLines(lines: CicloRow[]): string {
     <td>${escapeHtml(String(line.categoria ?? ""))}</td><td>${escapeHtml(String(line.codice_articolo ?? ""))}</td>
     <td>${escapeHtml(String(line.descrizione ?? ""))}</td><td class="num">${formatNumber(line.nr_componenti)}</td>
     <td class="num">€ ${money(line.costo_unitario)}</td><td class="num">€ ${money(line.costo_min)}</td>
-    <td class="num">${formatNumber(line.colpi_min)}</td><td class="num">${formatNumber(line.attrezzaggio_min)}</td>
+    <td>${operationRate(line)}</td><td class="num">${formatNumber(line.attrezzaggio_min)}</td>
     <td class="num">${formatNumber(line.lotto_voce)}</td><td>${escapeHtml(String(line.fornitore ?? ""))}
     <td>${line.considera === false ? "Esclusa" : "Inclusa"}</td>
   </tr>`).join("");
   return `<h4>Articoli, materiali e riferimenti tecnici</h4><table class="source-lines"><thead><tr><th>Categoria</th><th>Codice</th><th>Descrizione</th><th>Materiale / materia prima</th><th>Dimensioni mm (L×W×S / Ø)</th><th class="num">Qtà</th><th class="num">Peso kg</th><th class="num">Sfrido</th><th>Fornitore</th><th>Note riga</th><th>Nel costo</th></tr></thead><tbody>${materialRows}</tbody></table>
-  <h4>Costi unitari, lavorazioni e attrezzaggi</h4><table class="source-lines"><thead><tr><th>Categoria</th><th>Codice</th><th>Descrizione</th><th class="num">Qtà</th><th class="num">Costo unit. €</th><th class="num">Costo min. €</th><th class="num">Pezzi/min</th><th class="num">Setup min</th><th class="num">Lotto voce</th><th>Fornitore</th><th>Nel costo</th></tr></thead><tbody>${costRows}</tbody></table>`;
+  <h4>Costi unitari, lavorazioni e attrezzaggi</h4><table class="source-lines"><thead><tr><th>Categoria</th><th>Codice</th><th>Descrizione</th><th class="num">Qtà</th><th class="num">Costo unit. €</th><th class="num">Costo min. €</th><th class="num">Velocità / conf.</th><th class="num">Setup min</th><th class="num">Lotto voce</th><th>Fornitore</th><th>Nel costo</th></tr></thead><tbody>${costRows}</tbody></table>`;
 }
 
-function customerOfferTable(rows: CommercialOfferRow[], presentation: CustomerPricePresentation): string {
+function customerOfferTable(rows: CommercialOfferRow[], presentation: CustomerPricePresentation, hideDocumentTotal: boolean): string {
   const expanded = rows.flatMap((row, index) => {
     const selectedLots = selectedOfferLots(row);
     const lots = selectedLots.length ? selectedLots : [positiveNumber(row.lotto) ?? 0];
@@ -236,9 +242,11 @@ function customerOfferTable(rows: CommercialOfferRow[], presentation: CustomerPr
   const total = hasAlternativeQuantities ? null : expanded.reduce((sum, { row, lot }) => {
     return sum + customerUnitNet(row, lot, presentation) * lot;
   }, 0);
-  const totalBlock = total == null
-    ? `<p class="footnote">Le quantità indicate sono alternative. Il totale è riportato per ciascun lotto.</p>`
-    : `<div class="customer-total">Totale netto offerta: € ${money(total)}</div>`;
+  const totalBlock = hideDocumentTotal
+    ? hasAlternativeQuantities ? `<p class="footnote">Le quantità indicate sono alternative. Il totale per ogni lotto è riportato nella relativa riga.</p>` : ""
+    : total == null
+      ? `<p class="footnote">Le quantità indicate sono alternative. Il totale è riportato per ciascun lotto.</p>`
+      : `<div class="customer-total">Totale netto offerta: € ${money(total)}</div>`;
   return `<table class="customer-lines"><thead><tr><th>#</th><th>Prodotto</th><th class="num">Lotto</th><th>${presentation === "netto" ? "Prezzo" : "Listino e sconto"}</th><th class="num">Totale netto</th></tr></thead><tbody>${lines}</tbody></table>${totalBlock}`;
 }
 
@@ -309,9 +317,26 @@ type CicloRow = {
   tipo_materiale?: string; tipo_materia_prima?: string;
   lunghezza?: number; larghezza?: number; spessore?: number; diametro?: number;
   nr_componenti?: number; costo_unitario?: number; costo_min?: number; peso_kg?: number; sfrido?: number;
-  colpi_min?: number; attrezzaggio_min?: number; lotto_voce?: number;
+  colpi_min?: number; confezionamento?: boolean; quantita_per_conf?: number; tempo_confezionamento_min?: number;
+  attrezzaggio_min?: number; lotto_voce?: number;
   fornitore?: string; note?: string; considera?: boolean | null;
 };
+
+function operationRate(line: CicloRow): string {
+  if (line.confezionamento === true) {
+    return `${formatNumber(line.tempo_confezionamento_min)} min/scatola<br>${formatNumber(line.quantita_per_conf)} pz/scatola`;
+  }
+  return `${formatNumber(line.colpi_min)} pz/min`;
+}
+
+function customerTerms(payment: unknown, transport: unknown): string {
+  const term = (label: string, value: unknown) => {
+    const text = String(value ?? "").trim();
+    return text ? `<div><b>${label}</b><div>${escapeHtml(text).replace(/\n/g, "<br>")}</div></div>` : "";
+  };
+  const terms = term("Pagamento", payment) + term("Trasporto", transport);
+  return terms ? `<section class="commercial-terms">${terms}</section>` : "";
+}
 
 function dimensions(line: CicloRow): string {
   const values = [line.lunghezza, line.larghezza, line.spessore].map((value) => Number(value) || 0);

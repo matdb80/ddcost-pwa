@@ -202,6 +202,28 @@ describe("commercial offer print documents", () => {
     expect(html).toContain("Consegna da concordare");
   });
 
+  it("prints package time and quantity in the internal cycle references", () => {
+    const row = offerRow();
+    const cycle = JSON.parse(String(row.data.dataJson)) as Record<string, unknown>;
+    cycle.righe = [{
+      categoria: "LAVORAZIONE INTERNA",
+      codice_articolo: "PKG-01",
+      descrizione: "Confezionamento",
+      nr_componenti: 1,
+      confezionamento: true,
+      quantita_per_conf: 25,
+      tempo_confezionamento_min: 8,
+      attrezzaggio_min: 0,
+      lotto_voce: 0,
+      considera: true,
+    }];
+    row.data.dataJson = JSON.stringify(cycle);
+    const html = buildCommercialOfferPrintHtml({ nome: "Offerta confezionamento", righe: [row] }, "internal");
+
+    expect(html).toContain("Velocità / conf.");
+    expect(html).toContain("8 min/scatola<br>25 pz/scatola");
+  });
+
   it("keeps cycle costs and internal notes out of the customer export", () => {
     const html = buildCommercialOfferPrintHtml({
       id: 42,
@@ -220,6 +242,47 @@ describe("commercial offer print documents", () => {
     expect(html).not.toContain("ATT-01");
     expect(html).not.toContain("Nota interna riservata");
     expect(html).not.toContain("Spese generali");
+  });
+
+  it("omits the customer boilerplate and prints payment and transport terms at the end", () => {
+    const offer = {
+      nome: "Offerta termini",
+      pagamento: "30 giorni <banca>",
+      trasporto: "Franco destino",
+      righe: [offerRow()],
+    };
+    const customerHtml = buildCommercialOfferPrintHtml(offer, "customer", "netto");
+    const internalHtml = buildCommercialOfferPrintHtml(offer, "internal");
+
+    expect(customerHtml).not.toContain("Documento generato da DDCost");
+    expect(customerHtml).not.toContain("Importi espressi in Euro");
+    expect(customerHtml).toContain("30 giorni &lt;banca&gt;");
+    expect(customerHtml).toContain("Franco destino");
+    expect(customerHtml.indexOf("Pagamento")).toBeGreaterThan(customerHtml.lastIndexOf("</table>"));
+    expect(customerHtml.indexOf("Trasporto")).toBeGreaterThan(customerHtml.lastIndexOf("</table>"));
+    expect(internalHtml).toContain("Documento generato da DDCost");
+    expect(internalHtml).toContain("Uso interno: contiene dati economici e tecnici riservati.");
+  });
+
+  it("can hide only the customer document total while retaining each line total", () => {
+    const row = {
+      ...offerRow(),
+      lotto: 10,
+      lotti_selezionati: [10],
+      prezzi_lotti: { "10": { prezzo_netto_manuale: 2.2 } },
+    };
+    const hidden = buildCommercialOfferPrintHtml(
+      { nome: "Offerta senza totale", righe: [row] },
+      "customer",
+      "netto",
+      undefined,
+      { hideDocumentTotal: true },
+    );
+    const normal = buildCommercialOfferPrintHtml({ nome: "Offerta con totale", righe: [row] }, "customer", "netto");
+
+    expect(hidden).not.toContain("Totale netto offerta");
+    expect(hidden).toContain("<td class=\"num\">€ 22,00</td>");
+    expect(normal).toContain("Totale netto offerta: € 22,00");
   });
 
   it("prints every selected customer lot with its own listino and no misleading combined total", () => {

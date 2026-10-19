@@ -57,6 +57,8 @@ type OfferDocument = {
   nome?: string;
   cliente?: string;
   riferimento?: string;
+  pagamento?: string;
+  trasporto?: string;
   note?: string;
   note_cliente?: string;
   righe: OfferRow[];
@@ -71,7 +73,7 @@ const blankRow = (): OfferRow => ({
   full_cost: null, prezzo_minimo: null,
   lotti_selezionati: [], lotti_aggiuntivi: [], prezzi_lotti: {},
 });
-const blankOffer = (): OfferDocument => ({ nome: "", cliente: "", riferimento: "", note: "", righe: [blankRow()] });
+const blankOffer = (): OfferDocument => ({ nome: "", cliente: "", riferimento: "", pagamento: "", trasporto: "", note: "", righe: [blankRow()] });
 
 function combinedDiscount(row: OfferRow): string {
   const base = String(row.sconto_base ?? "").trim();
@@ -129,6 +131,7 @@ export default function OffertaEditorPage() {
   const [selectingCycle, setSelectingCycle] = useState(false);
   const [newLotDrafts, setNewLotDrafts] = useState<Record<number, string>>({});
   const [pricePresentation, setPricePresentation] = useState<CustomerPricePresentation>("netto");
+  const [hideDocumentTotal, setHideDocumentTotal] = useState(false);
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.offer.get.useQuery({ id: numericId }, { enabled: !isNew && numericId > 0 });
   const nextOfferNumber = trpc.offer.nextNumber.useQuery(undefined, { enabled: isNew });
@@ -361,6 +364,7 @@ export default function OffertaEditorPage() {
         mode,
         pricePresentation,
         new URL("/images/ddf-logo.png", window.location.origin).toString(),
+        { hideDocumentTotal },
       );
       openCommercialOfferPrintWindow(html);
     } catch (caught) {
@@ -385,14 +389,14 @@ export default function OffertaEditorPage() {
       {error && <p role="alert" className="p-3 bg-red-50 border border-red-300 text-red-800 rounded">{error}</p>}
       <p className="text-sm text-slate-600">Scegli un prodotto dai Cicli Standard, confronta i prezzi al variare del lotto e prepara una versione interna o una versione da inviare al cliente.</p>
 
-      <section className="bg-white border rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 gap-3">
-        {([["nome", "Numero offerta"], ["cliente", "Cliente"], ["riferimento", "Riferimento"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
+      <section className="bg-white border rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+        {([["nome", "Numero offerta"], ["cliente", "Cliente"], ["riferimento", "Riferimento"], ["pagamento", "Pagamento"], ["trasporto", "Trasporto"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
           <span>{label}</span><input disabled={locked} value={String(offer[key] ?? "")} onChange={(event) => { if (key === "nome" && isNew) setOfferNumberEdited(true); edit(key, event.target.value); }} className="p-2 border rounded disabled:bg-slate-100"/>
         </label>)}
-        <label className="flex flex-col text-sm gap-1 md:col-span-2">
+        <label className="flex flex-col text-sm gap-1 md:col-span-2 xl:col-span-5">
           <span>Note interne</span><textarea disabled={locked} rows={3} value={String(offer.note ?? "")} onChange={(event) => edit("note", event.target.value)} className="p-2 border rounded disabled:bg-slate-100"/>
         </label>
-        <label className="flex flex-col text-sm gap-1 md:col-span-2">
+        <label className="flex flex-col text-sm gap-1 md:col-span-2 xl:col-span-5">
           <span>Note da mostrare al cliente</span><textarea disabled={locked} rows={2} value={String(offer.note_cliente ?? "")} onChange={(event) => edit("note_cliente", event.target.value)} className="p-2 border rounded disabled:bg-slate-100"/>
         </label>
       </section>
@@ -555,6 +559,10 @@ export default function OffertaEditorPage() {
           <label className="flex items-center gap-2 text-sm"><span>Prezzo cliente</span><select value={pricePresentation} onChange={(event) => setPricePresentation(event.target.value as CustomerPricePresentation)} className="rounded border px-2 py-2">
             <option value="netto">Prezzo netto</option><option value="listino_sconto">Listino con sconto</option>
           </select></label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={hideDocumentTotal} onChange={(event) => setHideDocumentTotal(event.target.checked)} />
+            <span>Nascondi totale documento nel PDF cliente</span>
+          </label>
           <button type="button" onClick={() => exportPdf("customer")} className="inline-flex items-center gap-2 rounded bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"><FileText size={16}/>Esporta PDF cliente</button>
         </div>
       </section>
