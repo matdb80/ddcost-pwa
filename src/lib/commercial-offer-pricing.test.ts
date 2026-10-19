@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateOfferLotPrice, generateListinoFromNet, offerLotTerms, offerLotsForRow, selectedOfferLots, simulationsForOfferRow, withCalculatedOfferRow, withOfferLotTerms, withSelectedOfferLot } from "./commercial-offer-pricing";
+import { additionalDiscountPercent, calculateOfferLotPrice, generateListinoFromNet, offerLotTerms, offerLotsForRow, selectedOfferLots, simulationsForOfferRow, withCalculatedOfferRow, withOfferLotTerms, withSelectedOfferLot } from "./commercial-offer-pricing";
 import { buildCommercialOfferPrintHtml } from "./commercial-offer-pdf";
 
 function offerRow() {
@@ -91,6 +91,45 @@ describe("commercial offer pricing by lot", () => {
     expect(result.netAfterDiscount).toBeGreaterThanOrEqual(37.14);
     expect(result.netAfterDiscount).toBeCloseTo(68.78 * 0.54, 8);
     expect(() => generateListinoFromNet(10, "100%" )).toThrow();
+  });
+
+  it("uses a manual final price per lot and recalculates the real margin", () => {
+    const row = offerRow();
+    const manualRow = withOfferLotTerms(row, 10, { prezzo_netto_manuale: "2,20" });
+    const price = calculateOfferLotPrice(manualRow, 10);
+
+    expect(price.calculatedNetPrice).toBe(16.32);
+    expect(price.manualNetPrice).toBe(2.2);
+    expect(price.netPrice).toBe(2.2);
+    expect(price.actualMarginPercent).toBeCloseTo((2.2 - price.fullCost) / 2.2 * 100, 8);
+
+    const persisted = JSON.parse(JSON.stringify(withCalculatedOfferRow(manualRow))) as Record<string, unknown>;
+    const proposed = persisted.prezzi_proposti_lotti as Array<Record<string, number | null>>;
+    expect(proposed[0].prezzo_netto_calcolato).toBe(16.32);
+    expect(proposed[0].prezzo_netto_manuale).toBe(2.2);
+    expect(proposed[0].prezzo_netto_proposto).toBe(2.2);
+    expect(proposed[0].margine_netto_pct).toBeCloseTo(price.actualMarginPercent, 8);
+    expect(calculateOfferLotPrice(persisted, 10).netPrice).toBe(2.2);
+
+    const restored = withOfferLotTerms(manualRow, 10, { prezzo_netto_manuale: undefined });
+    expect(calculateOfferLotPrice(restored, 10).netPrice).toBe(16.32);
+  });
+
+  it("stores different manual net prices for different lots", () => {
+    const row = withOfferLotTerms(offerRow(), 10, { prezzo_netto_manuale: 2.2 });
+    const multiLot = withOfferLotTerms(row, 100, { prezzo_netto_manuale: 4.5 });
+    const changedPrimary = withSelectedOfferLot({ ...multiLot, lotti_selezionati: [10, 100] }, 10, false);
+    const reopened = JSON.parse(JSON.stringify(changedPrimary)) as Record<string, unknown>;
+
+    expect(offerLotTerms(reopened, 10).prezzo_netto_manuale).toBe(2.2);
+    expect(offerLotTerms(reopened, 100).prezzo_netto_manuale).toBe(4.5);
+    expect(calculateOfferLotPrice(reopened, 10).netPrice).toBe(2.2);
+    expect(calculateOfferLotPrice(reopened, 100).netPrice).toBe(4.5);
+  });
+
+  it("calculates the additional market discount from the current discounted net", () => {
+    expect(additionalDiscountPercent(3.78, 2.2)).toBeCloseTo(41.7989417989, 8);
+    expect(() => additionalDiscountPercent(0, 2.2)).toThrow();
   });
 
   it("recalculates stale saved simulations and preserves the row reference lot", () => {
@@ -195,5 +234,37 @@ describe("commercial offer print documents", () => {
     expect(html).toContain("€ 13,03");
     expect(html).toContain("Le quantità indicate sono alternative");
     expect(html).not.toContain("Totale netto offerta");
+  });
+
+  it("prints the manual market net and the extra discount in the customer offer", () => {
+    const row = {
+      ...offerRow(),
+      lotto: 10,
+      lotti_selezionati: [10],
+      prezzi_lotti: { "10": { listino: 7, prezzo_netto_manuale: 2.2 } },
+    };
+    const html = buildCommercialOfferPrintHtml({
+      nome: "Offerta prezzo mercato",
+      righe: [row],
+    }, "customer", "listino_sconto");
+
+    expect(html).toContain("Listino: € 7,00");
+    expect(html).toContain("Sconto: 40+10+41,80%");
+    expect(html).toContain("<del>€ 3,78</del> <strong>€ 2,20</strong>");
+    expect(html).toContain("€ 22,00");
+  });
+
+  it("uses the manual net in the net presentation and crosses out the calculated proposal", () => {
+    const row = {
+      ...offerRow(),
+      lotto: 10,
+      lotti_selezionati: [10],
+      prezzi_lotti: { "10": { prezzo_netto_manuale: 2.2 } },
+    };
+    const html = buildCommercialOfferPrintHtml({ nome: "Offerta netto manuale", righe: [row] }, "customer", "netto");
+
+    expect(html).toContain("<del>€ 16,32</del> <strong>€ 2,20</strong>");
+    expect(html).toContain("€ 22,00");
+    expect(html).not.toContain("Spese generali");
   });
 });

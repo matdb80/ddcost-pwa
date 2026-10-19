@@ -1,4 +1,5 @@
 import {
+  additionalDiscountPercent,
   calculateOfferLotPrice,
   cycleForOfferRow,
   offerLotTerms,
@@ -160,10 +161,12 @@ function costMatrix(
   const variable = row("Costi variabili €/pz", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).variableCostPerPiece);
   const full = row("Costo pieno offerta €/pz", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).fullCost, true);
   const overhead = row(`Spese generali (${money(markup)}%) €/pz`, (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).overheadPerPiece);
-  const net = row("Prezzo netto proposto €/pz", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).netPrice, true);
+  const calculatedNet = row("Prezzo netto calcolato prima di modifiche €/pz", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).calculatedNetPrice);
+  const net = row("Prezzo netto finale €/pz", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).netPrice, true);
+  const marginRow = row("Margine netto effettivo %", (simulation) => calculateOfferLotPrice(offerRow, Number(simulation.lotto)).actualMarginPercent);
   const cycleFull = row("Full cost ciclo €/pz", (simulation) => simulation.full_cost);
   const cycleMin = row("Prezzo minimo ciclo €/pz", (simulation) => simulation.prezzo_minimo);
-  return `<p class="muted">Lotti ${groupIndex * 5 + 1}–${Math.min(groupIndex * 5 + simulations.length, groupIndex * 5 + 5)}${groupCount > 1 ? ` · tabella ${groupIndex + 1}/${groupCount}` : ""}</p><table class="cost-matrix"><thead><tr><th>Voce di costo / prezzo</th>${headers}</tr></thead><tbody>${rows}${setup}${fixed}${variable}${standardRow}${overhead}${cycleFull}${cycleMin}${full}${net}</tbody></table>`;
+  return `<p class="muted">Lotti ${groupIndex * 5 + 1}–${Math.min(groupIndex * 5 + simulations.length, groupIndex * 5 + 5)}${groupCount > 1 ? ` · tabella ${groupIndex + 1}/${groupCount}` : ""}</p><table class="cost-matrix"><thead><tr><th>Voce di costo / prezzo</th>${headers}</tr></thead><tbody>${rows}${setup}${fixed}${variable}${standardRow}${overhead}${cycleFull}${cycleMin}${full}${calculatedNet}${net}${marginRow}</tbody></table>`;
 }
 
 type SimulationsItem = ReturnType<typeof simulationsForOfferRow>[number];
@@ -199,31 +202,62 @@ function customerOfferTable(rows: CommercialOfferRow[], presentation: CustomerPr
   const lines = expanded.map(({ row, index, lot }) => {
     const code = escapeHtml(String(row.codice ?? ""));
     const description = escapeHtml(String(row.descrizione ?? ""));
-    let unitNet: number;
+    const calculatedPrice = offerLotPrice(row, lot);
+    const manualNet = calculatedPrice?.manualNetPrice;
+    const unitNet = customerUnitNet(row, lot, presentation, calculatedPrice);
     let priceCell: string;
     if (presentation === "listino_sconto") {
       const listPrice = number(offerLotTerms(row, lot).listino);
       const discount = discountText(row);
-      const factor = discountFactor(discount);
-      unitNet = roundCurrency(listPrice * factor);
-      priceCell = `<div>Listino: € ${money(listPrice)}</div><div>Sconto: ${escapeHtml(discount || "—")}</div><div class="muted">Netto unitario: € ${money(unitNet)}</div>`;
+      const discountReferenceNet = roundCurrency(listPrice * discountFactor(discount));
+      const extraPercent = manualNet != null && discountReferenceNet > 0
+        ? additionalDiscountPercent(discountReferenceNet, unitNet)
+        : 0;
+      const displayedDiscount = extraPercent > 0.000001
+        ? `${discount.replace(/\s|%/g, "")}${discount ? "+" : ""}${formatPercent(extraPercent)}%`
+        : discount;
+      const adjustment = extraPercent < -0.000001
+        ? `<div>Adeguamento prezzo: +${formatPercent(Math.abs(extraPercent))}%</div>`
+        : "";
+      const netDisplay = manualNet != null && Math.abs(discountReferenceNet - unitNet) >= 0.005
+        ? `<del>€ ${money(discountReferenceNet)}</del> <strong>€ ${money(unitNet)}</strong>`
+        : `<strong>€ ${money(unitNet)}</strong>`;
+      priceCell = `<div>Listino: € ${money(listPrice)}</div><div>Sconto: ${escapeHtml(displayedDiscount || "—")}</div>${adjustment}<div class="muted">Netto unitario: ${netDisplay}</div>`;
     } else {
-      try { unitNet = roundCurrency(calculateOfferLotPrice(row, lot).netPrice); }
-      catch { unitNet = number(row.prezzo_netto_proposto ?? row.netto ?? row.netto_base); }
-      priceCell = `<div>Prezzo netto unitario: <strong>€ ${money(unitNet)}</strong></div>`;
+      const originalNet = calculatedPrice?.calculatedNetPrice;
+      const netDisplay = manualNet != null && originalNet != null && Math.abs(originalNet - unitNet) >= 0.005
+        ? `<del>€ ${money(originalNet)}</del> <strong>€ ${money(unitNet)}</strong>`
+        : `<strong>€ ${money(unitNet)}</strong>`;
+      priceCell = `<div>Prezzo netto unitario: ${netDisplay}</div>`;
     }
     return `<tr><td>${index + 1}</td><td><strong>${code}</strong><br>${description}</td><td class="num">${formatNumber(lot)} pz</td><td>${priceCell}</td><td class="num">€ ${money(unitNet * lot)}</td></tr>`;
   }).join("");
   const hasAlternativeQuantities = rows.some((row) => selectedOfferLots(row).length > 1);
   const total = hasAlternativeQuantities ? null : expanded.reduce((sum, { row, lot }) => {
-    if (presentation === "listino_sconto") return sum + roundCurrency(number(offerLotTerms(row, lot).listino) * discountFactor(discountText(row))) * lot;
-    try { return sum + roundCurrency(calculateOfferLotPrice(row, lot).netPrice) * lot; }
-    catch { return sum + number(row.prezzo_netto_proposto ?? row.netto ?? row.netto_base) * lot; }
+    return sum + customerUnitNet(row, lot, presentation) * lot;
   }, 0);
   const totalBlock = total == null
     ? `<p class="footnote">Le quantità indicate sono alternative. Il totale è riportato per ciascun lotto.</p>`
     : `<div class="customer-total">Totale netto offerta: € ${money(total)}</div>`;
   return `<table class="customer-lines"><thead><tr><th>#</th><th>Prodotto</th><th class="num">Lotto</th><th>${presentation === "netto" ? "Prezzo" : "Listino e sconto"}</th><th class="num">Totale netto</th></tr></thead><tbody>${lines}</tbody></table>${totalBlock}`;
+}
+
+function offerLotPrice(row: CommercialOfferRow, lot: number): ReturnType<typeof calculateOfferLotPrice> | null {
+  try { return calculateOfferLotPrice(row, lot); }
+  catch { return null; }
+}
+
+function customerUnitNet(
+  row: CommercialOfferRow,
+  lot: number,
+  presentation: CustomerPricePresentation,
+  calculatedPrice = offerLotPrice(row, lot),
+): number {
+  if (calculatedPrice?.manualNetPrice != null) return roundCurrency(calculatedPrice.netPrice);
+  if (presentation === "listino_sconto")
+    return roundCurrency(number(offerLotTerms(row, lot).listino) * discountFactor(discountText(row)));
+  if (calculatedPrice) return roundCurrency(calculatedPrice.netPrice);
+  return number(row.prezzo_netto_proposto ?? row.netto ?? row.netto_base);
 }
 
 function storedOfferSummary(row: CommercialOfferRow): string {
@@ -267,6 +301,7 @@ function positiveNumber(value: unknown): number | null { const parsed = Number(v
 function percentValue(value: unknown, fallback: number): number { const parsed = Number(value); return value == null || value === "" || !Number.isFinite(parsed) ? fallback : parsed; }
 function money(value: unknown): string { return number(value).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function formatNumber(value: unknown): string { return number(value).toLocaleString("it-IT", { maximumFractionDigits: 2 }); }
+function formatPercent(value: number): string { return value.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function roundCurrency(value: number): number { return Math.round((value + Number.EPSILON) * 100) / 100; }
 
 type CicloRow = {

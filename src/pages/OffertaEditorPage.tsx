@@ -7,6 +7,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, FileText, Pencil, P
 import { applyStandardCycleToOfferRow } from "@/lib/commercial-offer-cycle";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
 import {
+  additionalDiscountPercent,
   calculateOfferLotPrice,
   cycleForOfferRow,
   discountFactor,
@@ -249,6 +250,19 @@ export default function OffertaEditorPage() {
     replaceRow(index, recompute(next));
   };
 
+  const editLotNetPrice = (index: number, lot: number, value: string) => {
+    const next = withOfferLotTerms(offer.righe[index], lot, {
+      prezzo_netto_manuale: value.trim() ? value : undefined,
+    }) as OfferRow;
+    replaceRow(index, next);
+    try {
+      if (value.trim()) calculateOfferLotPrice(next, lot);
+      setError("");
+    } catch (caught) {
+      setError(errorMessage(caught, "Prezzo netto manuale non valido"));
+    }
+  };
+
   const selectLot = (index: number, lot: number, selected: boolean) => {
     replaceRow(index, withSelectedOfferLot(offer.righe[index], lot, selected) as OfferRow);
   };
@@ -296,7 +310,7 @@ export default function OffertaEditorPage() {
         if (cycleForOfferRow(row)) {
           const lots = selectedOfferLots(row);
           if (!lots.length) throw Error("Selezionare almeno un lotto da includere nell'offerta cliente");
-          lots.forEach((lot) => calculateOfferLotPrice(row, lot));
+          offerLotsForRow(row).forEach((lot) => calculateOfferLotPrice(row, lot));
           if ((row.lotti_aggiuntivi ?? []).some((lot) => !Number.isInteger(Number(lot)) || Number(lot) <= 0))
             throw Error("I lotti aggiuntivi devono essere interi e maggiori di zero");
         }
@@ -436,7 +450,7 @@ export default function OffertaEditorPage() {
               <span>Quota costi fissi €/pz: <b>€ {money(price.fixedCostPerPiece)}<FormulaTooltip label="Quota costi fissi per pezzo" formula={CALCULATION_FORMULAS.commercialOffer.fixedCostPerPiece}/></b></span>
               <span>Spese generali ({money(price.markupPercent)}%) €/pz: <b>€ {money(price.overheadPerPiece)}<FormulaTooltip label="Spese generali per pezzo" formula={CALCULATION_FORMULAS.commercialOffer.overheadPerPiece}/></b></span>
               <span>Costo pieno €/pz: <b>€ {money(price.fullCost)}<FormulaTooltip label="Costo pieno dell’offerta" formula={CALCULATION_FORMULAS.commercialOffer.fullCost}/></b></span>
-              <span>Prezzo netto proposto €/pz: <b className="text-emerald-800">€ {money(price.netPrice)}<FormulaTooltip label="Prezzo netto proposto" formula={CALCULATION_FORMULAS.commercialOffer.netPrice}/></b></span>
+              <span>Prezzo netto finale €/pz: <b className="text-emerald-800">€ {money(price.netPrice)}<FormulaTooltip label="Prezzo netto finale" formula={CALCULATION_FORMULAS.commercialOffer.finalNetPrice}/></b>{price.manualNetPrice != null && <small className="ml-1 text-slate-500">(calcolato: <del>€ {money(price.calculatedNetPrice)}</del>)</small>}</span>
               <span>Margine netto: <b>{money(price.actualMarginPercent)}%<FormulaTooltip label="Margine netto effettivo" formula={CALCULATION_FORMULAS.commercialOffer.actualMargin}/></b></span>
             </> : <p className="md:col-span-3 text-amber-800">Seleziona un prodotto dai Cicli Standard e verifica lotto, ricarico e margine.</p>}
           </div>
@@ -451,19 +465,22 @@ export default function OffertaEditorPage() {
               </div>}
             </div>
             <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full min-w-[900px] text-sm">
+              <table className="w-full min-w-[1040px] text-sm">
                 <thead className="bg-slate-50"><tr>
                   <th className="p-2 text-left">Lotto</th><th className="p-2 text-right">Costo industriale standard €/pz</th>
                   <th className="p-2 text-right">Costi fissi €/pz</th>
                   <th className="p-2 text-right">Spese generali €/pz</th>
                   <th className="p-2 text-right">Costo pieno €/pz</th>
-                  <th className="p-2 text-right">Prezzo netto €/pz</th>
+                  <th className="p-2 text-right">Prezzo netto finale €/pz</th>
+                  <th className="p-2 text-right">Margine netto effettivo</th>
                   <th className="p-2 text-right">Totale lotto</th>
                   {!locked && <th className="p-2 text-center">In offerta</th>}
                 </tr></thead>
                 <tbody>{lots.map((lot) => {
                   let simulationPrice = null;
                   try { simulationPrice = calculateOfferLotPrice(row, lot); } catch { /* Keep an invalid row visible for correction. */ }
+                  const lotTerms = offerLotTerms(row, lot);
+                  const manualNet = lotTerms.prezzo_netto_manuale;
                   const custom = (row.lotti_aggiuntivi ?? []).some((customLot) => Number(customLot) === lot) &&
                     !simulationsForOfferRow(row).some((simulation) => Number(simulation.lotto) === lot);
                   return <tr key={lot} className={selectedLots.includes(lot) ? "border-t bg-emerald-50" : "border-t"}>
@@ -472,7 +489,11 @@ export default function OffertaEditorPage() {
                     <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.fixedCostPerPiece)}<FormulaTooltip label={`Costi fissi per pezzo al lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.fixedCostPerPiece}/></td>
                     <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.overheadPerPiece)}<FormulaTooltip label={`Spese generali per pezzo al lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.overheadPerPiece}/></td>
                     <td className="p-2 text-right tabular-nums">€ {money(simulationPrice?.fullCost)}<FormulaTooltip label={`Costo pieno per pezzo al lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.fullCost}/></td>
-                    <td className="p-2 text-right font-semibold tabular-nums">€ {money(simulationPrice?.netPrice)}<FormulaTooltip label={`Prezzo netto per pezzo al lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.netPrice}/></td>
+                    <td className="p-2 text-right tabular-nums">
+                      <input aria-label={`Prezzo netto finale per lotto ${lot}`} disabled={locked} type="text" inputMode="decimal" className="w-28 rounded border p-1.5 text-right font-semibold disabled:bg-slate-100" value={manualNet == null ? (simulationPrice ? money(simulationPrice.calculatedNetPrice) : "") : String(manualNet)} onChange={(event) => editLotNetPrice(index, lot, event.target.value)}/><FormulaTooltip label={`Prezzo netto finale per lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.finalNetPrice}/>
+                      {simulationPrice?.manualNetPrice != null && <div className="mt-1 text-xs text-slate-500">Calcolato: <del>€ {money(simulationPrice.calculatedNetPrice)}</del>{!locked && <button type="button" className="ml-1 text-emerald-800 underline" onClick={() => editLotNetPrice(index, lot, "")}>Ripristina</button>}</div>}
+                    </td>
+                    <td className="p-2 text-right tabular-nums">{simulationPrice ? `${money(simulationPrice.actualMarginPercent)}%` : "—"}<FormulaTooltip label={`Margine netto effettivo per lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.actualMargin}/></td>
                     <td className="p-2 text-right tabular-nums">€ {money((simulationPrice?.netPrice ?? 0) * lot)}<FormulaTooltip label={`Totale del lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.lotTotal}/></td>
                     {!locked && <td className="p-2 text-center">
                       <input type="checkbox" aria-label={"Includi lotto " + lot + " nell'offerta cliente"} checked={selectedLots.includes(lot)} onChange={(event) => selectLot(index, lot, event.target.checked)} className="h-4 w-4 accent-emerald-700"/>
@@ -483,6 +504,7 @@ export default function OffertaEditorPage() {
               </table>
             </div>
             {selectedLots.length === 0 && <p className="mt-2 text-sm text-amber-800">Seleziona almeno un lotto per l’offerta cliente.</p>}
+            <p className="mt-2 text-xs text-slate-500">Il prezzo calcolato è il valore iniziale. Puoi impostare un netto finale diverso per ogni lotto: il margine effettivo e i PDF si aggiornano di conseguenza.</p>
           </div>}
 
           <div className="rounded-lg border p-4 space-y-3">
@@ -491,17 +513,23 @@ export default function OffertaEditorPage() {
               {!locked && <button type="button" onClick={() => generateListino(index)} disabled={!price || selectedLots.length === 0} className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 disabled:opacity-40"><FileText size={16}/>Genera listini selezionati</button>}
             </div>
             {cycle && <div className="overflow-x-auto rounded border">
-              <table className="w-full min-w-[620px] text-sm"><thead className="bg-slate-50"><tr><th className="p-2 text-left">Lotto selezionato</th><th className="p-2 text-right">Netto proposto €/pz</th><th className="p-2 text-right">Listino €/pz</th><th className="p-2 text-right">Netto dopo sconto €/pz</th><th className="p-2 text-left">Esito listino</th></tr></thead>
+              <table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50"><tr><th className="p-2 text-left">Lotto selezionato</th><th className="p-2 text-right">Netto finale €/pz</th><th className="p-2 text-right">Listino €/pz</th><th className="p-2 text-right">Netto dopo sconto cliente €/pz</th><th className="p-2 text-right">Adeguamento manuale</th><th className="p-2 text-left">Esito listino</th></tr></thead>
                 <tbody>{selectedLots.map((lot) => {
                   const terms = offerLotTerms(row, lot);
                   const listino = parseNumber(terms.listino);
                   const netAfterDiscount = (() => { try { return listino * discountFactor(combinedDiscount(row)); } catch { return 0; } })();
                   let proposedNet = 0;
-                  try { proposedNet = calculateOfferLotPrice(row, lot).netPrice; } catch { /* The row validation explains the error. */ }
+                  let lotPriceForDiscount = null;
+                  try { lotPriceForDiscount = calculateOfferLotPrice(row, lot); proposedNet = lotPriceForDiscount.netPrice; } catch { /* The row validation explains the error. */ }
+                  let marketAdjustment: number | null = null;
+                  if (lotPriceForDiscount?.manualNetPrice != null && netAfterDiscount > 0) {
+                    try { marketAdjustment = additionalDiscountPercent(netAfterDiscount, proposedNet); } catch { /* The row validation explains the error. */ }
+                  }
                   const current = generatedListinoIsCurrent(row, lot);
-                  return <tr key={lot} className="border-t"><td className="p-2">{lot.toLocaleString("it-IT")} pz</td><td className="p-2 text-right">€ {money(proposedNet)}<FormulaTooltip label={`Prezzo netto proposto per lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.netPrice}/></td>
+                  return <tr key={lot} className="border-t"><td className="p-2">{lot.toLocaleString("it-IT")} pz</td><td className="p-2 text-right">€ {money(proposedNet)}<FormulaTooltip label={`Prezzo netto finale per lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.finalNetPrice}/></td>
                     <td className="p-2 text-right"><input aria-label={"Prezzo di listino per lotto " + lot} disabled={locked} type="number" min="0" step="0.01" className="w-32 rounded border p-2 text-right disabled:bg-slate-100" value={terms.listino ?? ""} onChange={(event) => editLotListino(index, lot, event.target.value === "" ? "" : Number(event.target.value))}/></td>
-                    <td className="p-2 text-right">€ {money(netAfterDiscount)}<FormulaTooltip label={`Netto dopo sconto per lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.netAfterDiscount}/></td><td className={current ? "p-2 text-xs text-emerald-700" : "p-2 text-xs text-amber-700"}>{current ? "Allineato al netto" : "Da generare o aggiornare"}</td></tr>;
+                    <td className="p-2 text-right">€ {money(netAfterDiscount)}<FormulaTooltip label={`Netto dopo sconto cliente per lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.netAfterDiscount}/></td>
+                    <td className="p-2 text-right">{marketAdjustment == null ? "—" : marketAdjustment >= 0 ? `${money(marketAdjustment)}% sconto` : `${money(Math.abs(marketAdjustment))}% maggiorazione`}<FormulaTooltip label={`Adeguamento manuale per lotto ${lot}`} formula={CALCULATION_FORMULAS.commercialOffer.additionalDiscount}/></td><td className={current ? "p-2 text-xs text-emerald-700" : "p-2 text-xs text-amber-700"}>{current ? "Allineato al netto" : "Da generare o aggiornare"}</td></tr>;
                 })}</tbody>
               </table>
             </div>}

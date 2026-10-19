@@ -46,9 +46,13 @@ export const CALCULATION_FORMULAS = {
     fullCost:
       "Costo pieno €/pz = costo industriale standard del lotto + spese generali sul costo industriale standard.",
     netPrice:
-      "Prezzo netto €/pz = costo pieno ÷ (1 − margine netto desiderato % ÷ 100). Il margine è calcolato sul prezzo di vendita; il risultato è arrotondato al centesimo superiore per non scendere sotto il margine richiesto.",
+      "Prezzo netto calcolato €/pz = costo pieno ÷ (1 − margine netto desiderato % ÷ 100). Il margine è calcolato sul prezzo di vendita; il risultato è arrotondato al centesimo superiore per non scendere sotto il margine richiesto.",
+    finalNetPrice:
+      "Prezzo netto finale €/pz = prezzo netto manuale del lotto, se inserito; altrimenti prezzo netto calcolato dal costo pieno e dal margine desiderato.",
     actualMargin:
       "Margine netto effettivo % = (prezzo netto proposto − costo pieno) ÷ prezzo netto proposto × 100.",
+    additionalDiscount:
+      "Sconto extra per adeguamento mercato % = (1 − prezzo netto finale ÷ netto dopo lo sconto cliente) × 100. Se il risultato è negativo, indica la maggiorazione necessaria rispetto al netto dopo lo sconto cliente.",
     lotTotal:
       "Totale lotto = prezzo netto unitario × quantità del lotto.",
     listPrice:

@@ -8,6 +8,7 @@ export type OfferLotTerms = {
   listino?: number | string;
   listino_generato_per_netto?: number;
   listino_generato_sconto?: string;
+  prezzo_netto_manuale?: number | string;
 };
 
 export type OfferLotPrice = {
@@ -19,6 +20,8 @@ export type OfferLotPrice = {
   variableCostPerPiece: number;
   overheadPerPiece: number;
   fullCost: number;
+  calculatedNetPrice: number;
+  manualNetPrice: number | null;
   netPrice: number;
   actualMarginPercent: number;
 };
@@ -44,6 +47,12 @@ export function generateListinoFromNet(netPrice: number, discount: string): { li
   // Round up so applying the stated discount never undercuts the target net.
   const listino = Math.ceil((theoretical - 1e-10) * 100) / 100;
   return { listino, netAfterDiscount: listino * factor };
+}
+
+export function additionalDiscountPercent(referenceNet: number, targetNet: number): number {
+  if (!Number.isFinite(referenceNet) || referenceNet <= 0 || !Number.isFinite(targetNet) || targetNet <= 0)
+    throw new Error("I prezzi di riferimento e finale devono essere maggiori di zero");
+  return (1 - targetNet / referenceNet) * 100;
 }
 
 export function cycleForOfferRow(row: CommercialOfferRow): CicloEditorModel | null {
@@ -107,12 +116,20 @@ export function offerLotTerms(row: CommercialOfferRow, lot: number): OfferLotTer
     ? row.prezzi_lotti as Record<string, OfferLotTerms>
     : {};
   const stored = allTerms[String(lot)];
-  if (stored) return { ...stored };
+  if (stored) {
+    return {
+      ...stored,
+      ...(Number(row.lotto) === lot && stored.prezzo_netto_manuale == null && row.prezzo_netto_manuale != null
+        ? { prezzo_netto_manuale: row.prezzo_netto_manuale as number | string }
+        : {}),
+    };
+  }
   if (Number(row.lotto) === lot) {
     return {
       listino: row.listino as number | string | undefined,
       listino_generato_per_netto: numberOrUndefined(row.listino_generato_per_netto),
       listino_generato_sconto: typeof row.listino_generato_sconto === "string" ? row.listino_generato_sconto : undefined,
+      prezzo_netto_manuale: row.prezzo_netto_manuale as number | string | undefined,
     };
   }
   return {};
@@ -134,6 +151,7 @@ export function withOfferLotTerms(
       listino: nextTerms[String(lot)].listino ?? "",
       listino_generato_per_netto: nextTerms[String(lot)].listino_generato_per_netto,
       listino_generato_sconto: nextTerms[String(lot)].listino_generato_sconto,
+      prezzo_netto_manuale: nextTerms[String(lot)].prezzo_netto_manuale,
     };
   }
   return next;
@@ -150,6 +168,7 @@ export function withSelectedOfferLot(
       listino: row.listino as number | string | undefined,
       listino_generato_per_netto: numberOrUndefined(row.listino_generato_per_netto),
       listino_generato_sconto: typeof row.listino_generato_sconto === "string" ? row.listino_generato_sconto : undefined,
+      prezzo_netto_manuale: row.prezzo_netto_manuale as number | string | undefined,
     })
     : row;
   const current = selectedOfferLots(row);
@@ -165,6 +184,7 @@ export function withSelectedOfferLot(
     listino: primaryTerms.listino ?? "",
     listino_generato_per_netto: primaryTerms.listino_generato_per_netto,
     listino_generato_sconto: primaryTerms.listino_generato_sconto,
+    prezzo_netto_manuale: primaryTerms.prezzo_netto_manuale,
   };
 }
 
@@ -202,7 +222,9 @@ export function calculateOfferLotPrice(row: CommercialOfferRow, lot: number): Of
   const theoreticalNet = fullCost / (1 - targetMarginPercent / 100);
   // The required margin is a floor; round the offer price up to cents so the
   // displayed value never erodes that margin.
-  const netPrice = Math.ceil((theoreticalNet - 1e-10) * 100) / 100;
+  const calculatedNetPrice = Math.ceil((theoreticalNet - 1e-10) * 100) / 100;
+  const manualNetPrice = parseManualNetPrice(offerLotTerms(row, lot).prezzo_netto_manuale);
+  const netPrice = manualNetPrice ?? calculatedNetPrice;
   return {
     lot,
     simulation,
@@ -212,6 +234,8 @@ export function calculateOfferLotPrice(row: CommercialOfferRow, lot: number): Of
     variableCostPerPiece,
     overheadPerPiece,
     fullCost,
+    calculatedNetPrice,
+    manualNetPrice,
     netPrice,
     actualMarginPercent: netPrice > 0 ? (netPrice - fullCost) / netPrice * 100 : 0,
   };
@@ -228,6 +252,8 @@ export function withCalculatedOfferRow(row: CommercialOfferRow): CommercialOffer
       costi_fissi_per_pezzo: selectedPrice.fixedCostPerPiece,
       spese_generali_per_pezzo: selectedPrice.overheadPerPiece,
       costo_pieno: selectedPrice.fullCost,
+      prezzo_netto_calcolato: selectedPrice.calculatedNetPrice,
+      prezzo_netto_manuale: selectedPrice.manualNetPrice,
       prezzo_netto_proposto: selectedPrice.netPrice,
       totale_lotto: selectedPrice.netPrice * selectedLot,
       margine_netto_pct: selectedPrice.actualMarginPercent,
@@ -238,7 +264,7 @@ export function withCalculatedOfferRow(row: CommercialOfferRow): CommercialOffer
     prezzi_proposti_lotti: prices,
     costo_standard_lotto: price.simulation.costo_standard,
     full_cost: price.fullCost,
-    prezzo_minimo: price.netPrice,
+    prezzo_minimo: price.calculatedNetPrice,
     prezzo_netto_proposto: price.netPrice,
     margine_pct: price.actualMarginPercent,
     breakdown_lotto: price.simulation.breakdown,
@@ -254,4 +280,15 @@ function numberOrNull(value: unknown): number | null {
 function numberOrUndefined(value: unknown): number | undefined {
   const number = Number(value);
   return value == null || value === "" || !Number.isFinite(number) ? undefined : number;
+}
+
+function parseManualNetPrice(value: unknown): number | null {
+  if (value == null || String(value).trim() === "") return null;
+  let raw = String(value).trim().replace(/\s/g, "");
+  if (raw.includes(",")) raw = raw.replace(/\./g, "").replace(",", ".");
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) throw new Error("Il prezzo netto manuale non è valido");
+  const rounded = Math.round((parsed + Number.EPSILON) * 100) / 100;
+  if (rounded <= 0) throw new Error("Il prezzo netto manuale deve essere maggiore di zero");
+  return rounded;
 }
