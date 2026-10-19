@@ -409,7 +409,7 @@ export default function OffertaEditorPage() {
         try { lots = offerLotsForRow(row); } catch { /* Validation appears in the price summary. */ }
         const selectedLots = selectedOfferLots(row);
         const price = lotPrice(row);
-        return <section key={index} className="bg-white border rounded-xl p-5 space-y-4">
+        return <section key={index} className="bg-white border rounded-xl p-4 space-y-3">
           <div className="flex justify-between items-center gap-2">
             <h3 className="font-semibold">Prodotto {index + 1}{row.record_id ? ` · ciclo ${row.codice || row.record_id} · rev. ${row.rev ?? 1}` : ""}</h3>
             {!locked && offer.righe.length > 1 && <button title="Rimuovi prodotto" className="text-red-500" onClick={() => edit("righe", offer.righe.filter((_, rowIndex) => index !== rowIndex))}><Trash2 size={16}/></button>}
@@ -428,19 +428,38 @@ export default function OffertaEditorPage() {
             </>}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {([["codice", "Codice articolo"], ["descrizione", "Descrizione"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
-              <span>{label}</span><input disabled={locked} className="p-2 rounded border disabled:bg-slate-100" value={String(row[key] ?? "")} onChange={(event) => editRow(index, key, event.target.value)}/>
-            </label>)}
-            {!cycle && <label className="flex flex-col text-sm gap-1">
-              <span>Lotto di riferimento (pezzi)</span><input disabled={locked} type="number" min="1" step="1" className="p-2 rounded border disabled:bg-slate-100" value={row.lotto ?? ""} onChange={(event) => editRow(index, "lotto", event.target.value === "" ? "" : Number(event.target.value))}/>
-            </label>}
-            <label className="flex flex-col text-sm gap-1">
-              <span>Spese generali sul costo industriale (%)</span><input disabled={locked} type="number" min="0" step="0.1" className="p-2 rounded border disabled:bg-slate-100" value={String(row.ricarico_costi_fissi_pct ?? "")} onChange={(event) => editRow(index, "ricarico_costi_fissi_pct", event.target.value === "" ? "" : Number(event.target.value))}/>
-              <small className="text-xs text-slate-500">Si applica all’intero costo industriale standard del lotto, inclusa la quota di attrezzaggi e attrezzature.</small>
+          <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
+            <label className="flex w-24 shrink-0 flex-col gap-1 text-xs">
+              <span>Codice articolo</span>
+              <input disabled={locked} className="h-8 w-full rounded border px-2 text-sm disabled:bg-slate-100" value={String(row.codice ?? "")} onChange={(event) => editRow(index, "codice", event.target.value)}/>
             </label>
-            <label className="flex flex-col text-sm gap-1">
-              <span>Margine netto desiderato (%)</span><input disabled={locked} type="number" min="0" max="99.99" step="0.1" className="p-2 rounded border disabled:bg-slate-100" value={String(row.margine_netto_desiderato_pct ?? "")} onChange={(event) => editRow(index, "margine_netto_desiderato_pct", event.target.value === "" ? "" : Number(event.target.value))}/>
+            <label className="flex min-w-0 max-w-[65ch] flex-[2_1_24rem] flex-col gap-1 text-xs">
+              <span>Descrizione</span>
+              <input disabled={locked} className="h-8 w-full min-w-0 rounded border px-2 text-sm disabled:bg-slate-100" value={String(row.descrizione ?? "")} title={String(row.descrizione ?? "")} onChange={(event) => editRow(index, "descrizione", event.target.value)}/>
+            </label>
+            {!cycle && <label className="flex w-24 shrink-0 flex-col gap-1 text-xs">
+              <span>Lotto (pezzi)</span>
+              <input disabled={locked} type="number" min="1" step="1" className="h-8 w-full rounded border px-2 text-sm disabled:bg-slate-100" value={row.lotto ?? ""} onChange={(event) => editRow(index, "lotto", event.target.value === "" ? "" : Number(event.target.value))}/>
+            </label>}
+            <label className="flex w-24 shrink-0 flex-col gap-1 text-xs" title="Si applica all’intero costo industriale standard del lotto, inclusa la quota di attrezzaggi e attrezzature.">
+              <span>Spese gen. %</span>
+              <input disabled={locked} type="number" min="0" step="0.1" className="h-8 w-full rounded border px-2 text-sm disabled:bg-slate-100" value={String(row.ricarico_costi_fissi_pct ?? "")} onChange={(event) => editRow(index, "ricarico_costi_fissi_pct", event.target.value === "" ? "" : Number(event.target.value))}/>
+            </label>
+            <label className="flex w-24 shrink-0 flex-col gap-1 text-xs">
+              <span>Margine netto %</span>
+              <input disabled={locked} type="number" min="0" max="99.99" step="0.1" className="h-8 w-full rounded border px-2 text-sm disabled:bg-slate-100" value={String(row.margine_netto_desiderato_pct ?? "")} onChange={(event) => editRow(index, "margine_netto_desiderato_pct", event.target.value === "" ? "" : Number(event.target.value))}/>
+            </label>
+            {!cycle && <label className="flex w-28 shrink-0 flex-col gap-1 text-xs">
+              <span>Listino €</span>
+              <input disabled={locked} type="number" min="0" step="0.01" className="h-8 w-full rounded border px-2 text-sm disabled:bg-slate-100" value={row.listino ?? ""} onChange={(event) => editRow(index, "listino", Number(event.target.value))}/>
+            </label>}
+            <label className="flex w-36 shrink-0 flex-col gap-1 text-xs">
+              <span>Sconto cliente</span>
+              <input disabled={locked} className="h-8 w-full rounded border px-2 text-sm disabled:bg-slate-100" value={row.sconto_base ?? ""} onChange={(event) => editRow(index, "sconto_base", event.target.value)}/>
+            </label>
+            <label className="flex w-24 shrink-0 flex-col gap-1 text-xs">
+              <span>Sconto extra %</span>
+              <input disabled={locked} type="number" min="0" max="99.99" step="0.1" className="h-8 w-full rounded border px-2 text-sm disabled:bg-slate-100" value={row.extra ?? 0} onChange={(event) => editRow(index, "extra", Number(event.target.value))}/>
             </label>
           </div>
 
@@ -508,7 +527,7 @@ export default function OffertaEditorPage() {
             <p className="mt-2 text-xs text-slate-500">Il prezzo calcolato è il valore iniziale. Puoi impostare un netto finale diverso per ogni lotto: il margine effettivo e i PDF si aggiornano di conseguenza.</p>
           </div>}
 
-          <div className="rounded-lg border p-4 space-y-3">
+          <div className="rounded-lg border p-3 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div><h4 className="font-semibold">Prezzi di listino per lotto</h4><p className="text-xs text-slate-500">Il listino viene calcolato separatamente sul netto proposto per ciascun lotto selezionato.</p></div>
               {!locked && <button type="button" onClick={() => generateListino(index)} disabled={!price || selectedLots.length === 0} className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 disabled:opacity-40"><FileText size={16}/>Genera listini selezionati</button>}
@@ -534,11 +553,6 @@ export default function OffertaEditorPage() {
                 })}</tbody>
               </table>
             </div>}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <label className="flex flex-col text-sm gap-1"><span>Sconto cliente (es. 40+10%)</span><input disabled={locked} className="p-2 rounded border disabled:bg-slate-100" value={row.sconto_base ?? ""} onChange={(event) => editRow(index, "sconto_base", event.target.value)}/></label>
-              <label className="flex flex-col text-sm gap-1"><span>Sconto extra (%)</span><input disabled={locked} type="number" min="0" max="99.99" step="0.1" className="p-2 rounded border disabled:bg-slate-100" value={row.extra ?? 0} onChange={(event) => editRow(index, "extra", Number(event.target.value))}/></label>
-              {!cycle && <label className="flex flex-col text-sm gap-1"><span>Listino €</span><input disabled={locked} type="number" min="0" step="0.01" className="p-2 rounded border disabled:bg-slate-100" value={row.listino ?? ""} onChange={(event) => editRow(index, "listino", Number(event.target.value))}/></label>}
-            </div>
             {!cycle && <div className="flex flex-wrap items-center gap-3">
               {!locked && <button type="button" onClick={() => generateListino(index)} disabled={!price} className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 disabled:opacity-40"><FileText size={16}/>Genera prezzo di listino</button>}
               {row.listino_generato_per_netto != null && <span className={generatedListinoIsCurrent(row, Number(row.lotto)) ? "text-xs text-emerald-700" : "text-xs text-amber-700"}>{generatedListinoIsCurrent(row, Number(row.lotto)) ? "Listino allineato al prezzo netto attuale." : "Prezzo o sconto cambiato: genera di nuovo il listino."}</span>}
