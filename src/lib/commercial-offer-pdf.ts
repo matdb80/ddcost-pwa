@@ -114,7 +114,9 @@ export function buildCommercialOfferPrintHtml(
   .cost-matrix { font-size: 7pt; }
   .cost-matrix th:first-child { width: 29%; }
   .cost-matrix td { text-align: right; white-space: nowrap; }
-  .cost-matrix tr.total td, .cost-matrix tr.total th { background: #e8edef; font-weight: 700; }
+  .cost-matrix tr.total > th, .cost-matrix tr.total > td { background: #dce4e8 !important; font-weight: 700; border-top: 1px solid #607078; border-bottom: 1px solid #607078; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .cost-matrix tr.total > th:first-child { border-left: 1px solid #607078; }
+  .cost-matrix tr.total > td:last-child { border-right: 1px solid #607078; }
   .source-lines { font-size: 7.3pt; }
   .source-lines th, .source-lines td { padding: 3px 4px; }
   .page-break { page-break-before: always; }
@@ -126,6 +128,9 @@ export function buildCommercialOfferPrintHtml(
   .commercial-term { min-width: 0; }
   .commercial-terms b { display: block; color: #58636a; font-size: 8pt; margin-bottom: 3px; }
   .footnote { font-size: 7.5pt; color: #647078; margin-top: 12px; }
+  .cycle-market-note { margin: 10px 0; padding: 9px 11px; border: 1px solid #c18a24; border-left: 4px solid #a46612; border-radius: 3px; background: #fff4d6; page-break-inside: avoid; }
+  .cycle-market-note ul { margin: 5px 0 0; padding-left: 18px; }
+  .cycle-market-note p { margin: 5px 0 0; }
   .nowrap { white-space: nowrap; }
   @media screen { body { padding: 18px; max-width: 1100px; margin: 0 auto; } }
 </style></head><body>
@@ -162,7 +167,23 @@ function internalProductSection(row: CommercialOfferRow, index: number): string 
   const groups = chunk(allLots.length ? allLots : simulations, 5);
   const tables = groups.map((group, groupIndex) => costMatrix(row, group, groupIndex, groups.length)).join("");
   const sourceLines = sourceCycleLines(cycle.righe);
-  return `<section class="product">${heading}${cycleDetails}${pricingDetails}<p class="footnote">Le voci per categoria compongono il costo industriale standard. Le quote fisse e variabili sono una ripartizione analitica dello stesso costo e non vanno sommate di nuovo. Le spese generali sono calcolate sull’intero costo industriale standard del lotto. Il margine lordo effettivo è (prezzo netto finale − costo industriale standard) / prezzo netto finale; il margine netto effettivo è (prezzo netto finale − costo pieno offerta) / prezzo netto finale.</p><h3>Costi e prezzi per tutti i lotti del ciclo e dell’offerta</h3>${tables}<h3 class="page-break">Riferimenti tecnici e costi unitari salvati nel ciclo</h3>${sourceLines}${cycle.note_generali ? `<p><b>Note del ciclo:</b> ${escapeHtml(cycle.note_generali)}</p>` : ""}</section>`;
+  const cycleComments = String(cycle.note_generali ?? "").trim();
+  const marketLossLots = selectedOfferLots(row).flatMap((lot) => {
+    try {
+      const price = calculateOfferLotPrice(row, lot);
+      if (price.manualNetPrice == null || price.actualMarginPercent >= 0) return [];
+      const grossMarginEuro = price.netPrice - price.simulation.costo_standard;
+      const grossMarginPercent = price.netPrice > 0 ? grossMarginEuro / price.netPrice * 100 : 0;
+      return [{ lot, grossMarginEuro, grossMarginPercent, netMarginPercent: price.actualMarginPercent }];
+    } catch { return []; }
+  });
+  const marketLossNotes = cycleComments && marketLossLots.length
+    ? `<aside class="cycle-market-note" role="note"><strong>Prezzo netto imposto dal mercato: costi non interamente coperti</strong><ul>${marketLossLots.map((item) => `<li>Lotto ${formatNumber(item.lot)} pz: margine lordo effettivo € ${money(item.grossMarginEuro)}/pz (${money(item.grossMarginPercent)}%); margine netto effettivo ${money(item.netMarginPercent)}%.</li>`).join("")}</ul><p><b>Commenti del ciclo:</b><br>${escapeHtml(cycleComments).replace(/\r?\n/g, "<br>")}</p></aside>`
+    : "";
+  const generalCycleNote = cycleComments && !marketLossNotes
+    ? `<p><b>Note del ciclo:</b> ${escapeHtml(cycleComments).replace(/\r?\n/g, "<br>")}</p>`
+    : "";
+  return `<section class="product">${heading}${cycleDetails}${pricingDetails}${marketLossNotes}<p class="footnote">Le voci per categoria compongono il costo industriale standard. Le quote fisse e variabili sono una ripartizione analitica dello stesso costo e non vanno sommate di nuovo. Le spese generali sono calcolate sull’intero costo industriale standard del lotto. Il margine lordo effettivo è (prezzo netto finale − costo industriale standard) / prezzo netto finale; il margine netto effettivo è (prezzo netto finale − costo pieno offerta) / prezzo netto finale.</p><h3>Costi e prezzi per tutti i lotti del ciclo e dell’offerta</h3>${tables}<h3 class="page-break">Riferimenti tecnici e costi unitari salvati nel ciclo</h3>${sourceLines}${generalCycleNote}</section>`;
 }
 
 function costMatrix(

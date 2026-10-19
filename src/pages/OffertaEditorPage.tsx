@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { trpc } from "@/providers/trpc";
-import { ArrowLeft, ChevronLeft, ChevronRight, CreditCard, ExternalLink, FileText, Pencil, Plus, Printer, Save, Search, ShoppingCart, StickyNote, Trash2, Truck, UserRound, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, CreditCard, ExternalLink, FileText, Pencil, Plus, Printer, Save, Search, ShoppingCart, StickyNote, Trash2, Truck, UserRound, X } from "lucide-react";
 import { applyStandardCycleToOfferRow } from "@/lib/commercial-offer-cycle";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
 import {
@@ -398,9 +398,11 @@ export default function OffertaEditorPage() {
         </div>
       </section>
 
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="flex items-center gap-2 text-xl font-semibold"><ShoppingCart size={20} aria-hidden="true"/>Prodotti ({offer.righe.length})</h2>
-        {!locked && <button className="flex gap-2 px-3 py-2 border border-emerald-600 text-emerald-700 rounded" onClick={() => edit("righe", [...offer.righe, blankRow()])}><Plus size={16}/>Aggiungi prodotto</button>}
+      <div className="sticky top-0 z-30 -mx-3 md:-mx-6 px-3 md:px-6 py-2 border-y border-slate-200 bg-slate-50/95 shadow-sm backdrop-blur">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="flex items-center gap-2 text-xl font-semibold"><ShoppingCart size={20} aria-hidden="true"/>Prodotti ({offer.righe.length})</h2>
+          {!locked && <button type="button" className="flex gap-2 px-3 py-2 border border-emerald-600 text-emerald-700 rounded bg-white hover:bg-emerald-50" onClick={() => edit("righe", [...offer.righe, blankRow()])}><Plus size={16}/>Aggiungi prodotto</button>}
+        </div>
       </div>
 
       {offer.righe.map((row, index) => {
@@ -475,9 +477,17 @@ export default function OffertaEditorPage() {
             </> : <p className="md:col-span-3 text-amber-800">Seleziona un prodotto dai Cicli Standard e verifica lotto, ricarico e margine.</p>}
           </div>
 
-          {cycle && <div>
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div><h4 className="font-semibold">Prezzi proposti per lotto</h4><p className="text-xs text-slate-500">Seleziona una o più quantità da presentare al cliente. I lotti aggiuntivi si calcolano sullo stesso ciclo.</p></div>
+          {cycle && <details className="group overflow-hidden rounded-lg border bg-white">
+            <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-600 [&::-webkit-details-marker]:hidden">
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">Prezzi proposti per lotto</span>
+                <span className="block text-xs text-slate-600">{lots.length} lotti disponibili · {selectedLots.length} inclusi nell’offerta{price ? ` · prezzo principale € ${money(price.netPrice)}/pz` : ""}</span>
+              </span>
+              <ChevronDown size={18} aria-hidden="true" className="shrink-0 transition-transform group-open:rotate-180"/>
+            </summary>
+            <div className="border-t p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-slate-500">Seleziona le quantità da presentare al cliente. I lotti aggiuntivi si calcolano sullo stesso ciclo.</p>
               {!locked && <div className="flex items-center gap-2">
                 <label className="sr-only" htmlFor={"new-offer-lot-" + index}>Nuovo lotto aggiuntivo</label>
                 <input id={"new-offer-lot-" + index} type="number" min="1" step="1" value={newLotDrafts[index] ?? ""} onChange={(event) => setNewLotDrafts((current) => ({ ...current, [index]: event.target.value }))} placeholder="Nuovo lotto pz" className="w-36 rounded border p-2 text-sm"/>
@@ -525,7 +535,8 @@ export default function OffertaEditorPage() {
             </div>
             {selectedLots.length === 0 && <p className="mt-2 text-sm text-amber-800">Seleziona almeno un lotto per l’offerta cliente.</p>}
             <p className="mt-2 text-xs text-slate-500">Il prezzo calcolato è il valore iniziale. Puoi impostare un netto finale diverso per ogni lotto: il margine effettivo e i PDF si aggiornano di conseguenza.</p>
-          </div>}
+            </div>
+          </details>}
 
           <div className="rounded-lg border p-3 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">

@@ -222,6 +222,35 @@ describe("commercial offer print documents", () => {
     expect(html).toContain("54,29");
     expect(html).toContain("20,00");
     expect(html).toContain("costo industriale standard) / prezzo netto finale");
+    expect(html).toContain(".cost-matrix tr.total > th, .cost-matrix tr.total > td");
+    expect(html).toContain("border-top: 1px solid #607078");
+    expect(html).toContain("print-color-adjust: exact");
+  });
+
+  it("prints cycle comments beside manual market prices that leave a negative net margin", () => {
+    const row = {
+      ...offerRow(),
+      lotto: 25,
+      lotti_selezionati: [25],
+      ricarico_costi_fissi_pct: 75,
+      margine_netto_desiderato_pct: 20,
+      prezzi_lotti: { "25": { prezzo_netto_manuale: 2.2 } },
+    };
+    const cycle = JSON.parse(String(row.data.dataJson)) as Record<string, unknown>;
+    cycle.lotti_personalizzati = [25];
+    cycle.note_generali = "Prezzo concordato per vincolo di mercato.";
+    cycle.righe = [
+      { categoria: "COMPONENTE", codice_articolo: "MP-01", descrizione: "Componente", nr_componenti: 1, costo_unitario: 1.76, considera: true },
+    ];
+    row.data.dataJson = JSON.stringify(cycle);
+
+    const html = buildCommercialOfferPrintHtml({ righe: [row] }, "internal");
+
+    expect(html).toContain("Prezzo netto imposto dal mercato: costi non interamente coperti");
+    expect(html).toContain("Lotto 25 pz: margine lordo effettivo € 0,44/pz (20,00%); margine netto effettivo -40,00%.");
+    expect(html).toContain("Prezzo concordato per vincolo di mercato.");
+    expect(html.match(/Prezzo concordato per vincolo di mercato\./g)).toHaveLength(1);
+    expect(html.indexOf("Prezzo netto imposto dal mercato")).toBeLessThan(html.indexOf("Costi e prezzi per tutti i lotti"));
   });
 
   it("prints package time and quantity in the internal cycle references", () => {
