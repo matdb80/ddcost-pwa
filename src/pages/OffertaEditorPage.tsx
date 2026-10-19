@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { trpc } from "@/providers/trpc";
-import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, FileText, Pencil, Plus, Printer, Save, Search, Trash2, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, CreditCard, ExternalLink, FileText, Pencil, Plus, Printer, Save, Search, ShoppingCart, StickyNote, Trash2, Truck, UserRound, X } from "lucide-react";
 import { applyStandardCycleToOfferRow } from "@/lib/commercial-offer-cycle";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
 import {
@@ -389,20 +389,17 @@ export default function OffertaEditorPage() {
       {error && <p role="alert" className="p-3 bg-red-50 border border-red-300 text-red-800 rounded">{error}</p>}
       <p className="text-sm text-slate-600">Scegli un prodotto dai Cicli Standard, confronta i prezzi al variare del lotto e prepara una versione interna o una versione da inviare al cliente.</p>
 
-      <section className="bg-white border rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-        {([["nome", "Numero offerta"], ["cliente", "Cliente"], ["riferimento", "Riferimento"], ["pagamento", "Pagamento"], ["trasporto", "Trasporto"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
-          <span>{label}</span><input disabled={locked} value={String(offer[key] ?? "")} onChange={(event) => { if (key === "nome" && isNew) setOfferNumberEdited(true); edit(key, event.target.value); }} className="p-2 border rounded disabled:bg-slate-100"/>
-        </label>)}
-        <label className="flex flex-col text-sm gap-1 md:col-span-2 xl:col-span-5">
-          <span>Note interne</span><textarea disabled={locked} rows={3} value={String(offer.note ?? "")} onChange={(event) => edit("note", event.target.value)} className="p-2 border rounded disabled:bg-slate-100"/>
-        </label>
-        <label className="flex flex-col text-sm gap-1 md:col-span-2 xl:col-span-5">
-          <span>Note da mostrare al cliente</span><textarea disabled={locked} rows={2} value={String(offer.note_cliente ?? "")} onChange={(event) => edit("note_cliente", event.target.value)} className="p-2 border rounded disabled:bg-slate-100"/>
-        </label>
+      <section className="bg-white border rounded-xl p-5 space-y-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold"><UserRound size={18} aria-hidden="true"/>Testata</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {([["nome", "Numero offerta"], ["cliente", "Cliente"], ["riferimento", "Riferimento"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
+            <span>{label}</span><input disabled={locked} value={String(offer[key] ?? "")} onChange={(event) => { if (key === "nome" && isNew) setOfferNumberEdited(true); edit(key, event.target.value); }} className="p-2 border rounded disabled:bg-slate-100"/>
+          </label>)}
+        </div>
       </section>
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="text-xl font-semibold">Prodotti ({offer.righe.length})</h2>
+        <h2 className="flex items-center gap-2 text-xl font-semibold"><ShoppingCart size={20} aria-hidden="true"/>Prodotti ({offer.righe.length})</h2>
         {!locked && <button className="flex gap-2 px-3 py-2 border border-emerald-600 text-emerald-700 rounded" onClick={() => edit("righe", [...offer.righe, blankRow()])}><Plus size={16}/>Aggiungi prodotto</button>}
       </div>
 
@@ -550,6 +547,27 @@ export default function OffertaEditorPage() {
           {Boolean(row.data) && <p className="text-xs text-slate-500">I dati del ciclo sorgente e i costi del lotto restano salvati come snapshot nell’offerta.</p>}
         </section>;
       })}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <section className="bg-white border rounded-xl p-5 space-y-3">
+          <h2 className="flex items-center gap-2 text-lg font-semibold"><CreditCard size={18} aria-hidden="true"/>Pagamento</h2>
+          <label className="flex flex-col text-sm gap-1"><span>Condizioni di pagamento</span><input disabled={locked} value={String(offer.pagamento ?? "")} onChange={(event) => edit("pagamento", event.target.value)} className="p-2 border rounded disabled:bg-slate-100"/></label>
+        </section>
+        <section className="bg-white border rounded-xl p-5 space-y-3">
+          <h2 className="flex items-center gap-2 text-lg font-semibold"><Truck size={18} aria-hidden="true"/>Trasporto</h2>
+          <label className="flex flex-col text-sm gap-1"><span>Condizioni di trasporto</span><input disabled={locked} value={String(offer.trasporto ?? "")} onChange={(event) => edit("trasporto", event.target.value)} className="p-2 border rounded disabled:bg-slate-100"/></label>
+        </section>
+      </div>
+
+      <section className="bg-white border rounded-xl p-5 space-y-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold"><StickyNote size={18} aria-hidden="true"/>Note</h2>
+        <label className="flex flex-col text-sm gap-1">
+          <span>Note interne</span><textarea disabled={locked} rows={3} value={String(offer.note ?? "")} onChange={(event) => edit("note", event.target.value)} className="p-2 border rounded disabled:bg-slate-100"/>
+        </label>
+        <label className="flex flex-col text-sm gap-1">
+          <span>Note da mostrare al cliente</span><textarea disabled={locked} rows={2} value={String(offer.note_cliente ?? "")} onChange={(event) => edit("note_cliente", event.target.value)} className="p-2 border rounded disabled:bg-slate-100"/>
+        </label>
+      </section>
 
       <section className="bg-white border rounded-xl p-5 space-y-3">
         <h2 className="text-lg font-semibold">Esportazione PDF</h2>

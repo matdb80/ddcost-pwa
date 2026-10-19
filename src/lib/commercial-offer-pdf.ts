@@ -44,6 +44,20 @@ const COMPANY = {
   email: "info@didieffe.com",
 };
 
+type OfferSectionIcon = "person" | "products" | "payment" | "transport" | "notes";
+
+const OFFER_SECTION_ICON_PATHS: Record<OfferSectionIcon, string> = {
+  person: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  products: '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>',
+  payment: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
+  transport: '<path d="M3 6h12v12H3zM15 10h4l3 3v5h-7z"/><circle cx="7.5" cy="18.5" r="1.5"/><circle cx="18.5" cy="18.5" r="1.5"/>',
+  notes: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/>',
+};
+
+function sectionHeading(icon: OfferSectionIcon, label: string): string {
+  return `<h2 class="section-title"><svg class="section-icon" data-section-icon="${icon}" viewBox="0 0 24 24" aria-hidden="true">${OFFER_SECTION_ICON_PATHS[icon]}</svg><span>${escapeHtml(label)}</span></h2>`;
+}
+
 export function buildCommercialOfferPrintHtml(
   offer: CommercialOfferPrintDocument,
   mode: OfferPrintMode,
@@ -62,12 +76,13 @@ export function buildCommercialOfferPrintHtml(
     : customerOfferTable(rows, pricePresentation, options.hideDocumentTotal === true);
   const noteSection = (heading: string, raw: unknown) => {
     const note = String(raw ?? "").trim();
-    return note ? `<section class="notes"><h2>${heading}</h2><p>${escapeHtml(note).replace(/\n/g, "<br>")}</p></section>` : "";
+    return note ? `<section class="notes">${sectionHeading("notes", heading)}<p>${escapeHtml(note).replace(/\n/g, "<br>")}</p></section>` : "";
   };
   const noteBlock = internal
     ? noteSection("Note interne", offer.note) + noteSection("Note da mostrare al cliente", offer.note_cliente)
     : noteSection("Note", offer.note_cliente);
-  const paymentTransportBlock = internal ? "" : customerTerms(offer.pagamento, offer.trasporto);
+  const paymentTransportBlock = customerTerms(offer.pagamento, offer.trasporto);
+  const internalFootnote = internal ? `<div class="footnote">Documento generato da DDCost · Uso interno: contiene dati economici e tecnici riservati.</div>` : "";
   const companyDetails = [COMPANY.address, COMPANY.vat, COMPANY.registry, COMPANY.phone, COMPANY.email]
     .map((line) => `<div>${escapeHtml(line)}</div>`).join("");
 
@@ -83,6 +98,8 @@ export function buildCommercialOfferPrintHtml(
   .company strong { display: block; font-size: 12pt; color: #303a40; margin-bottom: 2px; }
   h1 { font-size: 17pt; margin: 0 0 8px; color: #303a40; }
   h2 { font-size: 11pt; margin: 12px 0 6px; color: #303a40; }
+  .section-title { display: flex; align-items: center; gap: 6px; }
+  .section-icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 18px; padding: 8px 10px; border: 1px solid #cbd1d5; border-radius: 4px; margin: 10px 0 14px; }
   .meta b { color: #58636a; font-size: 8pt; display: block; }
   .product { page-break-before: auto; margin: 14px 0 18px; }
@@ -106,6 +123,7 @@ export function buildCommercialOfferPrintHtml(
   .customer-total { text-align: right; font-size: 13pt; margin-top: 14px; font-weight: 700; }
   .notes { margin-top: 18px; border-top: 1px solid #cbd1d5; padding-top: 8px; }
   .commercial-terms { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; margin-top: 22px; border-top: 1px solid #cbd1d5; padding-top: 10px; page-break-inside: avoid; }
+  .commercial-term { min-width: 0; }
   .commercial-terms b { display: block; color: #58636a; font-size: 8pt; margin-bottom: 3px; }
   .footnote { font-size: 7.5pt; color: #647078; margin-top: 12px; }
   .nowrap { white-space: nowrap; }
@@ -113,9 +131,8 @@ export function buildCommercialOfferPrintHtml(
 </style></head><body>
 <header><img src="${escapeAttribute(logoUrl)}" alt="DDF Didieffe Group"><div class="company"><strong>${COMPANY.name}</strong>${companyDetails}</div></header>
 <h1>${title}</h1>
-<section class="meta"><div><b>Numero offerta</b>${offerName}</div><div><b>Data</b>${new Date().toLocaleDateString("it-IT")}</div><div><b>Cliente</b>${client || "—"}</div><div><b>Riferimento</b>${reference || "—"}</div></section>
-${body}${noteBlock}${paymentTransportBlock}
-${internal ? `<div class="footnote">Documento generato da DDCost · Uso interno: contiene dati economici e tecnici riservati.</div>` : ""}
+${sectionHeading("person", "Testata")}<section class="meta"><div><b>Numero offerta</b>${offerName}</div><div><b>Data</b>${new Date().toLocaleDateString("it-IT")}</div><div><b>Cliente</b>${client || "—"}</div><div><b>Riferimento</b>${reference || "—"}</div></section>
+${sectionHeading("products", "Prodotti")}${body}${paymentTransportBlock}${internalFootnote}${noteBlock}
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>
 </body></html>`;
 }
@@ -330,11 +347,11 @@ function operationRate(line: CicloRow): string {
 }
 
 function customerTerms(payment: unknown, transport: unknown): string {
-  const term = (label: string, value: unknown) => {
+  const term = (icon: OfferSectionIcon, label: string, value: unknown) => {
     const text = String(value ?? "").trim();
-    return text ? `<div><b>${label}</b><div>${escapeHtml(text).replace(/\n/g, "<br>")}</div></div>` : "";
+    return text ? `<section class="commercial-term">${sectionHeading(icon, label)}<div>${escapeHtml(text).replace(/\n/g, "<br>")}</div></section>` : "";
   };
-  const terms = term("Pagamento", payment) + term("Trasporto", transport);
+  const terms = term("payment", "Pagamento", payment) + term("transport", "Trasporto", transport);
   return terms ? `<section class="commercial-terms">${terms}</section>` : "";
 }
 

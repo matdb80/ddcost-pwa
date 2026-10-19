@@ -244,7 +244,7 @@ describe("commercial offer print documents", () => {
     expect(html).not.toContain("Spese generali");
   });
 
-  it("omits the customer boilerplate and prints payment and transport terms at the end", () => {
+  it("omits the customer boilerplate and prints payment and transport terms after the products", () => {
     const offer = {
       nome: "Offerta termini",
       pagamento: "30 giorni <banca>",
@@ -260,8 +260,44 @@ describe("commercial offer print documents", () => {
     expect(customerHtml).toContain("Franco destino");
     expect(customerHtml.indexOf("Pagamento")).toBeGreaterThan(customerHtml.lastIndexOf("</table>"));
     expect(customerHtml.indexOf("Trasporto")).toBeGreaterThan(customerHtml.lastIndexOf("</table>"));
+    expect(internalHtml).toContain("30 giorni &lt;banca&gt;");
+    expect(internalHtml).toContain("Franco destino");
     expect(internalHtml).toContain("Documento generato da DDCost");
     expect(internalHtml).toContain("Uso interno: contiene dati economici e tecnici riservati.");
+  });
+
+  it("adds the five section icons in order and leaves offer notes as the final content", () => {
+    const offer = {
+      nome: "Offerta sezioni",
+      pagamento: "30 giorni",
+      trasporto: "Franco destino",
+      note: "Nota interna finale",
+      note_cliente: "Nota cliente finale",
+      righe: [offerRow()],
+    };
+    const customerHtml = buildCommercialOfferPrintHtml(offer, "customer", "netto");
+    const internalHtml = buildCommercialOfferPrintHtml(offer, "internal");
+
+    expect(customerHtml.match(/data-section-icon="[^"]+"/g)).toEqual([
+      'data-section-icon="person"',
+      'data-section-icon="products"',
+      'data-section-icon="payment"',
+      'data-section-icon="transport"',
+      'data-section-icon="notes"',
+    ]);
+    expect(customerHtml.indexOf('<section class="notes">')).toBeGreaterThan(customerHtml.indexOf("Trasporto"));
+    expect(customerHtml.indexOf("Nota cliente finale")).toBeGreaterThan(customerHtml.indexOf("Trasporto"));
+
+    expect(internalHtml.match(/data-section-icon="[^"]+"/g)).toEqual([
+      'data-section-icon="person"',
+      'data-section-icon="products"',
+      'data-section-icon="payment"',
+      'data-section-icon="transport"',
+      'data-section-icon="notes"',
+      'data-section-icon="notes"',
+    ]);
+    expect(internalHtml.indexOf("Documento generato da DDCost")).toBeLessThan(internalHtml.indexOf('<section class="notes">'));
+    expect(internalHtml.indexOf("Nota cliente finale")).toBeGreaterThan(internalHtml.indexOf("Trasporto"));
   });
 
   it("can hide only the customer document total while retaining each line total", () => {
