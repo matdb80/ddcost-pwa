@@ -1,5 +1,5 @@
-import { Fragment, useState, useEffect, useMemo } from "react";
-import { useNavigate, useParams, useLocation } from "react-router";
+import { Fragment, useState, useEffect, useMemo, useRef } from "react";
+import { useBlocker, useNavigate, useParams, useLocation } from "react-router";
 import { trpc } from "@/providers/trpc";
 import Layout from "@/components/Layout";
 import CycleCostPie from "@/components/CycleCostPie";
@@ -35,7 +35,7 @@ import {
   serializeCycleDataJson,
 } from "@/types/cycle";
 import { ricalcolaCiclo, calcolaCostoRiga, costoRigaGerarchico } from "@/lib/cycle-calculator";
-import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, detachFromAssembly, orderedHierarchy, removeLeaf, moveRowAmongSiblings, childrenOf } from "@/lib/cycle-hierarchy";
+import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, copyRowAfter, detachFromAssembly, orderedHierarchy, removeLeaf, moveRowAmongSiblings, childrenOf } from "@/lib/cycle-hierarchy";
 import { calculateSaleMargins, explainSalePrice, parseMarketPrice } from "@/lib/cycle-price-margins";
 import { copyCycleAsNewDraft } from "@/lib/cycle-copy";
 import { CALCULATION_FORMULAS, cycleCategoryFormula } from "@/lib/calculation-formulas";
@@ -70,6 +70,8 @@ function formatMoney(v: number) {
   });
 }
 
+const EMPTY_CYCLE_DATA_JSON=JSON.stringify(serializeCycleDataJson(emptyCicloEditorModel()));
+
 export default function CicloEditorPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -101,6 +103,7 @@ export default function CicloEditorPage() {
   const [importPage, setImportPage] = useState(1);
   const [importingCycle, setImportingCycle] = useState(false);
   const [importedCycleLabel, setImportedCycleLabel] = useState("");
+  const allowLeaveRef=useRef(false);
   const utils = trpc.useUtils();
 
   const getCycle = trpc.cycle.get.useQuery(
@@ -121,7 +124,7 @@ export default function CicloEditorPage() {
   );
 
   const createCycle = trpc.cycle.create.useMutation({
-    onSuccess: () => navigate("/cicli"),
+    onSuccess: () => { allowLeaveRef.current=true; navigate("/cicli"); },
     onError: (err) => alert(`Errore creazione: ${err.message}`),
   });
 
@@ -137,6 +140,7 @@ export default function CicloEditorPage() {
 
   const createRevision = trpc.cycle.createRevision.useMutation({
     onSuccess: (result) => {
+      allowLeaveRef.current=true;
       setHasChanges(false);
       setSaveDialogOpen(false);
       alert("Nuova revisione " + result.rev + " creata con successo. Ora stai visualizzando la versione aggiornata.");
@@ -173,18 +177,36 @@ export default function CicloEditorPage() {
 
   // Track changes by comparing serialized JSON
   useEffect(() => {
+    const current=JSON.stringify(serializeCycleDataJson(model));
     if (isNew) {
-      setHasChanges(true);
+      setHasChanges(current!==EMPTY_CYCLE_DATA_JSON);
       return;
     }
-    const current = JSON.stringify(serializeCycleDataJson(model));
     setHasChanges(current !== originalJson && originalJson !== "");
   }, [model, originalJson, isNew]);
 
   // An editor button must never create a revision from an untouched cycle.
   // Compute synchronously from the loaded baseline, not from delayed state.
-  const isModified = isNew || (originalJson.length > 0 &&
-    JSON.stringify(serializeCycleDataJson(model)) !== originalJson);
+  const currentCycleJson=JSON.stringify(serializeCycleDataJson(model));
+  const isModified = isNew || (originalJson.length > 0 && currentCycleJson !== originalJson);
+  const rowDialogDirty=dialogOpen&&rigaEdit!==null&&
+    JSON.stringify(rigaEdit)!==JSON.stringify(rigaIndex!==null?model.righe[rigaIndex]??emptyRiga():emptyRiga());
+  const unsavedChanges=isNew
+    ? currentCycleJson!==EMPTY_CYCLE_DATA_JSON||rowDialogDirty
+    : !isReadOnly&&(isModified||rowDialogDirty);
+  const blocker=useBlocker(({currentLocation,nextLocation})=>
+    unsavedChanges && !allowLeaveRef.current &&
+    (currentLocation.pathname!==nextLocation.pathname || currentLocation.search!==nextLocation.search)
+  );
+  useEffect(()=>{
+    if(!unsavedChanges || allowLeaveRef.current)return;
+    const handler=(event:BeforeUnloadEvent)=>{
+      event.preventDefault();
+      event.returnValue="";
+    };
+    window.addEventListener("beforeunload",handler);
+    return()=>window.removeEventListener("beforeunload",handler);
+  },[unsavedChanges]);
   // Always calculate the visible preview from the cycle's source rows. This
   // refreshes stale historical lot simulations without changing the archived
   // model, its JSON snapshot, or revision history.
@@ -362,6 +384,19 @@ export default function CicloEditorPage() {
     } catch(err) {alert(err instanceof Error?err.message:"Impossibile spostare la riga");}
   };
 
+  const copyRiga = (index:number) => {
+    if(isReadOnly && !isNew)return;
+    try {
+      const righe=copyRowAfter(model.righe,index);
+      setModel(prev=>({...prev,righe}));
+      setSimulationExcluded(new Set());
+      setHasRecalculated(false);
+      setLastRecalculatedSignature(null);
+    } catch(err) {
+      alert(err instanceof Error?err.message:"Impossibile copiare la riga");
+    }
+  };
+
   const handleRicalcola = () => {
     setSimulationExcluded(new Set());
     setLastRecalculatedSignature(economicSignature(model));
@@ -514,6 +549,29 @@ export default function CicloEditorPage() {
   return (
     <Layout>
       <div className="w-full max-w-screen-2xl mx-auto space-y-6">
+        {blocker.state==="blocked" && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4">
+            <div role="dialog" aria-modal="true" aria-labelledby="cycle-leave-title"
+              className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl space-y-4">
+              <h2 id="cycle-leave-title" className="text-lg font-semibold text-slate-900">
+                Ci sono modifiche al ciclo non salvate
+              </h2>
+              <p className="text-sm text-slate-700">
+                Se esci adesso, i dati inseriti in questo ciclo andranno persi. Puoi restare e salvarli oppure uscire senza salvare.
+              </p>
+              <div className="flex flex-col-reverse sm:flex-row sm:flex-wrap justify-end gap-2">
+                <button type="button" onClick={()=>blocker.proceed()}
+                  className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700">
+                  Esci senza salvare
+                </button>
+                <button type="button" onClick={()=>blocker.reset()}
+                  className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">
+                  Continua a compilare
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Unrecalculated warning */}
         {!isNew && !isReadOnly && !hasRecalculated && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800 flex items-center justify-between">
@@ -554,7 +612,7 @@ export default function CicloEditorPage() {
                 Rev. {model.rev}
               </span>
             )}
-            {hasChanges && (
+            {(hasChanges||rowDialogDirty) && (
               <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
                 Modificato
               </span>
@@ -709,16 +767,6 @@ export default function CicloEditorPage() {
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
             <h2 className="text-sm font-semibold text-slate-700">Righe di Lavorazione ({model.righe.length})</h2>
-            {(!isReadOnly || isNew) && (
-              <button
-                type="button"
-                onClick={() => openRigaDialog()}
-                className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
-              >
-                <Plus className="h-4 w-4" />
-                Aggiungi Riga
-              </button>
-            )}
           </div>
           <p className="mb-3 text-xs text-slate-500">Aggiungi una riga alla volta, senza limite a 10. Il contatore include anche i componenti degli assiemi. Per salvare le modifiche economiche premi Ricalcola.</p>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -787,6 +835,7 @@ export default function CicloEditorPage() {
                       : calcolaCostoRiga(displayed[i],simulatedModel.costo_lavoro_min,simulatedModel.lotto);
                   const canSimulate = (parentIndex==null || model.righe[parentIndex]?.assembly_auto === true) && r.considera !== false && (r.categoria !== "SPESA ATTREZZATURA DEDICATA" || r.considera === true);
                   const canEdit = !isReadOnly || isNew;
+                  const rowHasChildren=childrenOf(model.righe,i).length>0;
                   return (
                     <tr
                       key={i}
@@ -852,6 +901,15 @@ export default function CicloEditorPage() {
                             {simulationExcluded.has(i)?<EyeOff className="h-4 w-4"/>:<Eye className="h-4 w-4"/>}
                           </button>
                           {canEdit && <>
+                            <button type="button" draggable={false}
+                              onPointerDown={e=>e.stopPropagation()}
+                              onDragStart={e=>e.preventDefault()}
+                              onClick={e=>{e.stopPropagation();copyRiga(i);}}
+                              aria-label={`Copia riga ${i+1} sotto l'originale`}
+                              title={rowHasChildren?"Copia la riga e tutti i componenti collegati subito sotto":"Copia tutti i dati della riga subito sotto"}
+                              className="p-1.5 text-blue-700 hover:bg-blue-50 rounded">
+                              <Copy className="h-4 w-4"/>
+                            </button>
                             {parentIndex!=null &&
                               <button type="button" title="Sgancia dal gruppo e porta al livello 1"
                                 onClick={e=>{e.stopPropagation();detachRiga(i);}}
@@ -1560,6 +1618,14 @@ export default function CicloEditorPage() {
               )}
             </div>
           </div>
+        )}
+        {(!isReadOnly || isNew) && (
+          <button type="button" onClick={()=>openRigaDialog()}
+            aria-label="Aggiungi riga al ciclo"
+            className="fixed right-24 z-40 inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-3 text-sm font-semibold text-white shadow-xl transition hover:bg-emerald-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+            style={{bottom:"calc(env(safe-area-inset-bottom, 0px) + 1rem)"}}>
+            <Plus className="h-5 w-5"/>Aggiungi riga
+          </button>
         )}
       </div>
     </Layout>

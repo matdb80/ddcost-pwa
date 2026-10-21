@@ -1,4 +1,4 @@
-import {useMemo, useRef, useState} from "react";
+import {useEffect, useMemo, useRef, useState} from "react";
 import {Link} from "react-router";
 import {
   ArrowLeft, ArrowRight, Check, ChevronLeft, Copy, FileText,
@@ -35,6 +35,7 @@ type Props={
   copyMessage:string;
   busy:boolean;
   unsavedChanges:boolean;
+  onUnsavedLocalChange:(dirty:boolean)=>void;
   priceProductIndex:number;
   onUpdate:(key:string,value:unknown,economic?:boolean)=>void;
   onUpdateProduct:(index:number,key:string,value:unknown)=>void;
@@ -55,7 +56,7 @@ type Props={
 export default function QuoteMobileWizard(props:Props){
   const {
     doc,preview,locked,isNew,numericId,isSavedDraft,groups,loadingGroups,error,draftMessage,
-    copyMessage,busy,unsavedChanges,priceProductIndex,onUpdate,onUpdateProduct,
+    copyMessage,busy,unsavedChanges,onUnsavedLocalChange,priceProductIndex,onUpdate,onUpdateProduct,
     onAddProduct,onCopyProductAndScaleLot,onRemoveProduct,onCreateGroup,onPriceProductIndex,onListinoDiscount,
     onSave,onSaveDraft,onCopy,onExportPdf,onEdit,onUpgrade,onDesktop,
   }=props;
@@ -66,6 +67,10 @@ export default function QuoteMobileWizard(props:Props){
   const [addingGroup,setAddingGroup]=useState(false);
   const [groupBusy,setGroupBusy]=useState(false);
   const top=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    onUnsavedLocalChange(addingGroup&&newGroup.trim().length>0);
+  },[addingGroup,newGroup,onUnsavedLocalChange]);
+  useEffect(()=>()=>onUnsavedLocalChange(false),[onUnsavedLocalChange]);
   const steps=useMemo(()=>buildQuoteWizardSteps(doc,advanced),[doc,advanced]);
   const activeIndex=Math.max(0,steps.findIndex(s=>s.id===stepId));
   const current=steps[activeIndex];

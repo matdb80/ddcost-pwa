@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyRiga, emptyCicloEditorModel, parseCycleRow, serializeCycleDataJson, type RigaCiclo } from "@/types/cycle";
-import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, childrenOf, detachFromAssembly, orderedHierarchy, removeLeaf, moveRowAmongSiblings, swapRows } from "./cycle-hierarchy";
+import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, childrenOf, copyRowAfter, detachFromAssembly, orderedHierarchy, removeLeaf, moveRowAmongSiblings, swapRows } from "./cycle-hierarchy";
 import { ricalcolaCiclo, calcolaBreakdown, calcolaCostoRiga, costoRigaGerarchico } from "./cycle-calculator";
 
 const row=(desc:string,unit:number,nr=1):RigaCiclo=>({
@@ -8,6 +8,33 @@ const row=(desc:string,unit:number,nr=1):RigaCiclo=>({
 });
 const make=(righe:RigaCiclo[])=>({...emptyCicloEditorModel(),lotto:"100",righe,costo_lavoro_min:0.35});
 describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
+ it("copies all row values below the selected row without mutating the source",()=>{
+   const rows=[
+     {...row("First",1),codice_articolo:"A"},
+     {...row("Selected",2,3),codice_articolo:"B",note:"Nota da conservare",considera:false},
+     {...row("Last",4),codice_articolo:"C"},
+   ];
+   const original=JSON.stringify(rows);
+   const copied=copyRowAfter(rows,1);
+   expect(copied.map(r=>r.codice_articolo)).toEqual(["A","B","B","C"]);
+   expect(copied[2]).toEqual(rows[1]);
+   expect(copied[2]).not.toBe(rows[1]);
+   expect(JSON.stringify(rows)).toBe(original);
+ });
+ it("copies an assembly together with its descendants and preserves row references and cost",()=>{
+   let rows=[row("Assembly",0),row("Child A",2),row("Child B",3),row("Other root",4)];
+   rows=attachToAssembly(rows,1,0);
+   rows=attachToAssembly(rows,2,0);
+   const copied=copyRowAfter(rows,0);
+   expect(orderedHierarchy(copied).map(({index,depth})=>[copied[index].descrizione,depth])).toEqual([
+     ["Assembly",1],["Child A",2],["Child B",2],
+     ["Assembly",1],["Child A",2],["Child B",2],["Other root",1],
+   ]);
+   expect(copied[4].parent_idx).toBe(3);
+   expect(copied[5].parent_idx).toBe(3);
+   expect(ricalcolaCiclo(make(copied)).costo_standard).toBe(14);
+   expect(ricalcolaCiclo(make(rows)).costo_standard).toBe(9);
+ });
  it("dragging a component onto another assembles recursively to four levels with no double count",()=>{
    let r=[row("ROOT",999),row("L2",0,2),row("L3",0),row("L4",2,3),row("Extra",5)];
    r=attachToAssembly(r,3,2);

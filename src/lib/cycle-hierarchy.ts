@@ -42,6 +42,52 @@ export function orderedHierarchy(rows: RigaCiclo[]): {index: number; depth:numbe
   return out;
 }
 
+/** Copy a row and its descendant rows directly after its displayed subtree.
+ * Parent references are remapped by row identity so an auto-assembly copy keeps
+ * its original components and cost calculation.
+ */
+export function copyRowAfter(rows:RigaCiclo[], index:number):RigaCiclo[] {
+  if (!rows[index]) throw new Error("Selezionare una riga da copiare");
+
+  const subtree:number[]=[];
+  const visiting=new Set<number>();
+  const collect=(current:number)=>{
+    if(visiting.has(current)) throw new Error("Relazioni circolari fra righe");
+    visiting.add(current);
+    subtree.push(current);
+    for(const child of childrenOf(rows,current)) collect(child);
+    visiting.delete(current);
+  };
+  collect(index);
+
+  const displayOrder=orderedHierarchy(rows).map(entry=>entry.index);
+  const sourcePosition=displayOrder.indexOf(index);
+  if(sourcePosition<0) throw new Error("Impossibile individuare la riga nella gerarchia");
+  const insertionPosition=sourcePosition+subtree.length;
+  const entries=[
+    ...displayOrder.slice(0,insertionPosition).map(oldIndex=>({oldIndex,copy:false})),
+    ...subtree.map(oldIndex=>({oldIndex,copy:true})),
+    ...displayOrder.slice(insertionPosition).map(oldIndex=>({oldIndex,copy:false})),
+  ];
+  const originalIndexToNew=new Map<number,number>();
+  const copiedIndexToNew=new Map<number,number>();
+  entries.forEach((entry,newIndex)=>{
+    (entry.copy?copiedIndexToNew:originalIndexToNew).set(entry.oldIndex,newIndex);
+  });
+
+  return entries.map(({oldIndex,copy})=>{
+    const row={...rows[oldIndex]};
+    if(row.parent_idx!=null){
+      const parentIndex=copy&&copiedIndexToNew.has(row.parent_idx)
+        ? copiedIndexToNew.get(row.parent_idx)
+        : originalIndexToNew.get(row.parent_idx);
+      if(parentIndex===undefined) throw new Error("Riferimento al padre non valido; correggere la gerarchia prima di copiare");
+      row.parent_idx=parentIndex;
+    }
+    return row;
+  });
+}
+
 function isDescendant(rows: RigaCiclo[], candidate: number, ancestor: number): boolean {
   const seen = new Set<number>();
   let current: number | null | undefined = candidate;

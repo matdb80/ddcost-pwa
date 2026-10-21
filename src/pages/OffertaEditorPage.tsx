@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { trpc } from "@/providers/trpc";
@@ -132,6 +132,7 @@ export default function OffertaEditorPage() {
   const [newLotDrafts, setNewLotDrafts] = useState<Record<number, string>>({});
   const [pricePresentation, setPricePresentation] = useState<CustomerPricePresentation>("netto");
   const [hideDocumentTotal, setHideDocumentTotal] = useState(false);
+  const allowLeaveRef=useRef(false);
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.offer.get.useQuery({ id: numericId }, { enabled: !isNew && numericId > 0 });
   const nextOfferNumber = trpc.offer.nextNumber.useQuery(undefined, { enabled: isNew });
@@ -167,8 +168,27 @@ export default function OffertaEditorPage() {
     setOffer((previous) => ({ ...previous, nome: nextOfferNumber.data.number }));
   }, [isNew, nextOfferNumber.data, offerNumberEdited]);
 
-  const changed = JSON.stringify(offer) !== baseline;
+  const changed = isNew
+    ? offerNumberEdited || JSON.stringify({ ...offer, nome: "" }) !== JSON.stringify({ ...blankOffer(), nome: "" })
+    : JSON.stringify(offer) !== baseline;
   const locked = !isNew && readOnly;
+  const hasPendingLotInput=Object.values(newLotDrafts).some((value)=>value.trim().length>0);
+  const unsavedChanges=(changed||hasPendingLotInput)&&!locked;
+  const requiredFieldsComplete=Boolean(offer.nome?.trim())&&!hasPendingLotInput&&Array.isArray(offer.righe)&&offer.righe.length>0&&
+    offer.righe.every((row)=>String(row.descrizione??"").trim().length>0);
+  const blocker=useBlocker(({currentLocation,nextLocation})=>
+    unsavedChanges && !allowLeaveRef.current &&
+    (currentLocation.pathname!==nextLocation.pathname || currentLocation.search!==nextLocation.search)
+  );
+  useEffect(()=>{
+    if(!unsavedChanges || allowLeaveRef.current)return;
+    const handler=(event:BeforeUnloadEvent)=>{
+      event.preventDefault();
+      event.returnValue="";
+    };
+    window.addEventListener("beforeunload",handler);
+    return()=>window.removeEventListener("beforeunload",handler);
+  },[unsavedChanges]);
   const edit = (key: string, value: unknown) => setOffer((previous) => ({ ...previous, [key]: value }));
   const replaceRow = (index: number, next: OfferRow) => setOffer((previous) => {
     const rows = [...previous.righe];
@@ -328,6 +348,7 @@ export default function OffertaEditorPage() {
       };
       if (isNew) {
         const result = await create.mutateAsync({ ...body, numberEdited: offerNumberEdited });
+        allowLeaveRef.current=true;
         navigate("/offerte/" + result.id);
       } else {
         await update.mutateAsync({ id: numericId, ...body });
@@ -335,6 +356,7 @@ export default function OffertaEditorPage() {
         setBaseline(JSON.stringify(computed));
         setReadOnly(true);
         window.alert("Offerta salvata. Riaprila per verificare i dati persistenti.");
+        allowLeaveRef.current=true;
         navigate("/offerte");
       }
       void utils.offer.list.invalidate().catch(() => {});
@@ -376,6 +398,35 @@ export default function OffertaEditorPage() {
   if (!isNew && !data) return <Layout><p>Offerta non trovata.</p><Link to="/offerte">Torna all'elenco</Link></Layout>;
 
   return <Layout>
+    {blocker.state==="blocked" && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4">
+        <div role="dialog" aria-modal="true" aria-labelledby="offer-leave-title"
+          className="w-full max-w-lg space-y-4 rounded-xl bg-white p-6 shadow-2xl">
+          <h2 id="offer-leave-title" className="text-lg font-semibold text-slate-900">
+            Vuoi uscire dall’offerta?
+          </h2>
+          <p className="text-sm text-slate-700">
+            Ci sono modifiche non salvate. Salva l’offerta prima di cambiare pagina oppure scegli esplicitamente di uscire senza conservarle.
+          </p>
+          {error && <p role="alert" className="rounded bg-red-50 p-2 text-sm text-red-800">{error}</p>}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+            <button type="button" onClick={()=>blocker.reset()}
+              className="rounded-lg border px-4 py-2.5 text-sm font-medium">
+              Continua a compilare
+            </button>
+            <button type="button" onClick={()=>blocker.proceed()}
+              className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700">
+              Esci senza salvare
+            </button>
+            <button type="button" disabled={!requiredFieldsComplete||create.isPending||update.isPending}
+              onClick={()=>void save()}
+              className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+              {create.isPending||update.isPending?"Salvataggio...":"Salva offerta ed esci"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     <div className="w-full max-w-screen-2xl mx-auto space-y-5 pb-8">
       <div className="flex justify-between items-center gap-3 flex-wrap">
         <div className="flex gap-3 items-center">

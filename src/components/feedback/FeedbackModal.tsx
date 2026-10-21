@@ -154,9 +154,14 @@ export default function FeedbackModal({ open, onOpenChange, cycleId, cycleRev }:
   }, []);
 
   const handleClose = useCallback(() => {
+    if(isSubmitting)return;
+    const hasUnsentInput=Boolean(title.trim()||description.trim()||type!=="bug"||severity!=="normale"||
+      (manualScreenshotOverride.current&&screenshot));
+    if(hasUnsentInput&&!result?.success&&
+      !window.confirm("La segnalazione non è stata inviata. Chiudere e cancellare i dati inseriti?"))return;
     reset();
     onOpenChange(false);
-  }, [reset, onOpenChange]);
+  }, [reset, onOpenChange, isSubmitting, title, description, type, severity, screenshot, result]);
 
   // Capture automatically on opening the report. Radix portals the dialog
   // outside #root, so the screenshot contains the underlying page, not this

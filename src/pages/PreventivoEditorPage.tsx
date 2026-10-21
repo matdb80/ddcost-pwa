@@ -129,6 +129,7 @@ export default function PreventivoEditorPage() {
   const [copyMessage, setCopyMessage] = useState("");
   const [newGroupIndex, setNewGroupIndex] = useState<number | null>(null);
   const [newGroupName, setNewGroupName] = useState("");
+  const [wizardLocalDirty,setWizardLocalDirty]=useState(false);
   const draftIdRef=useRef<number|null>(null);
   const allowLeaveRef=useRef(false);
   const [draftSaving,setDraftSaving]=useState(false);
@@ -167,7 +168,8 @@ export default function PreventivoEditorPage() {
   const changed=isNew
     ? JSON.stringify(doc)!==JSON.stringify(blankQuote())
     : Boolean(data) && JSON.stringify(doc)!==baseline;
-  const unsavedChanges=changed && (isNew || !readOnly);
+  const hasPendingLocalInput=Boolean(newGroupIndex!==null&&newGroupName.trim())||wizardLocalDirty;
+  const unsavedChanges=(changed && (isNew || !readOnly))||hasPendingLocalInput;
   const isSavedDraft=doc.stato_preventivo==="bozza";
   const blocker=useBlocker(({currentLocation,nextLocation})=>
     unsavedChanges && !allowLeaveRef.current &&
@@ -223,12 +225,20 @@ export default function PreventivoEditorPage() {
     }
   }
   async function saveDraftAndLeave(){
+    if(hasPendingLocalInput){
+      setError("Completa o annulla il nuovo gruppo prima di uscire: il nome non è incluso nella bozza.");
+      return;
+    }
     try{
       await persistDraft();
       if(blocker.state==="blocked")blocker.proceed();
     }catch{/* Never leave on failed persistence. */}
   }
   async function saveDraftOnly(){
+    if(hasPendingLocalInput){
+      setError("Completa o annulla il nuovo gruppo prima di salvare la bozza.");
+      return;
+    }
     try{
       const id=await persistDraft();
       if(!isNew && id===numericId){
@@ -302,6 +312,7 @@ export default function PreventivoEditorPage() {
   };
   async function save() {
     setError("");
+    if(hasPendingLocalInput)return setError("Completa o annulla il nuovo gruppo prima di salvare il preventivo.");
     if (!doc.cliente?.trim()) return setError("Indicare il cliente");
     if (!Array.isArray(doc.prodotti) || doc.prodotti.length === 0) return setError("Inserire almeno un prodotto");
     for (let i = 0; i < doc.prodotti.length; i++) {
@@ -403,6 +414,7 @@ export default function PreventivoEditorPage() {
               <strong> bozza anche se incompleto</strong> e riprenderlo dall'archivio.
             </p>
             {error && <p role="alert" className="rounded bg-red-50 p-2 text-sm text-red-800">{error}</p>}
+            {hasPendingLocalInput && <p role="note" className="rounded bg-amber-50 p-2 text-sm text-amber-900">Completa o annulla il nome del nuovo gruppo prima di uscire: non viene salvato nella bozza.</p>}
             <div className="flex flex-col sm:flex-row sm:flex-wrap justify-end gap-2">
               <button type="button" disabled={draftSaving} onClick={()=>blocker.reset()}
                 className="rounded-lg border px-4 py-2.5 text-sm font-medium">
@@ -412,7 +424,7 @@ export default function PreventivoEditorPage() {
                 className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700">
                 Esci senza salvare
               </button>
-              <button type="button" disabled={draftSaving} onClick={()=>void saveDraftAndLeave()}
+              <button type="button" disabled={draftSaving||hasPendingLocalInput} onClick={()=>void saveDraftAndLeave()}
                 className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
                 {draftSaving?"Salvataggio...":"Salva bozza ed esci"}
               </button>
@@ -428,6 +440,7 @@ export default function PreventivoEditorPage() {
           error={error} draftMessage={draftMessage} copyMessage={copyMessage}
           busy={draftSaving||create.isPending||revise.isPending||finalizeDraftMutation.isPending}
           unsavedChanges={unsavedChanges}
+          onUnsavedLocalChange={setWizardLocalDirty}
           priceProductIndex={priceProductIndex}
           onUpdate={update} onUpdateProduct={updateProduct}
           onAddProduct={()=>update("prodotti",[...doc.prodotti,blankProduct()],true)}
