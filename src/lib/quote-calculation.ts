@@ -19,6 +19,13 @@ export const blankQuote = (): QuoteDocument => ({
   trattamenti_modalita: "per_prodotto", trattamenti_totale_euro: 0,
   target_totale: null, note_generali: "", note_cliente: "", note_fornitori: "", attachments: [],
 });
+/** Copies the most recently entered product for another lot, leaving its quantity blank. */
+export function duplicateLastProductForNewLot(products: Product[]): Product[] {
+  if (!products.length) throw new Error("Inserire almeno un prodotto da copiare");
+  const copy = structuredClone(products[products.length - 1]);
+  copy.quantita = "";
+  return [...products, copy];
+}
 export function calculateQuote(document: QuoteDocument): QuoteDocument {
   const d = structuredClone(document);
   if (!Array.isArray(d.prodotti) || !d.prodotti.length) throw new Error("Inserire almeno un prodotto");

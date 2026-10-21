@@ -13,7 +13,7 @@ import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
 import QuoteMobileWizard from "@/components/QuoteMobileWizard";
 import {
-  blankProduct, blankQuote, calculateQuote, migrateQuoteToEngineeringHours,
+  blankProduct, blankQuote, calculateQuote, duplicateLastProductForNewLot, migrateQuoteToEngineeringHours,
   type Product, type QuoteDocument,
 } from "@/lib/quote-calculation";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
@@ -431,6 +431,7 @@ export default function PreventivoEditorPage() {
           priceProductIndex={priceProductIndex}
           onUpdate={update} onUpdateProduct={updateProduct}
           onAddProduct={()=>update("prodotti",[...doc.prodotti,blankProduct()],true)}
+          onCopyProductAndScaleLot={()=>update("prodotti",duplicateLastProductForNewLot(doc.prodotti),true)}
           onRemoveProduct={index=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}
           onCreateGroup={async(index,name)=>{
             try{
@@ -475,6 +476,12 @@ export default function PreventivoEditorPage() {
             className="border border-emerald-600 text-emerald-700 px-4 py-2 rounded flex gap-2 items-center"
             title="Aggiungi prodotto senza scorrere fino alla sezione prodotti">
             <Plus size={16}/> Aggiungi prodotto
+          </button>}
+          {!locked && <button type="button"
+            onClick={()=>update("prodotti",duplicateLastProductForNewLot(doc.prodotti),true)}
+            className="border border-violet-500 text-violet-700 px-4 py-2 rounded flex gap-2 items-center"
+            title="Copia l’ultimo prodotto, lasciando vuota la quantità per il nuovo lotto">
+            <Copy size={16}/> Copia prodotto e scala su lotto
           </button>}
           <button type="button" onClick={copyQuote}
             className="border border-emerald-600 text-emerald-700 px-4 py-2 rounded flex gap-2 items-center">
@@ -734,12 +741,15 @@ export default function PreventivoEditorPage() {
             {fields.map(f=>{
               if(f.key==="trattamenti_cad" && !legacyCostModel && sharedTreatmentMode!=="per_prodotto")return null;
               const highlighted=suggestedProductValue(p,f.key);
+              const quantityNeedsAttention=f.key==="quantita"&&(p[f.key]===""||p[f.key]===null||p[f.key]===undefined);
               return <label key={f.key} className="flex min-w-0 flex-col gap-1 text-xs">
                 <span className="truncate font-medium text-slate-600" title={f.label}>{f.shortLabel}</span>
-                <QuoteNumericInput kind={f.kind} optional={f.optional} disabled={locked}
-                  className={compactInputClass+" "+(highlighted?suggestedInputClass:normalInputClass)}
-                  title={highlighted?suggestedHint:f.label}
-                  value={p[f.key]??(f.optional?null:0)}
+                <QuoteNumericInput kind={f.kind} optional={f.optional||f.key==="quantita"} disabled={locked}
+                  id={`quote-product-${index}-${f.key}`}
+                  className={compactInputClass+" "+(quantityNeedsAttention?"quote-quantity-attention":highlighted?suggestedInputClass:normalInputClass)}
+                  title={quantityNeedsAttention?"Inserisci la quantità del nuovo lotto":highlighted?suggestedHint:f.label}
+                  placeholder={quantityNeedsAttention?"Inserisci la quantità":undefined}
+                  value={f.key==="quantita"?(p[f.key]??null):p[f.key]??(f.optional?null:0)}
                   onChange={value=>updateProduct(index,f.key,value)}/>
               </label>;
             })}

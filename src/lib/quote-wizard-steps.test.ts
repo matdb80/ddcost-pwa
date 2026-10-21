@@ -46,6 +46,17 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     expect(steps.some(x=>x.id==="p:2:descrizione")).toBe(true);
     expect(steps.filter(x=>x.field==="oggetto_modifica").map(x=>x.index)).toEqual([0,1,2]);
   });
+  it("keeps a copied lot quantity required before advancing",()=>{
+    const quote={...blankQuote(),prodotti:[
+      {...blankProduct(),descrizione:"Prodotto esistente",quantita:25},
+      {...blankProduct(),descrizione:"Prodotto copiato",quantita:""},
+    ]};
+    const steps=buildQuoteWizardSteps(quote);
+    const copiedQuantity=steps.find(x=>x.id==="p:1:quantita")!;
+    expect(quoteWizardStepError(copiedQuantity,quote)).toBe("Inserisci un numero maggiore di zero.");
+    quote.prodotti[1].quantita=40;
+    expect(quoteWizardStepError(copiedQuantity,quote)).toBe(null);
+  });
   it("treatments branch changes and never requires duplicate global and line treatment inputs",()=>{
     const q=blankQuote();
     const per=buildQuoteWizardSteps(q);

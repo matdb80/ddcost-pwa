@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  blankProduct, blankQuote, calculateQuote, migrateQuoteToSharedCosts, migrateQuoteToEngineeringHours,
+  blankProduct, blankQuote, calculateQuote, duplicateLastProductForNewLot,
+  migrateQuoteToSharedCosts, migrateQuoteToEngineeringHours,
 } from "./quote-calculation";
 
 const product=(quantity:number,materialPerPiece:number,extras:Record<string,unknown>={})=>({
@@ -65,6 +66,27 @@ describe("TKT-20261015-14060001: design cost by hours and hourly rate",()=>{
     expect(()=>calculateQuote({...blankQuote(),progettazione_ore:-1})).toThrow("non negativi");
     expect(()=>calculateQuote({...blankQuote(),costo_progettazione_ora:-1})).toThrow("non negativi");
     expect(()=>calculateQuote({...blankQuote(),progettazione_ore:Infinity})).toThrow("non negativi");
+  });
+});
+
+describe("Una Tantum: copy product for a new lot",()=>{
+  it("copies every saved product value from the last row and clears only the quantity",()=>{
+    const first=product(10,1,{descrizione:"Primo prodotto"});
+    const last=product(25,4,{
+      codice:"ABC-25",
+      descrizione:"Bandella a T",
+      trattamenti_cad:2.5,
+      oggetto_modifica:["zanca","occhio"],
+      listino:{fasce:[10,20]},
+    });
+    const result=duplicateLastProductForNewLot([first,last]);
+    expect(result).toHaveLength(3);
+    expect(result[2]).toEqual({...last,quantita:""});
+    expect(result[2]).not.toBe(last);
+    expect(result[2].oggetto_modifica).not.toBe((last as Record<string,unknown>).oggetto_modifica);
+    expect(result[2].listino).not.toBe((last as Record<string,unknown>).listino);
+    expect(last.quantita).toBe(25);
+    expect(()=>duplicateLastProductForNewLot([])).toThrow("almeno un prodotto");
   });
 });
 

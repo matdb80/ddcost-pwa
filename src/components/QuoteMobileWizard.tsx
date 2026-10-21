@@ -39,6 +39,7 @@ type Props={
   onUpdate:(key:string,value:unknown,economic?:boolean)=>void;
   onUpdateProduct:(index:number,key:string,value:unknown)=>void;
   onAddProduct:()=>void;
+  onCopyProductAndScaleLot:()=>void;
   onRemoveProduct:(index:number)=>void;
   onCreateGroup:(index:number,name:string)=>Promise<void>;
   onPriceProductIndex:(value:number)=>void;
@@ -55,7 +56,7 @@ export default function QuoteMobileWizard(props:Props){
   const {
     doc,preview,locked,isNew,numericId,isSavedDraft,groups,loadingGroups,error,draftMessage,
     copyMessage,busy,unsavedChanges,priceProductIndex,onUpdate,onUpdateProduct,
-    onAddProduct,onRemoveProduct,onCreateGroup,onPriceProductIndex,onListinoDiscount,
+    onAddProduct,onCopyProductAndScaleLot,onRemoveProduct,onCreateGroup,onPriceProductIndex,onListinoDiscount,
     onSave,onSaveDraft,onCopy,onExportPdf,onEdit,onUpgrade,onDesktop,
   }=props;
   const [advanced,setAdvanced]=useState(false);
@@ -113,13 +114,18 @@ export default function QuoteMobileWizard(props:Props){
     onAddProduct();
     goto("p:"+i+":descrizione");
   };
+  const copyProductAndScaleLot=()=>{
+    const i=(doc.prodotti as Product[]).length;
+    onCopyProductAndScaleLot();
+    goto("p:"+i+":quantita");
+  };
   const percent=Math.round((activeIndex+1)/steps.length*100);
   const hasPreview=preview!==null && Number.isFinite(Number(preview.totale_finale));
   const price=euro(preview?.totale_finale);
   const cashMargin=Number(preview?.margine_netto_complessivo_perc??0);
   const canShare=hasPreview && !isSavedDraft && !steps.some(s=>quoteWizardStepError(s,doc));
   const costVersion=Number(doc.costi_comuni_versione)||0;
-  return <div ref={top} className="mx-auto flex w-full max-w-xl flex-col gap-3 pb-24 text-slate-900" data-testid="quote-mobile-wizard">
+  return <div ref={top} className="mx-auto flex w-full max-w-xl flex-col gap-3 pb-40 text-slate-900" data-testid="quote-mobile-wizard">
     <header className="rounded-xl bg-slate-900 px-4 py-3 text-white shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <Link to="/preventivi" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-slate-800"
@@ -339,9 +345,13 @@ export default function QuoteMobileWizard(props:Props){
               :"Sì, il prezzo può essere rettificato"}
           </label>
         ):current.kind==="number" && current.numeric?(
-          <QuoteNumericInput key={current.id} id="wizard-input" className={inputClass}
-            kind={current.numeric} optional={field==="prezzo_manuale"||field==="target_totale"}
-            disabled={locked} value={value??(field==="prezzo_manuale"||field==="target_totale"?null:0)}
+          <QuoteNumericInput key={current.id} id="wizard-input"
+            className={inputClass+(field==="quantita"&&(value===""||value===null||value===undefined)?" quote-quantity-attention":"")}
+            kind={current.numeric}
+            optional={field==="quantita"||field==="prezzo_manuale"||field==="target_totale"}
+            placeholder={field==="quantita"?"Inserisci la quantità":undefined}
+            disabled={locked}
+            value={field==="quantita"?value??null:value??(field==="prezzo_manuale"||field==="target_totale"?null:0)}
             onChange={updateValue}
             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();e.currentTarget.blur();next();}}}/>
         ):current.kind==="textarea"?(
@@ -354,6 +364,10 @@ export default function QuoteMobileWizard(props:Props){
         ):null}
         {current.kind==="number" && field==="costo_progettazione_ora" &&
             <p className="mt-2 text-xs text-slate-500">Il costo di progettazione è unico per il preventivo. Sarà distribuito sul totale dei pezzi.<FormulaTooltip label="Progettazione per pezzo" formula={CALCULATION_FORMULAS.quote.engineeringPerPiece}/></p>}
+        {field==="quantita"&&(value===""||value===null||value===undefined)&&
+          <p role="note" className="mt-2 rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm font-medium text-violet-900">
+            Prodotto copiato: inserisci la nuova quantità per il lotto.
+          </p>}
         {current.kind==="number" && field==="trattamenti_totale_euro" &&
           <p className="mt-2 text-xs text-slate-500">Quota per pezzo: € {euro(preview?.costi_comuni_riepilogo?.trattamenti_globali_cad)}<FormulaTooltip label="Trattamenti comuni per pezzo" formula={CALCULATION_FORMULAS.quote.globalTreatmentPerPiece}/></p>}
         {localError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm font-medium text-red-700">{localError}</p>}
@@ -376,25 +390,35 @@ export default function QuoteMobileWizard(props:Props){
       </button>}
     </div>
 
-    <nav aria-label="Navigazione guidata" className="fixed bottom-0 left-0 right-0 z-30 flex items-center gap-2 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-5px_24px_rgba(15,23,42,.1)] backdrop-blur">
-      {!locked && <button type="button" onClick={addAnotherProduct}
-        aria-label="Aggiungi prodotto" title="Aggiungi prodotto"
-        className={actionClass+" min-w-0 flex-1 border border-emerald-700 px-2 text-xs text-emerald-800"}>
-        <Plus size={17}/> Prodotto
-      </button>}
-      <button type="button" onClick={previous} disabled={activeIndex===0}
-        className={actionClass+" min-w-0 flex-1 border border-slate-300 px-2 text-xs text-slate-700 disabled:opacity-35"}>
-        <ChevronLeft size={18}/> Indietro
-      </button>
-      {current.id==="riepilogo"
-        ? <button type="button" onClick={locked?onEdit:submit} disabled={busy}
-            className={actionClass+" min-w-0 flex-1 px-2 text-xs bg-emerald-600 text-white disabled:opacity-40"}>
-            <Check size={18}/>{locked?"Modifica":"Completa"}
-          </button>
-        : <button type="button" onClick={next}
-            className={actionClass+" min-w-0 flex-1 px-2 text-xs bg-emerald-600 text-white"}>
-            Avanti <ArrowRight size={18}/>
-          </button>}
+    <nav aria-label="Navigazione guidata" className="fixed bottom-0 left-0 right-0 z-30 flex flex-col gap-2 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-5px_24px_rgba(15,23,42,.1)] backdrop-blur">
+      {!locked && <div className="mx-auto flex w-full max-w-xl gap-2">
+        <button type="button" onClick={addAnotherProduct}
+          aria-label="Aggiungi prodotto" title="Aggiungi prodotto"
+          className={actionClass+" min-w-0 flex-1 border border-emerald-700 px-2 text-xs leading-tight text-emerald-800"}>
+          <Plus className="shrink-0" size={17}/> Aggiungi prodotto
+        </button>
+        <button type="button" onClick={copyProductAndScaleLot}
+          aria-label="Copia prodotto e scala su lotto"
+          title="Copia l’ultimo prodotto lasciando vuota la quantità per il nuovo lotto"
+          className={actionClass+" min-w-0 flex-1 border border-violet-500 px-2 text-xs leading-tight text-violet-800"}>
+          <Copy className="shrink-0" size={17}/> Copia prodotto e scala su lotto
+        </button>
+      </div>}
+      <div className="mx-auto flex w-full max-w-xl gap-2">
+        <button type="button" onClick={previous} disabled={activeIndex===0}
+          className={actionClass+" min-w-0 flex-1 border border-slate-300 px-2 text-xs text-slate-700 disabled:opacity-35"}>
+          <ChevronLeft size={18}/> Indietro
+        </button>
+        {current.id==="riepilogo"
+          ? <button type="button" onClick={locked?onEdit:submit} disabled={busy}
+              className={actionClass+" min-w-0 flex-1 px-2 text-xs bg-emerald-600 text-white disabled:opacity-40"}>
+              <Check size={18}/>{locked?"Modifica":"Completa"}
+            </button>
+          : <button type="button" onClick={next}
+              className={actionClass+" min-w-0 flex-1 px-2 text-xs bg-emerald-600 text-white"}>
+              Avanti <ArrowRight size={18}/>
+            </button>}
+      </div>
     </nav>
   </div>;
 }
