@@ -115,6 +115,10 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function isUnauthorizedError(error: unknown): boolean {
+  return Boolean((error as { data?: { code?: string } } | null)?.data?.code === "UNAUTHORIZED");
+}
+
 export default function OffertaEditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -129,6 +133,7 @@ export default function OffertaEditorPage() {
   const [cycleSearch, setCycleSearch] = useState("");
   const [cyclePage, setCyclePage] = useState(1);
   const [selectingCycle, setSelectingCycle] = useState(false);
+  const [cycleSelectionAuthError,setCycleSelectionAuthError]=useState(false);
   const [newLotDrafts, setNewLotDrafts] = useState<Record<number, string>>({});
   const [pricePresentation, setPricePresentation] = useState<CustomerPricePresentation>("netto");
   const [hideDocumentTotal, setHideDocumentTotal] = useState(false);
@@ -139,6 +144,8 @@ export default function OffertaEditorPage() {
   const cycleDirectory = trpc.cycle.listGrouped.useQuery({
     search: cycleSearch || undefined, page: cyclePage, pageSize: 25,
   }, { enabled: cyclePickerRow !== null });
+  const cyclePickerAuthError=cycleSelectionAuthError||isUnauthorizedError(cycleDirectory.error);
+  const cyclePickerError=cycleDirectory.isError||cycleSelectionAuthError;
   const create = trpc.offer.create.useMutation();
   const update = trpc.offer.update.useMutation();
 
@@ -218,6 +225,7 @@ export default function OffertaEditorPage() {
     if (cyclePickerRow === null || selectingCycle) return;
     const rowIndex = cyclePickerRow;
     setSelectingCycle(true);
+    setCycleSelectionAuthError(false);
     try {
       const cycle = await utils.cycle.get.fetch({ id: cycleId });
       if (!cycle) throw Error("Il ciclo selezionato non è più disponibile");
@@ -234,6 +242,7 @@ export default function OffertaEditorPage() {
       setCyclePage(1);
       setError("");
     } catch (caught) {
+      setCycleSelectionAuthError(isUnauthorizedError(caught));
       setError(errorMessage(caught, "Impossibile caricare il ciclo selezionato"));
     } finally {
       setSelectingCycle(false);
@@ -469,7 +478,7 @@ export default function OffertaEditorPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {!locked && <button type="button" onClick={() => { setCyclePickerRow(index); setCycleSearch(""); setCyclePage(1); }}
+            {!locked && <button type="button" onClick={() => { setCycleSelectionAuthError(false); setCyclePickerRow(index); setCycleSearch(""); setCyclePage(1); }}
               className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50">
               <Search size={16}/>{row.record_id ? "Sostituisci prodotto da Cicli Standard" : "Scegli prodotto da Cicli Standard"}
             </button>}
@@ -672,10 +681,25 @@ export default function OffertaEditorPage() {
             <input autoFocus type="search" value={cycleSearch} onChange={(event) => { setCycleSearch(event.target.value); setCyclePage(1); }} placeholder="Cerca per codice, descrizione o cliente..." className="w-full rounded border py-2 pl-9 pr-3 text-sm"/>
           </label></div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {cycleDirectory.isLoading && <p className="p-6 text-center text-sm text-slate-500">Caricamento cicli...</p>}
-            {cycleDirectory.isError && <p role="alert" className="p-6 text-sm text-red-700">Impossibile caricare i cicli: {cycleDirectory.error.message}</p>}
-            {!cycleDirectory.isLoading && !cycleDirectory.isError && cycleDirectory.data?.groups.length === 0 && <p className="p-6 text-center text-sm text-slate-500">Nessun ciclo standard trovato.</p>}
-            <ul className="divide-y">{cycleDirectory.data?.groups.map((group) => {
+            {cycleDirectory.isLoading && !cycleDirectory.data && <p className="p-6 text-center text-sm text-slate-500">Caricamento cicli...</p>}
+            {cyclePickerError && <div role="alert" className="space-y-3 p-5 text-sm text-red-800">
+              <p>{cyclePickerAuthError
+                ? "La sessione DDCost non è più attiva. I cicli già visibili erano dati in cache e non possono essere selezionati finché non accedi di nuovo."
+                : `Impossibile caricare i cicli: ${cycleDirectory.error?.message ?? "errore durante il caricamento"}`}</p>
+              {cyclePickerAuthError && <p className="text-slate-700">Per conservare il preventivo aperto, accedi in una nuova scheda. Dopo l’accesso, torna qui e ricarica i cicli.</p>}
+              <div className="flex flex-wrap items-center gap-2">
+                {cyclePickerAuthError && <a target="_blank" rel="noopener noreferrer"
+                  href={`/login?redirect_to=${encodeURIComponent(window.location.pathname+window.location.search)}`}
+                  className="rounded bg-emerald-700 px-3 py-2 font-medium text-white hover:bg-emerald-800">Accedi in una nuova scheda</a>}
+                <button type="button" disabled={cycleDirectory.isFetching}
+                  onClick={()=>{setCycleSelectionAuthError(false);void cycleDirectory.refetch();}}
+                  className="rounded border border-slate-300 px-3 py-2 font-medium text-slate-700 disabled:opacity-50">
+                  {cycleDirectory.isFetching?"Ricaricamento...":"Riprova caricamento"}
+                </button>
+              </div>
+            </div>}
+            {!cyclePickerError&&!cycleDirectory.isLoading&&cycleDirectory.data?.groups.length===0&&<p className="p-6 text-center text-sm text-slate-500">Nessun ciclo standard trovato.</p>}
+            {!cyclePickerError&&<ul className="divide-y">{cycleDirectory.data?.groups.map((group) => {
               const cycle = group.latest;
               return <li key={group.key} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0"><p className="font-semibold text-slate-900">{cycle.code || "(senza codice)"} <span className="font-normal text-slate-500">· rev. {cycle.rev ?? 1}</span></p>
@@ -683,14 +707,14 @@ export default function OffertaEditorPage() {
                   <p className="mt-1 text-xs text-slate-500">{cycle.client || "Cliente non indicato"} · Lotto ciclo: {cycle.lot || "—"} · Costo industriale standard: € {money(cycle.standardCost)}<FormulaTooltip label="Costo industriale standard" formula={CALCULATION_FORMULAS.cycle.standardCost}/> · Prezzo minimo ciclo: € {money(cycle.minimumPrice)}<FormulaTooltip label="Prezzo minimo del ciclo" formula={CALCULATION_FORMULAS.cycle.minimumPrice}/></p></div>
                 <button type="button" disabled={selectingCycle} onClick={() => void chooseStandardCycle(cycle.id)} className="shrink-0 rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{selectingCycle ? "Caricamento..." : "Seleziona"}</button>
               </li>;
-            })}</ul>
+            })}</ul>}
           </div>
           <footer className="flex items-center justify-between gap-3 border-t p-3 sm:px-4">
-            <span className="text-xs text-slate-500">{cycleDirectory.data ? `${cycleDirectory.data.total} prodotti` : ""}</span>
+            <span className="text-xs text-slate-500">{!cyclePickerError&&cycleDirectory.data ? `${cycleDirectory.data.total} prodotti` : ""}</span>
             <div className="flex items-center gap-2">
-              <button type="button" disabled={cyclePage <= 1 || cycleDirectory.isFetching} onClick={() => setCyclePage((page) => Math.max(1, page - 1))} className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm disabled:opacity-40"><ChevronLeft size={16}/>Precedente</button>
-              <span className="text-xs tabular-nums text-slate-600">{cycleDirectory.data?.page ?? cyclePage} / {Math.max(1, Math.ceil((cycleDirectory.data?.total ?? 0) / 25))}</span>
-              <button type="button" disabled={!cycleDirectory.data || cyclePage >= Math.ceil(cycleDirectory.data.total / 25) || cycleDirectory.isFetching} onClick={() => setCyclePage((page) => page + 1)} className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm disabled:opacity-40">Successiva<ChevronRight size={16}/></button>
+              <button type="button" disabled={cyclePickerError||cyclePage<=1||cycleDirectory.isFetching} onClick={() => setCyclePage((page) => Math.max(1, page - 1))} className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm disabled:opacity-40"><ChevronLeft size={16}/>Precedente</button>
+              <span className="text-xs tabular-nums text-slate-600">{!cyclePickerError?cycleDirectory.data?.page??cyclePage:"—"} / {!cyclePickerError?Math.max(1,Math.ceil((cycleDirectory.data?.total??0)/25)):"—"}</span>
+              <button type="button" disabled={cyclePickerError||!cycleDirectory.data||cyclePage>=Math.ceil(cycleDirectory.data.total/25)||cycleDirectory.isFetching} onClick={() => setCyclePage((page) => page + 1)} className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm disabled:opacity-40">Successiva<ChevronRight size={16}/></button>
             </div>
           </footer>
         </section>
