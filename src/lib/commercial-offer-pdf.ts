@@ -257,6 +257,9 @@ function customerOfferTable(rows: CommercialOfferRow[], presentation: CustomerPr
     const calculatedPrice = offerLotPrice(row, lot);
     const manualNet = calculatedPrice?.manualNetPrice;
     const unitNet = customerUnitNet(row, lot, presentation, calculatedPrice);
+    const calculatedNet = calculatedPrice?.calculatedNetPrice;
+    const manualNetAboveCalculated = manualNet != null && calculatedNet != null &&
+      roundCurrency(manualNet) > roundCurrency(calculatedNet);
     let priceCell: string;
     if (presentation === "listino_sconto") {
       const listPrice = number(offerLotTerms(row, lot).listino);
@@ -271,14 +274,13 @@ function customerOfferTable(rows: CommercialOfferRow[], presentation: CustomerPr
       const adjustment = extraPercent < -0.000001
         ? `<div>Adeguamento prezzo: +${formatPercent(Math.abs(extraPercent))}%</div>`
         : "";
-      const netDisplay = manualNet != null && Math.abs(discountReferenceNet - unitNet) >= 0.005
+      const netDisplay = manualNet != null && !manualNetAboveCalculated && Math.abs(discountReferenceNet - unitNet) >= 0.005
         ? `<del>€ ${money(discountReferenceNet)}</del> <strong>€ ${money(unitNet)}</strong>`
         : `<strong>€ ${money(unitNet)}</strong>`;
       priceCell = `<div>Listino: € ${money(listPrice)}</div><div>Sconto: ${escapeHtml(displayedDiscount || "—")}</div>${adjustment}<div class="muted">Netto unitario: ${netDisplay}</div>`;
     } else {
-      const originalNet = calculatedPrice?.calculatedNetPrice;
-      const netDisplay = manualNet != null && originalNet != null && Math.abs(originalNet - unitNet) >= 0.005
-        ? `<del>€ ${money(originalNet)}</del> <strong>€ ${money(unitNet)}</strong>`
+      const netDisplay = manualNet != null && calculatedNet != null && !manualNetAboveCalculated && Math.abs(calculatedNet - unitNet) >= 0.005
+        ? `<del>€ ${money(calculatedNet)}</del> <strong>€ ${money(unitNet)}</strong>`
         : `<strong>€ ${money(unitNet)}</strong>`;
       priceCell = `<div>Prezzo netto unitario: ${netDisplay}</div>`;
     }

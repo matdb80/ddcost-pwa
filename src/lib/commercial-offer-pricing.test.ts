@@ -424,4 +424,19 @@ describe("commercial offer print documents", () => {
     expect(html).toContain("€ 22,00");
     expect(html).not.toContain("Spese generali");
   });
+
+  it("prints only a manually increased net price in customer PDFs", () => {
+    const row = {
+      ...offerRow(),
+      lotto: 10,
+      lotti_selezionati: [10],
+      prezzi_lotti: { "10": { listino: 7, prezzo_netto_manuale: 20 } },
+    };
+
+    for (const presentation of ["netto", "listino_sconto"] as const) {
+      const html = buildCommercialOfferPrintHtml({ nome: "Offerta prezzo manuale", righe: [row] }, "customer", presentation);
+      expect(html).toContain("<strong>€ 20,00</strong>");
+      expect(html).not.toContain("<del>");
+    }
+  });
 });
