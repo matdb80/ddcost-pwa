@@ -11,11 +11,11 @@ describe("customer quote clipboard", () => {
       totale_finale:31.05,note_cliente:"Consegna da definire",note_fornitori:"Non mostrare",
     });
     expect(text).toContain("Codice articolo: ABC");
-    expect(text).toContain("Prezzo listino: € 19,17");
+    expect(text).toContain("Prezzo listino: 19,17 €");
     expect(text).toContain("Sconto cliente: 40+10%");
-    expect(text).toContain("Prezzo netto unitario: € 10,35");
-    expect(text).toContain("Totale riga: € 31,05");
-    expect(text).toContain("Totale documento: € 31,05");
+    expect(text).toContain("Prezzo netto unitario: 10,35 €");
+    expect(text).toContain("Totale riga: 31,05 €");
+    expect(text).toContain("Totale documento: 31,05 €");
     expect(text).toContain("Note cliente:");
     expect(text).not.toMatch(/full.cost|costo.primo|7,71|Non mostrare/);
   });
@@ -26,7 +26,7 @@ describe("customer quote clipboard", () => {
       totale_finale:20,listino:{sconto_riferimento:"40%",prezzo_listino_generato:20},
     });
     expect(text).not.toContain("Prezzo listino:");
-    expect(text).toContain("Totale documento: € 20,00");
+    expect(text).toContain("Totale documento: 20,00 €");
   });
   it("copies the listino only to the selected product",()=>{
     const text = formatQuoteForCopy({

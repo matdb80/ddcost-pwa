@@ -2,7 +2,7 @@
 type Data = Record<string, any>;
 const money = (value: number): string => value.toLocaleString("it-IT", {
   minimumFractionDigits: 2, maximumFractionDigits: 2,
-});
+}) + " €";
 const asText = (v: unknown): string => String(v ?? "").trim();
 function asNumber(v: unknown): number {
   const n = Number(v);
@@ -50,21 +50,21 @@ export function formatQuoteForCopy(doc: Data): string {
     if (index === listinoIndex && doc.listino) {
       const listino = doc.listino.prezzo_listino_generato;
       if (listino !== undefined && listino !== null && listino !== "")
-        lines.push("Prezzo listino: € " + money(asNumber(listino)));
+        lines.push("Prezzo listino: " + money(asNumber(listino)));
       const discount = asText(doc.listino.sconto_riferimento);
       if (discount) lines.push("Sconto cliente: " + discount);
     }
     lines.push(
-      "Prezzo netto unitario: € " + money(net),
+      "Prezzo netto unitario: " + money(net),
       "Quantità: " + qty.toLocaleString("it-IT"),
-      "Totale riga: € " + money(lineTotal),
+      "Totale riga: " + money(lineTotal),
       ""
     );
   });
   const docTotal = doc.totale_finale != null
     ? asNumber(doc.totale_finale)
     : calculatedTotal;
-  lines.push("Totale documento: € " + money(docTotal));
+  lines.push("Totale documento: " + money(docTotal));
   if (asText(doc.note_cliente)) lines.push("", "Note cliente:", asText(doc.note_cliente));
   return lines.join("\n");
 }
