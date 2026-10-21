@@ -445,7 +445,6 @@ export default function OffertaEditorPage() {
         new URL("/images/ddf-logo.png", window.location.origin).toString(),
         {
           hideDocumentTotal,
-          titleOverride: isDistributor ? "Offerta commerciale al distributore" : "Offerta commerciale al cliente finale",
           showCalculatedPriceComparison: !isDistributor,
           showFinalCustomerReferencePrice: isDistributor,
           unitPriceFractionDigits: isDistributor ? 4 : 2,

@@ -102,13 +102,20 @@ describe("commercial offer split between end customer and distributor", () => {
       righe: [{ ...original.righe[0], lotti_selezionati: [10] }],
     }, "Distributore", 25);
     const html = buildCommercialOfferPrintHtml(distributor, "customer", "netto", "/logo.png", {
-      titleOverride: "Offerta commerciale al distributore",
       showCalculatedPriceComparison: false,
       showFinalCustomerReferencePrice: true,
       unitPriceFractionDigits: 4,
     });
 
-    expect(html).toContain("Offerta commerciale al distributore");
+    expect(html).toContain("<h1>Offerta commerciale</h1>");
+    expect(html).not.toContain("Offerta commerciale al distributore");
+    expect(html).not.toContain("Offerta commerciale al cliente finale");
+    expect(html).toContain("text-align: center");
+    expect(html).toContain(".meta-value { display: block; font-size: 10.8pt; font-weight: 700; }");
+    expect(html).toContain("<b>Numero offerta</b><span class=\"meta-value\">2026/001</span>");
+    expect(html).toMatch(/<b>Data<\/b><span class="meta-value">\d{2}\/\d{2}\/\d{4}<\/span>/);
+    expect(html).toContain("<b>Cliente</b><span class=\"meta-value\">Distributore</span>");
+    expect(html).toContain("<b>Riferimento</b><span class=\"meta-value\">—</span>");
     expect(html).toContain("Prezzo finale cliente €/pz");
     expect(html).toContain("€ 8,0000");
     expect(html).toContain("€ 10,00");

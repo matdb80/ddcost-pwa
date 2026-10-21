@@ -16,7 +16,6 @@ export type CommercialOfferPrintDocument = {
   nome?: string;
   cliente?: string;
   riferimento?: string;
-  titolo_documento?: string;
   pagamento?: string;
   trasporto?: string;
   note?: string;
@@ -66,14 +65,13 @@ export function buildCommercialOfferPrintHtml(
   logoUrl = "/images/ddf-logo.png",
   options: {
     hideDocumentTotal?: boolean;
-    titleOverride?: string;
     showCalculatedPriceComparison?: boolean;
     showFinalCustomerReferencePrice?: boolean;
     unitPriceFractionDigits?: number;
   } = {},
 ): string {
   const internal = mode === "internal";
-  const title = internal ? "Analisi interna dell’offerta" : options.titleOverride ?? offer.titolo_documento ?? "Offerta commerciale";
+  const title = internal ? "Analisi interna dell’offerta" : "Offerta commerciale";
   const client = escapeHtml(offer.cliente || "");
   const reference = escapeHtml(offer.riferimento || "");
   const offerName = escapeHtml(offer.nome || "Offerta commerciale");
@@ -103,12 +101,13 @@ export function buildCommercialOfferPrintHtml(
   header img { width: 46mm; max-height: 28mm; object-fit: contain; }
   .company { text-align: right; font-size: 8pt; line-height: 1.45; }
   .company strong { display: block; font-size: 12pt; color: #303a40; margin-bottom: 2px; }
-  h1 { font-size: 17pt; margin: 0 0 8px; color: #303a40; }
+  h1 { font-size: 17pt; margin: 0 0 8px; color: #303a40; text-align: center; }
   h2 { font-size: 11pt; margin: 12px 0 6px; color: #303a40; }
   .section-title { display: flex; align-items: center; gap: 6px; }
   .section-icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 18px; padding: 8px 10px; border: 1px solid #cbd1d5; border-radius: 4px; margin: 10px 0 14px; }
   .meta b { color: #58636a; font-size: 8pt; display: block; }
+  .meta-value { display: block; font-size: 10.8pt; font-weight: 700; }
   .product { page-break-before: auto; margin: 14px 0 18px; }
   .product + .product { page-break-before: always; }
   .product-heading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; border-bottom: 1px solid #ccd2d6; padding-bottom: 5px; }
@@ -143,7 +142,7 @@ export function buildCommercialOfferPrintHtml(
 </style></head><body>
 <header><img src="${escapeAttribute(logoUrl)}" alt="DDF Didieffe Group"><div class="company"><strong>${COMPANY.name}</strong>${companyDetails}</div></header>
 <h1>${title}</h1>
-${sectionHeading("person", "Intestazione")}<section class="meta"><div><b>Numero offerta</b>${offerName}</div><div><b>Data</b>${new Date().toLocaleDateString("it-IT")}</div><div><b>Cliente</b>${client || "—"}</div><div><b>Riferimento</b>${reference || "—"}</div></section>
+${sectionHeading("person", "Intestazione")}<section class="meta"><div><b>Numero offerta</b><span class="meta-value">${offerName}</span></div><div><b>Data</b><span class="meta-value">${new Date().toLocaleDateString("it-IT")}</span></div><div><b>Cliente</b><span class="meta-value">${client || "—"}</span></div><div><b>Riferimento</b><span class="meta-value">${reference || "—"}</span></div></section>
 ${sectionHeading("products", "Prodotti")}${body}${paymentTransportBlock}${internalFootnote}${noteBlock}
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>
 </body></html>`;
