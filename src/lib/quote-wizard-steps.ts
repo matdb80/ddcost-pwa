@@ -56,7 +56,6 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     }
     if(advanced){
       add("ricarico_spese","Spese generali (%)","Ricarico dei costi diretti di questo prodotto.",{kind:"number",numeric:"percent",advanced:true});
-      add("margine","Margine commerciale (%)","Margine netto desiderato sul prezzo di vendita.",{kind:"number",numeric:"percent",advanced:true});
       add("prezzo_manuale","Prezzo manuale per pezzo","Facoltativo: prevale sul prezzo calcolato.",{kind:"number",numeric:"euro",advanced:true});
       add("quadrabile","Prezzo modificabile dalla quadratura?","Disattivando, il prezzo della riga non viene rettificato.",{kind:"checkbox",advanced:true});
     }
@@ -89,6 +88,13 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
   }else if(version>=2){
     steps.push(step("progettazione_totale_euro","Progettazione totale (€)","Costi comuni","Importo totale del modello precedente, ripartito tra tutti i pezzi.",{field:"progettazione_totale_euro",kind:"number",numeric:"euro"}));
   }
+  items.forEach((_,i)=>steps.push(step(
+    "p:"+i+":margine",
+    "Margine netto desiderato (%) — prodotto "+(i+1),
+    "Prezzo di vendita",
+    "Percentuale di margine netto desiderata sul prezzo di vendita di questo prodotto.",
+    {field:"margine",index:i,kind:"number",numeric:"percent"},
+  )));
   if(advanced){
     steps.push(step("target_totale","Totale desiderato (€)","Opzioni avanzate","Facoltativo: la quadratura adatta i prezzi delle righe non bloccate.",{field:"target_totale",kind:"number",numeric:"euro",advanced:true}));
     steps.push(step("listino_prodotto","Prodotto di riferimento per il listino","Opzioni avanzate","Scegli il prodotto a cui riferire lo sconto del cliente.",{kind:"select",advanced:true}));

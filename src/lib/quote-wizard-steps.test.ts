@@ -13,8 +13,18 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     expect(steps.find(x=>x.id==="p:0:oggetto_modifica")?.kind).toBe("multiselect");
     expect(steps.some(x=>x.field==="target_totale")).toBe(false);
     expect(steps.some(x=>x.field==="ricarico_spese")).toBe(false);
+    expect(steps.some(x=>x.field==="margine")).toBe(true);
     expect(steps.some(x=>x.field==="progettazione_ore")).toBe(true);
     expect(steps.some(x=>x.field==="costo_progettazione_ora")).toBe(true);
+  });
+  it("exposes an editable net margin step for every product in the default wizard",()=>{
+    const quote={...blankQuote(),prodotti:[blankProduct(),blankProduct(),blankProduct()]};
+    const steps=buildQuoteWizardSteps(quote);
+    const margins=steps.filter(x=>x.field==="margine");
+    expect(margins).toHaveLength(3);
+    expect(margins.map(x=>x.index)).toEqual([0,1,2]);
+    expect(margins.every(x=>x.kind==="number"&&x.numeric==="percent"&&!x.advanced)).toBe(true);
+    expect(margins.map(x=>x.id)).toEqual(["p:0:margine","p:1:margine","p:2:margine"]);
   });
   it("lets the user access optional complete-editor values without losing basic fields",()=>{
     const basic=buildQuoteWizardSteps(blankQuote());
