@@ -46,6 +46,7 @@ type Props={
   onSave:()=>void;
   onSaveDraft:()=>void;
   onCopy:()=>void;
+  onExportPdf:()=>void;
   onEdit:()=>void;
   onUpgrade:()=>void;
   onDesktop:()=>void;
@@ -55,7 +56,7 @@ export default function QuoteMobileWizard(props:Props){
     doc,preview,locked,isNew,numericId,isSavedDraft,groups,loadingGroups,error,draftMessage,
     copyMessage,busy,unsavedChanges,priceProductIndex,onUpdate,onUpdateProduct,
     onAddProduct,onRemoveProduct,onCreateGroup,onPriceProductIndex,onListinoDiscount,
-    onSave,onSaveDraft,onCopy,onEdit,onUpgrade,onDesktop,
+    onSave,onSaveDraft,onCopy,onExportPdf,onEdit,onUpgrade,onDesktop,
   }=props;
   const [advanced,setAdvanced]=useState(false);
   const [stepId,setStepId]=useState("cliente");
@@ -168,6 +169,11 @@ export default function QuoteMobileWizard(props:Props){
             </dl>
             {Array.isArray(product.oggetto_modifica)&&product.oggetto_modifica.length>0&&
               <p className="text-xs text-slate-600"><strong>Oggetto della modifica:</strong> {product.oggetto_modifica.join(", ")}</p>}
+            {doc.trattamenti_modalita==="ore_lavoro" &&
+              <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
+                Costo trattamenti inglobati nel tempo di produzione. Includi il tempo dei trattamenti
+                nelle ore complessive di lavorazione di questo prodotto.
+              </p>}
             {product.costo_materiale_noto===false &&
               <p className="text-xs text-slate-600">
                 Costo materiale calcolato da peso: {hasPreview?"€ "+euro(preview?.prodotti?.[productIndex]?.materiale_calcolato_cad):"da completare"}{hasPreview&&<FormulaTooltip label="Costo materiale per pezzo" formula={CALCULATION_FORMULAS.material.materialCost}/>} /pz.
@@ -199,12 +205,16 @@ export default function QuoteMobileWizard(props:Props){
                     <p className="text-sm font-semibold text-slate-900">
                       {doc.trattamenti_modalita==="globale"
                         ? "Unico costo complessivo"
-                        : "Costi distinti per prodotto"}
+                        : doc.trattamenti_modalita==="ore_lavoro"
+                          ? "Inclusi nelle ore di lavorazione"
+                          : "Costi distinti per prodotto"}
                     </p>
                     <p className="text-xs text-slate-700">
                       {doc.trattamenti_modalita==="globale"
                         ? "Ripartito sul numero complessivo di pezzi, senza sommare i singoli trattamenti."
-                        : "Vengono conteggiati soltanto i trattamenti €/pezzo dei singoli articoli."}
+                        : doc.trattamenti_modalita==="ore_lavoro"
+                          ? "Il costo separato dei trattamenti è zero: includi il tempo nelle ore di lavorazione di ogni prodotto."
+                          : "Vengono conteggiati soltanto i trattamenti €/pezzo dei singoli articoli."}
                     </p>
                   </div>
                   <strong className="text-sm tabular-nums text-slate-900">
@@ -224,14 +234,16 @@ export default function QuoteMobileWizard(props:Props){
               {(doc.prodotti as Product[]).map((p,i)=><div key={i} className="flex min-h-12 items-center rounded-lg border border-slate-200 p-3 text-sm">
                 <button type="button" onClick={()=>goto("p:"+i+":descrizione")}
                   className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
-                  <span className="min-w-0 truncate">{i+1}. {p.descrizione||"Prodotto da completare"}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate">{i+1}. {p.descrizione||"Prodotto da completare"}</span>
+                    {doc.trattamenti_modalita==="ore_lavoro" &&
+                      <span className="mt-1 block text-xs font-medium text-amber-800">Costo trattamenti inglobati nel tempo di produzione</span>}
+                  </span>
                   <span className="shrink-0 font-semibold">{hasPreview?"€ "+euro(preview?.prodotti?.[i]?.totale_finale):"—"}</span>
                 </button>
                 <FormulaTooltip label={`Totale prodotto ${i+1}`} formula={CALCULATION_FORMULAS.quote.productTotal}/>
               </div>)}
             </div>
-            {!locked && <button type="button" onClick={addAnotherProduct}
-              className={actionClass+" w-full border border-emerald-600 text-emerald-800"}><Plus size={17}/> Aggiungi un altro prodotto</button>}
             {costVersion<3 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
               Questo preventivo usa il modello storico della progettazione. La conversione è facoltativa e crea una nuova revisione.
               {!locked && <button type="button" onClick={onUpgrade} className="mt-2 block font-semibold underline">Converti al modello attuale</button>}
@@ -251,6 +263,10 @@ export default function QuoteMobileWizard(props:Props){
             <button type="button" onClick={onCopy} disabled={busy||!canShare}
               className={actionClass+" w-full border border-slate-300 text-slate-700 disabled:opacity-40"}>
               <Copy size={18}/> Copia per email / documento
+            </button>
+            <button type="button" onClick={onExportPdf} disabled={busy||!canShare}
+              className={actionClass+" w-full border border-slate-300 text-slate-700 disabled:opacity-40"}>
+              <FileText size={18}/> Esporta PDF cliente
             </button>
           </div>
         ):current.id==="listino_prodotto" ? (
@@ -297,7 +313,8 @@ export default function QuoteMobileWizard(props:Props){
         ):field==="trattamenti_modalita"?(
           <div className="space-y-3">
             {[["per_prodotto","Costo separato per ciascun prodotto (€/pz)"],
-              ["globale","Costo totale dell'offerta, distribuito su tutti i pezzi"]].map(([choice,caption])=>
+              ["globale","Costo totale dell'offerta, distribuito su tutti i pezzi"],
+              ["ore_lavoro","Considera il trattamento nelle ore di lavoro totali"]].map(([choice,caption])=>
               <label key={choice} className={`flex min-h-14 items-center gap-3 rounded-xl border p-3 text-sm ${value===choice?"border-emerald-600 bg-emerald-50":"border-slate-200"}`}>
                 <input type="radio" name="quote-treatment-mode" value={choice}
                   checked={(value??"per_prodotto")===choice} disabled={locked}
@@ -307,7 +324,9 @@ export default function QuoteMobileWizard(props:Props){
             <p className="rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
               {value==="globale"
                 ?"Inserirai una sola cifra nel prossimo passo. Nessun campo trattamenti verrà chiesto sui singoli prodotti."
-                :"Il Wizard ti chiederà un costo trattamento €/pezzo per ogni prodotto, identificando sempre l'articolo. Non ti chiederà un totale globale."}
+                :value==="ore_lavoro"
+                  ?"Il costo separato dei trattamenti sarà zero. Includi il loro tempo nelle ore complessive di lavorazione di ciascun prodotto; non verranno chiesti costi trattamento separati."
+                  :"Il Wizard ti chiederà un costo trattamento €/pezzo per ogni prodotto, identificando sempre l'articolo. Non ti chiederà un totale globale."}
               Cambiare modalità conserva i vecchi valori, ma il preventivo conteggia esclusivamente la modalità selezionata.
             </p>
           </div>
@@ -358,17 +377,22 @@ export default function QuoteMobileWizard(props:Props){
     </div>
 
     <nav aria-label="Navigazione guidata" className="fixed bottom-0 left-0 right-0 z-30 flex items-center gap-2 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-5px_24px_rgba(15,23,42,.1)] backdrop-blur">
+      {!locked && <button type="button" onClick={addAnotherProduct}
+        aria-label="Aggiungi prodotto" title="Aggiungi prodotto"
+        className={actionClass+" min-w-0 flex-1 border border-emerald-700 px-2 text-xs text-emerald-800"}>
+        <Plus size={17}/> Prodotto
+      </button>}
       <button type="button" onClick={previous} disabled={activeIndex===0}
-        className={actionClass+" flex-1 border border-slate-300 text-slate-700 disabled:opacity-35"}>
+        className={actionClass+" min-w-0 flex-1 border border-slate-300 px-2 text-xs text-slate-700 disabled:opacity-35"}>
         <ChevronLeft size={18}/> Indietro
       </button>
       {current.id==="riepilogo"
         ? <button type="button" onClick={locked?onEdit:submit} disabled={busy}
-            className={actionClass+" flex-1 bg-emerald-600 text-white disabled:opacity-40"}>
+            className={actionClass+" min-w-0 flex-1 px-2 text-xs bg-emerald-600 text-white disabled:opacity-40"}>
             <Check size={18}/>{locked?"Modifica":"Completa"}
           </button>
         : <button type="button" onClick={next}
-            className={actionClass+" flex-1 bg-emerald-600 text-white"}>
+            className={actionClass+" min-w-0 flex-1 px-2 text-xs bg-emerald-600 text-white"}>
             Avanti <ArrowRight size={18}/>
           </button>}
     </nav>

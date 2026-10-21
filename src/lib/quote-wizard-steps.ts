@@ -61,9 +61,9 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     }
     steps.push(step("p:"+i+":done","Riepilogo del prodotto",s,"Controlla il risultato o aggiungi un altro prodotto."));
   });
-  // Current cost models ask for the treatment allocation exactly once, after
-  // every product is defined. Global mode has one quote-wide amount; split
-  // mode has one clearly identified €/piece value for each product.
+  // Current cost models ask for the treatment allocation exactly once. Global
+  // mode has one quote-wide amount; split mode has one €/piece value per
+  // product; in work-hours mode no separate treatment amounts are requested.
   if(version>=2){
     steps.push(step("trattamenti_modalita","Come gestiamo i trattamenti?","Trattamenti dell'offerta",
       "Scegli una sola modalità per tutta l'offerta. La scelta determina i campi che seguono.",
@@ -72,7 +72,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
       steps.push(step("trattamenti_totale_euro","Costo totale dei trattamenti (€)","Trattamenti dell'offerta",
         "Inserisci una sola cifra per tutti i prodotti. Sarà ripartita sul totale dei pezzi; i costi dei singoli prodotti non verranno conteggiati.",
         {field:"trattamenti_totale_euro",kind:"number",numeric:"euro"}));
-    }else{
+    }else if(doc.trattamenti_modalita!=="ore_lavoro"){
       items.forEach((product,i)=>steps.push(step(
         "p:"+i+":trattamenti_cad",
         "Costo trattamento — prodotto "+(i+1)+" (€/pz)",

@@ -3,8 +3,11 @@ import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { trpc } from "@/providers/trpc";
-import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy } from "lucide-react";
+import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy, FileText } from "lucide-react";
 import { formatQuoteForCopy } from "@/lib/quote-copy";
+import { buildOneTimeQuotePrintHtml } from "@/lib/quote-pdf";
+import { openCommercialOfferPrintWindow } from "@/lib/commercial-offer-pdf";
+import { buildQuoteWizardSteps, quoteWizardStepError } from "@/lib/quote-wizard-steps";
 import QuoteNumericInput, {type QuoteNumericKind} from "@/components/QuoteNumericInput";
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
@@ -278,6 +281,25 @@ export default function PreventivoEditorPage() {
     }
     return doc;
   }, [doc, dirtyCalculation, isNew]);
+  const canExportPdf = preview !== null && !isSavedDraft &&
+    !buildQuoteWizardSteps(doc).some(step => quoteWizardStepError(step,doc));
+  const exportCustomerPdf = () => {
+    if (isSavedDraft) {
+      setError("Prima completa il preventivo: una bozza incompleta non va inviata al cliente.");
+      return;
+    }
+    if (!canExportPdf) {
+      setError("Completa i campi obbligatori prima di esportare il PDF cliente.");
+      return;
+    }
+    setError("");
+    try {
+      const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
+      openCommercialOfferPrintWindow(buildOneTimeQuotePrintHtml(computed,numericId || undefined));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Impossibile esportare il PDF cliente");
+    }
+  };
   async function save() {
     setError("");
     if (!doc.cliente?.trim()) return setError("Indicare il cliente");
@@ -346,7 +368,9 @@ export default function PreventivoEditorPage() {
   if (!isNew && !data) return <Layout><p>Preventivo non trovato.</p><Link to="/preventivi">Torna all'elenco</Link></Layout>;
   const locked = readOnly && !isNew;
   const legacyCostModel = !(Number(doc.costi_comuni_versione) >= 2);
-  const sharedTreatmentMode = doc.trattamenti_modalita === "globale" ? "globale" : "per_prodotto";
+  const sharedTreatmentMode = doc.trattamenti_modalita === "globale"
+    ? "globale"
+    : doc.trattamenti_modalita === "ore_lavoro" ? "ore_lavoro" : "per_prodotto";
   const legacyEngineeringModel = !(Number(doc.costi_comuni_versione) >= 3);
   const upgradeCosts = () => {
     if (locked) return;
@@ -427,7 +451,7 @@ export default function PreventivoEditorPage() {
             setListinoModified(Boolean(value.trim()));
           }}
           onSave={()=>void save()} onSaveDraft={()=>void saveDraftOnly()}
-          onCopy={()=>void copyQuote()} onEdit={()=>setReadOnly(false)}
+          onCopy={()=>void copyQuote()} onExportPdf={exportCustomerPdf} onEdit={()=>setReadOnly(false)}
           onUpgrade={upgradeCosts} onDesktop={()=>chooseMobileView(false)}
         />
       ) : (
@@ -447,9 +471,19 @@ export default function PreventivoEditorPage() {
           <h1 className="text-2xl font-bold">{isNew ? "Nuovo preventivo una tantum" : "Preventivo #" + numericId + " — rev. " + (data?.rev ?? 1)}</h1>
         </div>
         <div className="flex gap-2 flex-wrap">
+          {!locked && <button type="button" onClick={()=>update("prodotti",[...doc.prodotti,blankProduct()],true)}
+            className="border border-emerald-600 text-emerald-700 px-4 py-2 rounded flex gap-2 items-center"
+            title="Aggiungi prodotto senza scorrere fino alla sezione prodotti">
+            <Plus size={16}/> Aggiungi prodotto
+          </button>}
           <button type="button" onClick={copyQuote}
             className="border border-emerald-600 text-emerald-700 px-4 py-2 rounded flex gap-2 items-center">
             <Copy size={16}/> Copia per email / documento
+          </button>
+          <button type="button" onClick={exportCustomerPdf} disabled={!canExportPdf}
+            className="border border-slate-300 text-slate-700 disabled:opacity-40 px-4 py-2 rounded flex gap-2 items-center"
+            title="Esporta il documento con i soli dati destinati al cliente">
+            <FileText size={16}/> Esporta PDF cliente
           </button>
           {locked ? <button className="bg-emerald-600 text-white px-4 py-2 rounded flex gap-2" onClick={() => setReadOnly(false)}><Pencil size={16}/> Modifica</button>
           : <>
@@ -562,6 +596,7 @@ export default function PreventivoEditorPage() {
                   className="w-full min-w-0 rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-100">
                   <option value="per_prodotto">Separati per prodotto (€/pz)</option>
                   <option value="globale">Un costo complessivo per l'offerta (€)</option>
+                  <option value="ore_lavoro">Considera i trattamenti nelle ore di lavoro totali</option>
                 </select>
               </label>
               {sharedTreatmentMode === "globale" ? (
@@ -574,6 +609,12 @@ export default function PreventivoEditorPage() {
                     Quota ripartita: € {euroDetailed(preview?.costi_comuni_riepilogo?.trattamenti_globali_cad)}<FormulaTooltip label="Trattamenti comuni per pezzo" formula={CALCULATION_FORMULAS.quote.globalTreatmentPerPiece}/> /pz.
                   </span>
                 </label>
+              ) : sharedTreatmentMode === "ore_lavoro" ? (
+                <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
+                  Costo trattamenti inglobati nel tempo di produzione. Includi il tempo dei trattamenti
+                  nelle ore complessive di lavorazione di ciascun prodotto; non verrà aggiunto un costo
+                  trattamento separato.
+                </p>
               ) : (
                 <p className="text-xs text-slate-600">
                   Inserisci il costo trattamento €/pezzo sotto ciascun prodotto.
@@ -583,7 +624,7 @@ export default function PreventivoEditorPage() {
             </div>
           </div>
           <p className="text-xs text-slate-500">
-            Le due modalità di trattamento sono alternative, mai cumulative. Cambiare modalità
+            Le modalità di trattamento sono alternative, mai cumulative. Cambiare modalità
             conserva i valori della modalità inattiva per poterli ripristinare, ma non li conteggia.
           </p>
         </section>
@@ -629,7 +670,6 @@ export default function PreventivoEditorPage() {
             Azzurro = valore iniziale proposto, modificabile
           </span>
         </div>
-        {!locked && <button className="border border-emerald-600 text-emerald-700 rounded px-3 py-2 flex gap-2" onClick={()=>{update("prodotti",[...doc.prodotti,blankProduct()],true);}}><Plus size={16}/> Aggiungi prodotto</button>}
       </div>
       {(doc.prodotti as Product[]).map((p,index)=>
         <section key={index} className="bg-white border rounded-xl p-3 md:p-4 space-y-2.5">
@@ -637,6 +677,11 @@ export default function PreventivoEditorPage() {
             <h3 className="font-semibold">Prodotto {index+1}</h3>
             {!locked && doc.prodotti.length > 1 && <button title="Rimuovi prodotto" className="text-red-600" onClick={()=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}><Trash2 size={17}/></button>}
           </div>
+          {!legacyCostModel && sharedTreatmentMode === "ore_lavoro" &&
+            <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
+              Costo trattamenti inglobati nel tempo di produzione. Includi il tempo dei trattamenti nelle ore totali
+              di lavorazione di questa riga; il costo trattamento separato è pari a zero.
+            </p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2">
             <label className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-2">
               <span className="font-medium">Codice articolo</span>

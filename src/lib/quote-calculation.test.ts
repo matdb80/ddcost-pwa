@@ -196,6 +196,20 @@ describe("Una Tantum: quote-wide engineering and dual treatment allocation",()=>
     expect(global.prodotti.reduce((n:number,p:Record<string,number>)=>n+p.trattamenti_tot,0)).toBeCloseTo(90);
     expect(back.prodotti.reduce((n:number,p:Record<string,number>)=>n+p.trattamenti_tot,0)).toBeCloseTo(140);
   });
+  it("includes no separate treatment cost when treatment time is included in work hours",()=>{
+    const quote={...blankQuote(),trattamenti_modalita:"ore_lavoro",trattamenti_totale_euro:90,
+      prodotti:[product(10,1,{lavoro_h:2,trattamenti_cad:4}),product(20,2,{lavoro_h:3,trattamenti_cad:5})]};
+    const result=calculateQuote(quote);
+    expect(result.costi_comuni_riepilogo.trattamenti_modalita).toBe("ore_lavoro");
+    expect(result.costi_comuni_riepilogo.trattamenti_inclusi_nelle_ore_lavoro).toBe(true);
+    expect(result.costi_comuni_riepilogo.trattamenti_globali_totale).toBe(0);
+    expect(result.prodotti.map((p:Record<string,number>)=>p.trattamenti_tot)).toEqual([0,0]);
+    expect(result.prodotti.map((p:Record<string,number>)=>p.lavoro_tot)).toEqual([48,72]);
+    expect(result.full_cost_totale).toBeCloseTo((10*(1+48/10)*1.75)+(20*(2+72/20)*1.75));
+    expect(result.prodotti.map((p:Record<string,number>)=>p.trattamenti_cad)).toEqual([4,5]);
+    const back=calculateQuote({...quote,trattamenti_modalita:"per_prodotto"});
+    expect(back.prodotti.map((p:Record<string,number>)=>p.trattamenti_tot)).toEqual([40,100]);
+  });
   it("does not accept absent or invalid quantities or negative global costs",()=>{
     expect(()=>calculateQuote({...blankQuote(),prodotti:[]})).toThrow("almeno un prodotto");
     expect(()=>calculateQuote({...blankQuote(),prodotti:[product(0,1)]})).toThrow("maggiore di zero");

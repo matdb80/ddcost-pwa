@@ -23,7 +23,9 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
   const d = structuredClone(document);
   if (!Array.isArray(d.prodotti) || !d.prodotti.length) throw new Error("Inserire almeno un prodotto");
   const shared = Number(d.costi_comuni_versione) >= 2;
-  const treatmentMode = d.trattamenti_modalita === "globale" ? "globale" : "per_prodotto";
+  const treatmentMode = d.trattamenti_modalita === "globale"
+    ? "globale"
+    : d.trattamenti_modalita === "ore_lavoro" ? "ore_lavoro" : "per_prodotto";
   const quantityTotal = (d.prodotti as Product[]).reduce((sum,p) => {
     const q = val(p.quantita);
     if (!(q > 0)) throw new Error("La quantità dei prodotti deve essere maggiore di zero");
@@ -74,7 +76,9 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
     if (margin >= 1 || margin < 0 || overhead < 0) throw new Error("Margine e ricarico non validi");
     p.materiale_tot = m * q;
     p.lavoro_tot = lh * hcost;
-    p.trattamenti_tot = shared && treatmentMode === "globale" ? treatmentPerPiece * q : treatment * q;
+    p.trattamenti_tot = shared && treatmentMode === "ore_lavoro"
+      ? 0
+      : shared && treatmentMode === "globale" ? treatmentPerPiece * q : treatment * q;
     p.attrezzaggi_tot = ah * hcost;
     p.progettazione_tot = shared ? engineeringPerPiece * q : dh * dcost;
     if (shared) {
@@ -127,6 +131,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
       trattamenti_modalita: treatmentMode,
       trattamenti_globali_totale: sharedTreatmentCost,
       trattamenti_globali_cad: treatmentPerPiece,
+      trattamenti_inclusi_nelle_ore_lavoro: treatmentMode === "ore_lavoro",
     };
   }
   d.num_prodotti = d.prodotti.length;

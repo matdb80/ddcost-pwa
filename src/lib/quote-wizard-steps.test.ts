@@ -196,6 +196,15 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     expect(calculateQuote(q).prodotti.reduce((sum:number,p:Record<string,number>)=>sum+p.trattamenti_tot,0))
       .toBeCloseTo(140);
   });
+  it("does not ask for separate treatment costs when their time is included in product work hours",()=>{
+    const q={...blankQuote(),trattamenti_modalita:"ore_lavoro",
+      prodotti:[blankProduct(),blankProduct()]};
+    const steps=buildQuoteWizardSteps(q);
+    expect(steps.filter(s=>s.field==="trattamenti_modalita")).toHaveLength(1);
+    expect(steps.filter(s=>s.field==="trattamenti_totale_euro")).toHaveLength(0);
+    expect(steps.filter(s=>s.field==="trattamenti_cad")).toHaveLength(0);
+    expect(steps.filter(s=>s.field==="lavoro_h")).toHaveLength(2);
+  });
   it("weight costing is a separate guided path; a hidden known €/piece value cannot mislead",()=>{
     const q=blankQuote();
     q.prodotti[0].costo_materiale_noto=false;
