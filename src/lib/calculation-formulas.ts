@@ -104,7 +104,7 @@ export const CALCULATION_FORMULAS = {
   },
   bandelleT: {
     basePrice:
-      "Prezzo base €/pz = prezzo del listino Smeralda per tipologia, collo e fascia di quantità selezionati. Il valore del listino già include l'aumento del 4,5% indicato dal 01/03/2026.",
+      "Prezzo base €/pz = prezzo del listino Smeralda per tipologia, misura di collo più vicina a quella inserita e fascia di quantità. In caso di pari distanza viene usata la misura superiore. Fuori dall'intervallo pubblicato si usa il limite più vicino come prezzo indicativo, da verificare. Il valore del listino già include l'aumento del 4,5% indicato dal 01/03/2026.",
     additions:
       "Supplementi €/pz = somma delle opzioni selezionate: occhio diverso +€3,00; decentratura inversa +€1,00 solo per standard decentrato; sormonto +€2,50 per standard/misura o +€2,00 per zanca.",
     unitPrice:

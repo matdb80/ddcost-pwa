@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { quoteBandellaT, type TRequest, PRICES, TIERS } from "./bandelle-t-listino";
+import { nearestListedCollar, quoteBandellaT, type TRequest, PRICES, TIERS } from "./bandelle-t-listino";
 const base: TRequest = {
   kind:"standard", quantity:20, collar:55,position:"centrale",
   diameterOther:false, reverseOffset:false, overlap:false,
@@ -38,13 +38,24 @@ describe("Bandelle a T — workbook Smeralda (2026 updated values)",()=>{
     expect(decentralized.notes.join(" ")).toMatch(/codice di riferimento del centrale/);
     expect(calculate({position:"decentrato",collar:55}).code).toBe("VBC00017BPIUGOFF");
   });
-  it("accepts only exact listed integer collars, without rounding",()=>{
+  it("maps a manually entered integer collar to the closest listino size",()=>{
     expect(calculate({collar:55,quantity:5}).base).toBe(6.934);
     expect(calculate({collar:65,quantity:5}).base).toBe(7.2);
-    expect(()=>calculate({collar:60,quantity:5})).toThrow(/Collo non previsto/);
+    expect(nearestListedCollar("standard",56)).toBe(55);
+    expect(nearestListedCollar("standard",60)).toBe(65);
+    expect(nearestListedCollar("standard",80)).toBe(85);
+    expect(nearestListedCollar("misura",150)).toBe(155);
+    expect(nearestListedCollar("standard",54)).toBe(55);
+    expect(nearestListedCollar("standard",500)).toBe(95);
+    expect(nearestListedCollar("standard",0)).toBe(null);
+    const middle=calculate({collar:60,quantity:5});
+    expect(middle.requestedCollar).toBe(60);
+    expect(middle.size).toBe(65);
+    expect(middle.base).toBe(7.2);
+    expect(middle.notes.join(" ")).toContain("Misura collo inserita: 60 mm; prezzo calcolato sul collo di listino più vicino: 65 mm.");
     expect(()=>calculate({collar:55.5,quantity:5})).toThrow(/misura intera/);
-    expect(()=>calculate({collar:150,quantity:5})).toThrow(/Collo non previsto/);
-    expect(()=>calculate({kind:"zanca",collar:155,quantity:5})).toThrow(/Collo non previsto/);
+    expect(calculate({collar:150,quantity:5}).size).toBe(95);
+    expect(calculate({kind:"zanca",collar:155,quantity:5}).size).toBe(115);
   });
   it("a misura: 155mm qty20 publishes price; qty21 does not",()=>{
     expect(calculate({kind:"misura",collar:155,quantity:20}).base).toBe(12.126);
@@ -60,9 +71,12 @@ describe("Bandelle a T — workbook Smeralda (2026 updated values)",()=>{
   it("zanca supplement sormonto differs from standard",()=>{
     expect(calculate({kind:"zanca",quantity:4,collar:55,overlap:true}).unit).toBe(11.66);
   });
-  it("never silently extrapolates beyond available quantity or collar",()=>{
+  it("rejects unavailable quantities and flags collars outside the listino range",()=>{
     expect(()=>calculate({quantity:101})).toThrow(/4 a 100/);
     expect(()=>calculate({quantity:3})).toThrow(/4 a 100/);
-    expect(()=>calculate({collar:500})).toThrow(/Collo non previsto/);
+    const outside=calculate({collar:500});
+    expect(outside.size).toBe(95);
+    expect(outside.notes.join(" ")).toMatch(/fuori dall'intervallo.*Verificare la quotazione/);
+    expect(()=>calculate({collar:0})).toThrow(/maggiore di zero/);
   });
 });

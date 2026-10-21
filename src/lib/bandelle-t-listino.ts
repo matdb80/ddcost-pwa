@@ -69,6 +69,7 @@ export type TRequest = {
 };
 export type TResponse = {
   code: string;
+  requestedCollar: number;
   size: number;
   tier: string;
   base: number;
@@ -77,15 +78,30 @@ export type TResponse = {
   total: number;
   notes: string[];
 };
+/** Returns the closest published collar; exact ties use the larger listino size. */
+export function nearestListedCollar(kind: TKind, requested: number): number | null {
+  const rows = PRICES[kind];
+  if (!rows?.length || !Number.isFinite(requested) || requested <= 0)
+    return null;
+  let closest = rows[0];
+  for (const row of rows.slice(1)) {
+    const distance = Math.abs(row.collo-requested);
+    const closestDistance = Math.abs(closest.collo-requested);
+    if (distance < closestDistance || (distance === closestDistance && row.collo > closest.collo))
+      closest = row;
+  }
+  return closest.collo;
+}
 export function quoteBandellaT(r: TRequest): TResponse {
   if (!Number.isInteger(r.quantity) || r.quantity < 4 || r.quantity > 100)
     throw new Error("Listino valido esclusivamente per lotti da 4 a 100 pezzi. Richiedere quotazione manuale.");
-  if (!Number.isInteger(r.collar) || r.collar <= 0)
-    throw new Error("Il collo D deve essere una misura intera presente nel listino.");
   const rows = PRICES[r.kind];
   if (!rows) throw new Error("Tipologia non valida");
-  const row = rows.find(current => current.collo === r.collar);
-  if (!row) throw new Error("Collo non previsto: scegliere esclusivamente una misura indicata nel listino.");
+  if (!Number.isInteger(r.collar) || r.collar <= 0)
+    throw new Error("Il collo D deve essere una misura intera maggiore di zero.");
+  const listedCollar = nearestListedCollar(r.kind,r.collar);
+  const row = listedCollar===null ? undefined : rows.find(current => current.collo === listedCollar);
+  if (!row) throw new Error("Misura del collo non disponibile per questa tipologia");
   if (r.kind === "zanca" && (!Number.isInteger(r.zancaLength) || r.zancaLength < 15 || r.zancaLength > 35))
     throw new Error("La zanca a filo deve avere una misura intera da 15 a 35 mm.");
   const idx = TIERS.findIndex(t => r.quantity >= t.min && r.quantity <= t.max);
@@ -116,6 +132,10 @@ export function quoteBandellaT(r: TRequest): TResponse {
   if (r.kind === "zanca") {
     notes.push("Zanca a filo "+r.zancaLength+" mm. Verificare a disegno la zancatura e il codice variabile.");
   }
+  if (r.collar < rows[0].collo || r.collar > rows[rows.length-1].collo)
+    notes.push("Misura collo inserita fuori dall'intervallo di listino ("+rows[0].collo+"–"+rows[rows.length-1].collo+" mm); prezzo indicativo calcolato sul collo disponibile più vicino: "+row.collo+" mm. Verificare la quotazione.");
+  else if (r.collar !== row.collo)
+    notes.push("Misura collo inserita: "+r.collar+" mm; prezzo calcolato sul collo di listino più vicino: "+row.collo+" mm.");
   const unit = Math.round((base+additions.reduce((sum,a)=>sum+a.euro,0))*1000)/1000;
-  return { code,size:row.collo,tier:TIERS[idx].label,base,additions,unit,total:Math.round(unit*r.quantity*1000)/1000,notes };
+  return { code,requestedCollar:r.collar,size:row.collo,tier:TIERS[idx].label,base,additions,unit,total:Math.round(unit*r.quantity*1000)/1000,notes };
 }

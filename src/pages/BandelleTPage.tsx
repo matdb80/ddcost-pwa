@@ -2,7 +2,7 @@ import Layout from "@/components/Layout";
 import { useState } from "react";
 import { Calculator, Copy } from "lucide-react";
 import FormulaTooltip from "@/components/FormulaTooltip";
-import { quoteBandellaT, type TKind, type TPosition, type TRequest, type TResponse, PRICES } from "@/lib/bandelle-t-listino";
+import { nearestListedCollar, quoteBandellaT, type TKind, type TPosition, type TRequest, type TResponse, PRICES } from "@/lib/bandelle-t-listino";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
 
 const AMBITI: Array<{ id: TKind; title: string; desc: string; img: string }> = [
@@ -22,17 +22,17 @@ export default function BandelleTPage() {
   const [req,setReq] = useState<TRequest>(initial);
   const [response,setResponse] = useState<TResponse|null>(null);
   const [message,setMessage] = useState("");
+  const collarRows = PRICES[req.kind];
+  const minCollar = collarRows[0].collo;
+  const maxCollar = collarRows[collarRows.length-1].collo;
+  const nearestCollar = nearestListedCollar(req.kind,req.collar);
   const set = <K extends keyof TRequest>(key:K,value:TRequest[K]) => {
     setReq(prev=>({...prev,[key]:value}));
     setResponse(null);
     setMessage("");
   };
   const selectKind = (kind: TKind) => {
-    setReq(prev => ({
-      ...prev,
-      kind,
-      collar: PRICES[kind].some(row => row.collo === prev.collar) ? prev.collar : PRICES[kind][0].collo,
-    }));
+    setReq(prev => ({...prev,kind}));
     setResponse(null);
     setMessage("");
   };
@@ -55,7 +55,8 @@ export default function BandelleTPage() {
       : (req.kind === "misura" ? "a misura" : "zancato a filo");
     const text = [
       "Codice: " + response.code,
-      "Bandella a T occhio " + eyeType + " C=" + response.size,
+      "Bandella a T occhio " + eyeType + " C=" + response.requestedCollar + " mm",
+      "Collo di listino usato per il calcolo: " + response.size + " mm",
       "Lotto: " + req.quantity,
       "Prezzo netto unitario: " + prices2(roundedUnit),
       "Totale : " + prices2(roundedTotal),
@@ -85,11 +86,19 @@ export default function BandelleTPage() {
             <input type="number" min="4" max="100" step="1" className="border rounded p-2" value={req.quantity}
               onChange={e=>set("quantity",Number(e.target.value))}/>
           </label>
-          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Collo D (mm) — misura di listino
-            <select className="border rounded p-2" value={req.collar}
-              onChange={e=>set("collar",Number(e.target.value))}>
-              {PRICES[req.kind].map(row=><option key={row.collo} value={row.collo}>{row.collo} mm</option>)}
-            </select>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Collo D (mm) — misura effettiva
+            <input type="number" min="1" step="1" className="border rounded p-2"
+              value={req.collar||""} onChange={e=>set("collar",e.target.value===""?0:Number(e.target.value))}/>
+            <span className="text-xs font-normal text-slate-500">
+              Inserisci la misura effettiva in millimetri. Il listino copre {minCollar}–{maxCollar} mm; viene usata la misura più vicina e, a pari distanza, quella superiore.
+            </span>
+            {nearestCollar!==null&&<span className="text-xs font-semibold text-emerald-700">
+              Riferimento di listino per il calcolo: {nearestCollar} mm{nearestCollar!==req.collar?" (misura più vicina)":""}.
+            </span>}
+            {(req.collar<minCollar||req.collar>maxCollar)&&req.collar>0&&
+              <span className="text-xs font-medium text-amber-800">
+                Misura fuori dall’intervallo del listino: il prezzo sarà indicativo e richiederà verifica tecnico-commerciale.
+              </span>}
           </label>
           {req.kind==="standard"&&<label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Posizione occhio standard
             <select className="border rounded p-2" value={req.position} onChange={e=>set("position",e.target.value as TPosition)}>
@@ -123,7 +132,8 @@ export default function BandelleTPage() {
         </div>
         <dl className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
           <div><dt className="text-slate-500">Codice listino</dt><dd className="font-mono font-semibold">{response.code}</dd></div>
-          <div><dt className="text-slate-500">Collo selezionato</dt><dd className="font-semibold">{response.size} mm</dd></div>
+          <div><dt className="text-slate-500">Misura inserita</dt><dd className="font-semibold">{response.requestedCollar} mm</dd></div>
+          <div><dt className="text-slate-500">Collo di listino usato</dt><dd className="font-semibold">{response.size} mm</dd></div>
           <div><dt className="text-slate-500">Fascia lotto</dt><dd className="font-semibold">{response.tier} pz</dd></div>
           <div><dt className="text-slate-500">Prezzo base</dt><dd className="font-semibold">{prices3(response.base)} €/pz<FormulaTooltip label="Prezzo base da listino" formula={CALCULATION_FORMULAS.bandelleT.basePrice}/></dd></div>
           <div><dt className="text-slate-500">Supplementi complessivi</dt><dd className="font-semibold">{prices2(response.additions.reduce((s,a)=>s+a.euro,0))} €/pz<FormulaTooltip label="Supplementi complessivi per pezzo" formula={CALCULATION_FORMULAS.bandelleT.additions}/></dd></div>
