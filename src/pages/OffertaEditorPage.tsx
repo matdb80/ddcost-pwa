@@ -6,6 +6,7 @@ import { trpc } from "@/providers/trpc";
 import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, CreditCard, ExternalLink, FileText, Pencil, Plus, Printer, Save, Search, ShoppingCart, StickyNote, Trash2, Truck, UserRound, X } from "lucide-react";
 import { applyStandardCycleToOfferRow } from "@/lib/commercial-offer-cycle";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
+import { buildDistributorOffer, previewCommercialOfferSplit } from "@/lib/commercial-offer-split";
 import {
   additionalDiscountPercent,
   calculateOfferLotPrice,
@@ -137,6 +138,10 @@ export default function OffertaEditorPage() {
   const [newLotDrafts, setNewLotDrafts] = useState<Record<number, string>>({});
   const [pricePresentation, setPricePresentation] = useState<CustomerPricePresentation>("netto");
   const [hideDocumentTotal, setHideDocumentTotal] = useState(false);
+  const [splitDialogOpen, setSplitDialogOpen] = useState(false);
+  const [splitFinalCustomer, setSplitFinalCustomer] = useState("");
+  const [splitDistributor, setSplitDistributor] = useState("");
+  const [splitMarkup, setSplitMarkup] = useState("");
   const allowLeaveRef=useRef(false);
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.offer.get.useQuery({ id: numericId }, { enabled: !isNew && numericId > 0 });
@@ -400,6 +405,55 @@ export default function OffertaEditorPage() {
       openCommercialOfferPrintWindow(html);
     } catch (caught) {
       setError(errorMessage(caught, "Impossibile generare il documento PDF"));
+    }
+  };
+
+  const splitMarkupNumber = splitMarkup.trim() ? Number(splitMarkup.trim().replace(",", ".")) : NaN;
+  let splitPreviewPrices: ReturnType<typeof previewCommercialOfferSplit> = [];
+  let splitPreviewError = "";
+  if (splitDialogOpen && splitMarkup.trim()) {
+    try { splitPreviewPrices = previewCommercialOfferSplit(preparedOffer(), splitMarkupNumber, pricePresentation); }
+    catch (caught) { splitPreviewError = errorMessage(caught, "Impossibile calcolare i prezzi per il distributore"); }
+  }
+  const canExportSplit = splitFinalCustomer.trim().length > 0 && splitDistributor.trim().length > 0 &&
+    splitMarkup.trim().length > 0 && Number.isFinite(splitMarkupNumber) && splitMarkupNumber >= 0 &&
+    !splitPreviewError && splitPreviewPrices.length > 0;
+
+  const exportSplitPdf = (recipient: "final_customer" | "distributor") => {
+    setError("");
+    try {
+      const computed = preparedOffer();
+      previewCommercialOfferSplit(computed, splitMarkupNumber, pricePresentation);
+      if (!splitFinalCustomer.trim()) throw Error("Indicare il cliente finale");
+      if (!splitDistributor.trim()) throw Error("Indicare il distributore");
+      if (recipient === "final_customer" && pricePresentation === "listino_sconto") {
+        for (const row of computed.righe) {
+          const lots = cycleForOfferRow(row) ? selectedOfferLots(row) : [Number(row.lotto)].filter((lot) => lot > 0);
+          if (lots.some((lot) => parseNumber(offerLotTerms(row, lot).listino) <= 0))
+            throw Error("Per il PDF cliente finale in modalità listino, inserire o generare il listino di ogni lotto selezionato.");
+        }
+      }
+
+      const isDistributor = recipient === "distributor";
+      const document = isDistributor
+        ? buildDistributorOffer(computed, splitDistributor.trim(), splitMarkupNumber, pricePresentation)
+        : { ...computed, cliente: splitFinalCustomer.trim() };
+      const html = buildCommercialOfferPrintHtml(
+        { ...document, id: isNew ? undefined : numericId },
+        "customer",
+        isDistributor ? "netto" : pricePresentation,
+        new URL("/images/ddf-logo.png", window.location.origin).toString(),
+        {
+          hideDocumentTotal,
+          titleOverride: isDistributor ? "Offerta commerciale al distributore" : "Offerta commerciale al cliente finale",
+          showCalculatedPriceComparison: !isDistributor,
+          showFinalCustomerReferencePrice: isDistributor,
+          unitPriceFractionDigits: isDistributor ? 4 : 2,
+        },
+      );
+      openCommercialOfferPrintWindow(html);
+    } catch (caught) {
+      setError(errorMessage(caught, "Impossibile generare il preventivo"));
     }
   };
 
@@ -669,8 +723,39 @@ export default function OffertaEditorPage() {
             <span>Nascondi totale documento nel PDF cliente</span>
           </label>
           <button type="button" onClick={() => exportPdf("customer")} className="inline-flex items-center gap-2 rounded bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"><FileText size={16}/>Esporta PDF cliente</button>
+          <button type="button" onClick={() => { setSplitFinalCustomer((current) => current || String(offer.cliente ?? "")); setSplitDialogOpen(true); }} className="inline-flex items-center gap-2 rounded border border-indigo-700 px-4 py-2 text-sm font-medium text-indigo-800 hover:bg-indigo-50"><FileText size={16}/>Genera preventivo per cliente finale</button>
         </div>
       </section>
+
+      {splitDialogOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-3 sm:p-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSplitDialogOpen(false); }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="offer-split-title" className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+          <header className="flex items-start justify-between gap-3 border-b p-4 sm:p-5">
+            <div><h2 id="offer-split-title" className="text-lg font-semibold">Preventivo cliente finale e distributore</h2><p className="mt-1 text-sm text-slate-600">Il prezzo netto attuale è il prezzo concordato con il cliente finale. Da questo il sistema ricava il prezzo più basso per il distributore.</p></div>
+            <button type="button" aria-label="Chiudi preventivi separati" onClick={() => setSplitDialogOpen(false)} className="rounded p-2 text-slate-500 hover:bg-slate-100"><X size={18}/></button>
+          </header>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+            <p className="rounded-lg bg-indigo-50 p-3 text-sm text-indigo-950">Il ricarico si applica al prezzo di acquisto del distributore: <b>prezzo finale cliente = prezzo distributore × (1 + ricarico ÷ 100)</b>. Il prezzo distributore viene quindi ricavato a ritroso. I valori al distributore sono esposti a quattro decimali per mantenere verificabile il ricarico; i totali sono arrotondati ai centesimi.<FormulaTooltip label="Ricarico distributore" formula={CALCULATION_FORMULAS.commercialOffer.distributorMarkup}/></p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <label className="flex flex-col gap-1 text-sm"><span>Cliente finale *</span><input autoFocus value={splitFinalCustomer} onChange={(event) => setSplitFinalCustomer(event.target.value)} className="rounded border p-2" placeholder="Nome cliente finale"/></label>
+              <label className="flex flex-col gap-1 text-sm"><span>Distributore *</span><input value={splitDistributor} onChange={(event) => setSplitDistributor(event.target.value)} className="rounded border p-2" placeholder="Nome distributore"/></label>
+              <label className="flex flex-col gap-1 text-sm"><span>Ricarico distributore sul prezzo di acquisto % *</span><input type="number" min="0" step="0.1" inputMode="decimal" value={splitMarkup} onChange={(event) => setSplitMarkup(event.target.value)} className="rounded border p-2" placeholder="Es. 25"/></label>
+            </div>
+            {splitMarkup.trim() && (splitPreviewError
+              ? <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-800">{splitPreviewError}</p>
+              : <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full min-w-[720px] text-sm"><thead className="bg-slate-50"><tr><th className="p-2 text-left">Prodotto</th><th className="p-2 text-right">Lotto</th><th className="p-2 text-right">Prezzo finale €/pz</th><th className="p-2 text-right">Prezzo distributore €/pz</th><th className="p-2 text-right">Totale finale</th><th className="p-2 text-right">Totale distributore</th></tr></thead>
+                  <tbody>{splitPreviewPrices.map((price, priceIndex) => <tr key={`${price.rowIndex}-${price.lotto}-${priceIndex}`} className="border-t"><td className="p-2"><b>{price.codice}</b>{price.codice && price.descrizione ? " · " : ""}{price.descrizione}</td><td className="p-2 text-right">{price.lotto.toLocaleString("it-IT")} pz</td><td className="p-2 text-right">€ {money(price.prezzoFinaleCliente)}</td><td className="p-2 text-right">€ {price.prezzoDistributore.toLocaleString("it-IT", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</td><td className="p-2 text-right">€ {money(price.prezzoFinaleCliente * price.lotto)}</td><td className="p-2 text-right">€ {money(price.prezzoDistributore * price.lotto)}</td></tr>)}</tbody>
+                </table>
+              </div>)}
+            <p className="text-xs text-slate-500">Il PDF cliente finale riporta il prezzo che hai impostato. Il PDF distributore riporta il suo prezzo netto e, a fianco, il prezzo finale concordato come riferimento. I due documenti vengono esportati separatamente.</p>
+          </div>
+          <footer className="flex flex-wrap justify-end gap-2 border-t p-3 sm:px-5">
+            <button type="button" onClick={() => setSplitDialogOpen(false)} className="rounded border px-4 py-2 text-sm font-medium text-slate-700">Chiudi</button>
+            <button type="button" disabled={!canExportSplit} onClick={() => exportSplitPdf("final_customer")} className="inline-flex items-center gap-2 rounded bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"><FileText size={16}/>Esporta PDF cliente finale</button>
+            <button type="button" disabled={!canExportSplit} onClick={() => exportSplitPdf("distributor")} className="inline-flex items-center gap-2 rounded bg-indigo-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"><FileText size={16}/>Esporta PDF distributore</button>
+          </footer>
+        </section>
+      </div>}
 
       {cyclePickerRow !== null && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-3 sm:p-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !selectingCycle) setCyclePickerRow(null); }}>
         <section role="dialog" aria-modal="true" aria-labelledby="standard-cycle-picker-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">

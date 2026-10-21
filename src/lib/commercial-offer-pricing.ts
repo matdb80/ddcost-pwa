@@ -9,6 +9,7 @@ export type OfferLotTerms = {
   listino_generato_per_netto?: number;
   listino_generato_sconto?: string;
   prezzo_netto_manuale?: number | string;
+  prezzo_finale_riferimento?: number;
 };
 
 export type OfferLotPrice = {

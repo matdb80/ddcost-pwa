@@ -49,6 +49,8 @@ export const CALCULATION_FORMULAS = {
       "Prezzo netto calcolato €/pz = costo pieno ÷ (1 − margine netto desiderato % ÷ 100). Il margine è calcolato sul prezzo di vendita; il risultato è arrotondato al centesimo superiore per non scendere sotto il margine richiesto.",
     finalNetPrice:
       "Prezzo netto finale €/pz = prezzo netto manuale del lotto, se inserito; altrimenti prezzo netto calcolato dal costo pieno e dal margine desiderato.",
+    distributorMarkup:
+      "Prezzo al cliente finale = prezzo netto al distributore × (1 + ricarico distributore % ÷ 100). Per ricavare a ritroso il prezzo al distributore dal prezzo finale: prezzo finale ÷ (1 + ricarico distributore % ÷ 100). Il ricarico è calcolato sul prezzo di acquisto del distributore.",
     actualMargin:
       "Margine netto effettivo % = (prezzo netto proposto − costo pieno) ÷ prezzo netto proposto × 100.",
     additionalDiscount:

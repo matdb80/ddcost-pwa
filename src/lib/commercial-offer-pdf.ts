@@ -16,6 +16,7 @@ export type CommercialOfferPrintDocument = {
   nome?: string;
   cliente?: string;
   riferimento?: string;
+  titolo_documento?: string;
   pagamento?: string;
   trasporto?: string;
   note?: string;
@@ -63,17 +64,23 @@ export function buildCommercialOfferPrintHtml(
   mode: OfferPrintMode,
   pricePresentation: CustomerPricePresentation = "netto",
   logoUrl = "/images/ddf-logo.png",
-  options: { hideDocumentTotal?: boolean } = {},
+  options: {
+    hideDocumentTotal?: boolean;
+    titleOverride?: string;
+    showCalculatedPriceComparison?: boolean;
+    showFinalCustomerReferencePrice?: boolean;
+    unitPriceFractionDigits?: number;
+  } = {},
 ): string {
   const internal = mode === "internal";
-  const title = internal ? "Analisi interna dell’offerta" : "Offerta commerciale";
+  const title = internal ? "Analisi interna dell’offerta" : options.titleOverride ?? offer.titolo_documento ?? "Offerta commerciale";
   const client = escapeHtml(offer.cliente || "");
   const reference = escapeHtml(offer.riferimento || "");
   const offerName = escapeHtml(offer.nome || "Offerta commerciale");
   const rows = Array.isArray(offer.righe) ? offer.righe : [];
   const body = internal
     ? rows.map((row, index) => internalProductSection(row, index)).join("")
-    : customerOfferTable(rows, pricePresentation, options.hideDocumentTotal === true);
+    : customerOfferTable(rows, pricePresentation, options);
   const noteSection = (heading: string, raw: unknown) => {
     const note = String(raw ?? "").trim();
     return note ? `<section class="notes">${sectionHeading("notes", heading)}<p>${escapeHtml(note).replace(/\n/g, "<br>")}</p></section>` : "";
@@ -245,7 +252,19 @@ function sourceCycleLines(lines: CicloRow[]): string {
   <h4>Costi unitari, lavorazioni e attrezzaggi</h4><table class="source-lines"><thead><tr><th>Categoria</th><th>Codice</th><th>Descrizione</th><th class="num">Qtà</th><th class="num">Costo unit. €</th><th class="num">Costo min. €</th><th class="num">Velocità / conf.</th><th class="num">Setup min</th><th class="num">Lotto voce</th><th>Fornitore</th><th>Nel costo</th></tr></thead><tbody>${costRows}</tbody></table>`;
 }
 
-function customerOfferTable(rows: CommercialOfferRow[], presentation: CustomerPricePresentation, hideDocumentTotal: boolean): string {
+function customerOfferTable(
+  rows: CommercialOfferRow[],
+  presentation: CustomerPricePresentation,
+  options: {
+    hideDocumentTotal?: boolean;
+    showCalculatedPriceComparison?: boolean;
+    showFinalCustomerReferencePrice?: boolean;
+    unitPriceFractionDigits?: number;
+  },
+): string {
+  const hideDocumentTotal = options.hideDocumentTotal === true;
+  const showFinalCustomerReferencePrice = options.showFinalCustomerReferencePrice === true;
+  const unitPriceFractionDigits = Math.max(2, Math.min(6, Math.trunc(options.unitPriceFractionDigits ?? 2)));
   const expanded = rows.flatMap((row, index) => {
     const selectedLots = selectedOfferLots(row);
     const lots = selectedLots.length ? selectedLots : [positiveNumber(row.lotto) ?? 0];
@@ -256,7 +275,7 @@ function customerOfferTable(rows: CommercialOfferRow[], presentation: CustomerPr
     const description = escapeHtml(String(row.descrizione ?? ""));
     const calculatedPrice = offerLotPrice(row, lot);
     const manualNet = calculatedPrice?.manualNetPrice;
-    const unitNet = customerUnitNet(row, lot, presentation, calculatedPrice);
+    const unitNet = customerUnitNet(row, lot, presentation, calculatedPrice, unitPriceFractionDigits);
     const calculatedNet = calculatedPrice?.calculatedNetPrice;
     const manualNetAboveCalculated = manualNet != null && calculatedNet != null &&
       roundCurrency(manualNet) > roundCurrency(calculatedNet);
@@ -274,28 +293,37 @@ function customerOfferTable(rows: CommercialOfferRow[], presentation: CustomerPr
       const adjustment = extraPercent < -0.000001
         ? `<div>Adeguamento prezzo: +${formatPercent(Math.abs(extraPercent))}%</div>`
         : "";
-      const netDisplay = manualNet != null && !manualNetAboveCalculated && Math.abs(discountReferenceNet - unitNet) >= 0.005
-        ? `<del>€ ${money(discountReferenceNet)}</del> <strong>€ ${money(unitNet)}</strong>`
-        : `<strong>€ ${money(unitNet)}</strong>`;
+      const canShowOldPrice = options.showCalculatedPriceComparison !== false && !manualNetAboveCalculated;
+      const netDisplay = canShowOldPrice && manualNet != null && Math.abs(discountReferenceNet - unitNet) >= 0.005
+        ? `<del>€ ${money(discountReferenceNet)}</del> <strong>€ ${unitPriceMoney(unitNet, unitPriceFractionDigits)}</strong>`
+        : `<strong>€ ${unitPriceMoney(unitNet, unitPriceFractionDigits)}</strong>`;
       priceCell = `<div>Listino: € ${money(listPrice)}</div><div>Sconto: ${escapeHtml(displayedDiscount || "—")}</div>${adjustment}<div class="muted">Netto unitario: ${netDisplay}</div>`;
     } else {
-      const netDisplay = manualNet != null && calculatedNet != null && !manualNetAboveCalculated && Math.abs(calculatedNet - unitNet) >= 0.005
+      const canShowOldPrice = options.showCalculatedPriceComparison !== false && !manualNetAboveCalculated;
+      const netDisplay = canShowOldPrice && manualNet != null && calculatedNet != null && Math.abs(calculatedNet - unitNet) >= 0.005
         ? `<del>€ ${money(calculatedNet)}</del> <strong>€ ${money(unitNet)}</strong>`
-        : `<strong>€ ${money(unitNet)}</strong>`;
+        : `<strong>€ ${unitPriceMoney(unitNet, unitPriceFractionDigits)}</strong>`;
       priceCell = `<div>Prezzo netto unitario: ${netDisplay}</div>`;
     }
-    return `<tr><td>${index + 1}</td><td><strong>${code}</strong><br>${description}</td><td class="num">${formatNumber(lot)} pz</td><td>${priceCell}</td><td class="num">€ ${money(unitNet * lot)}</td></tr>`;
+    const referencePrice = number(offerLotTerms(row, lot).prezzo_finale_riferimento);
+    const finalPriceCell = showFinalCustomerReferencePrice
+      ? `<td class="num">€ ${unitPriceMoney(referencePrice, 2)}</td>`
+      : "";
+    return `<tr><td>${index + 1}</td><td><strong>${code}</strong><br>${description}</td><td class="num">${formatNumber(lot)} pz</td><td>${priceCell}</td>${finalPriceCell}<td class="num">€ ${money(unitNet * lot)}</td></tr>`;
   }).join("");
   const hasAlternativeQuantities = rows.some((row) => selectedOfferLots(row).length > 1);
   const total = hasAlternativeQuantities ? null : expanded.reduce((sum, { row, lot }) => {
-    return sum + customerUnitNet(row, lot, presentation) * lot;
+    return sum + customerUnitNet(row, lot, presentation, offerLotPrice(row, lot), unitPriceFractionDigits) * lot;
   }, 0);
   const totalBlock = hideDocumentTotal
     ? hasAlternativeQuantities ? `<p class="footnote">Le quantità indicate sono alternative. Il totale per ogni lotto è riportato nella relativa riga.</p>` : ""
     : total == null
       ? `<p class="footnote">Le quantità indicate sono alternative. Il totale è riportato per ciascun lotto.</p>`
-      : `<div class="customer-total">Totale netto offerta: € ${money(total)}</div>`;
-  return `<table class="customer-lines"><thead><tr><th>#</th><th>Prodotto</th><th class="num">Lotto</th><th>${presentation === "netto" ? "Prezzo" : "Listino e sconto"}</th><th class="num">Totale netto</th></tr></thead><tbody>${lines}</tbody></table>${totalBlock}`;
+      : `<div class="customer-total">${showFinalCustomerReferencePrice ? "Totale netto al distributore" : "Totale netto offerta"}: € ${money(total)}</div>`;
+  const priceHeading = showFinalCustomerReferencePrice
+    ? `<th>Prezzo al distributore</th><th class="num">Prezzo finale cliente €/pz</th>`
+    : `<th>${presentation === "netto" ? "Prezzo" : "Listino e sconto"}</th>`;
+  return `<table class="customer-lines"><thead><tr><th>#</th><th>Prodotto</th><th class="num">Lotto</th>${priceHeading}<th class="num">${showFinalCustomerReferencePrice ? "Totale al distributore" : "Totale netto"}</th></tr></thead><tbody>${lines}</tbody></table>${totalBlock}`;
 }
 
 function offerLotPrice(row: CommercialOfferRow, lot: number): ReturnType<typeof calculateOfferLotPrice> | null {
@@ -308,12 +336,13 @@ function customerUnitNet(
   lot: number,
   presentation: CustomerPricePresentation,
   calculatedPrice = offerLotPrice(row, lot),
+  unitPriceFractionDigits = 2,
 ): number {
-  if (calculatedPrice?.manualNetPrice != null) return roundCurrency(calculatedPrice.netPrice);
+  if (calculatedPrice?.manualNetPrice != null) return roundToPrecision(calculatedPrice.netPrice, unitPriceFractionDigits);
   if (presentation === "listino_sconto")
-    return roundCurrency(number(offerLotTerms(row, lot).listino) * discountFactor(discountText(row)));
-  if (calculatedPrice) return roundCurrency(calculatedPrice.netPrice);
-  return number(row.prezzo_netto_proposto ?? row.netto ?? row.netto_base);
+    return roundToPrecision(number(offerLotTerms(row, lot).listino) * discountFactor(discountText(row)), unitPriceFractionDigits);
+  if (calculatedPrice) return roundToPrecision(calculatedPrice.netPrice, unitPriceFractionDigits);
+  return roundToPrecision(number(row.prezzo_netto_proposto ?? row.netto ?? row.netto_base), unitPriceFractionDigits);
 }
 
 function storedOfferSummary(row: CommercialOfferRow): string {
@@ -356,9 +385,16 @@ function number(value: unknown): number { const parsed = Number(value); return N
 function positiveNumber(value: unknown): number | null { const parsed = Number(value); return Number.isFinite(parsed) && parsed > 0 ? parsed : null; }
 function percentValue(value: unknown, fallback: number): number { const parsed = Number(value); return value == null || value === "" || !Number.isFinite(parsed) ? fallback : parsed; }
 function money(value: unknown): string { return number(value).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function unitPriceMoney(value: unknown, fractionDigits: number): string {
+  return number(value).toLocaleString("it-IT", { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
+}
 function formatNumber(value: unknown): string { return number(value).toLocaleString("it-IT", { maximumFractionDigits: 2 }); }
 function formatPercent(value: number): string { return value.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function roundCurrency(value: number): number { return Math.round((value + Number.EPSILON) * 100) / 100; }
+function roundToPrecision(value: number, fractionDigits: number): number {
+  const factor = 10 ** fractionDigits;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+}
 
 type CicloRow = {
   categoria?: string; codice_articolo?: string; descrizione?: string;
