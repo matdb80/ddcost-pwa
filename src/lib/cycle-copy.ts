@@ -21,3 +21,20 @@ export function copyCycleAsNewDraft(
     _extra: extra,
   };
 }
+
+/** Prepare an independent copy with its new visible identity already set. */
+export function copyCycleAsNamedDraft(
+  source: Parameters<typeof parseCycleRow>[0],
+  code: string,
+  description: string,
+): CicloEditorModel {
+  const nextCode=code.trim();
+  const nextDescription=description.trim();
+  if(!nextCode || !nextDescription)
+    throw new Error("Inserire un nuovo codice e una nuova descrizione.");
+  return {
+    ...copyCycleAsNewDraft(source),
+    codice:nextCode,
+    descrizione:nextDescription,
+  };
+}

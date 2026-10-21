@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyRiga, emptyCicloEditorModel, parseCycleRow, serializeCycleDataJson, type RigaCiclo } from "@/types/cycle";
-import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, childrenOf, copyRowAfter, detachFromAssembly, orderedHierarchy, removeLeaf, moveRowAmongSiblings, swapRows } from "./cycle-hierarchy";
+import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, childrenOf, copyRowToEnd, detachFromAssembly, hierarchyNumberLabels, orderedHierarchy, removeLeaf, moveRowAmongSiblings, swapRows } from "./cycle-hierarchy";
 import { ricalcolaCiclo, calcolaBreakdown, calcolaCostoRiga, costoRigaGerarchico } from "./cycle-calculator";
 
 const row=(desc:string,unit:number,nr=1):RigaCiclo=>({
@@ -8,32 +8,54 @@ const row=(desc:string,unit:number,nr=1):RigaCiclo=>({
 });
 const make=(righe:RigaCiclo[])=>({...emptyCicloEditorModel(),lotto:"100",righe,costo_lavoro_min:0.35});
 describe("DDCost four-level assemblies and nonpersisted simulation",()=>{
- it("copies all row values below the selected row without mutating the source",()=>{
+ it("appends a copy of the selected row at the end without mutating the source",()=>{
    const rows=[
      {...row("First",1),codice_articolo:"A"},
      {...row("Selected",2,3),codice_articolo:"B",note:"Nota da conservare",considera:false},
      {...row("Last",4),codice_articolo:"C"},
    ];
    const original=JSON.stringify(rows);
-   const copied=copyRowAfter(rows,1);
-   expect(copied.map(r=>r.codice_articolo)).toEqual(["A","B","B","C"]);
-   expect(copied[2]).toEqual(rows[1]);
-   expect(copied[2]).not.toBe(rows[1]);
+   const copied=copyRowToEnd(rows,1);
+   expect(copied.map(r=>r.codice_articolo)).toEqual(["A","B","C","B"]);
+   expect(copied[3]).toEqual(rows[1]);
+   expect(copied[3]).not.toBe(rows[1]);
    expect(JSON.stringify(rows)).toBe(original);
  });
- it("copies an assembly together with its descendants and preserves row references and cost",()=>{
+ it("appends an assembly with its descendants and preserves row references and cost",()=>{
    let rows=[row("Assembly",0),row("Child A",2),row("Child B",3),row("Other root",4)];
    rows=attachToAssembly(rows,1,0);
    rows=attachToAssembly(rows,2,0);
-   const copied=copyRowAfter(rows,0);
+   const copied=copyRowToEnd(rows,0);
    expect(orderedHierarchy(copied).map(({index,depth})=>[copied[index].descrizione,depth])).toEqual([
      ["Assembly",1],["Child A",2],["Child B",2],
-     ["Assembly",1],["Child A",2],["Child B",2],["Other root",1],
+     ["Other root",1],["Assembly",1],["Child A",2],["Child B",2],
    ]);
-   expect(copied[4].parent_idx).toBe(3);
-   expect(copied[5].parent_idx).toBe(3);
+   expect(copied[5].parent_idx).toBe(4);
+   expect(copied[6].parent_idx).toBe(4);
    expect(ricalcolaCiclo(make(copied)).costo_standard).toBe(14);
    expect(ricalcolaCiclo(make(rows)).costo_standard).toBe(9);
+ });
+ it("copies a nested row as a new final level-one branch",()=>{
+   let rows=[row("Assembly",0),row("First child",2),row("Second child",3),row("Other root",4)];
+   rows=attachToAssembly(rows,1,0);
+   rows=attachToAssembly(rows,2,0);
+   const copied=copyRowToEnd(rows,1);
+   expect(copied).toHaveLength(5);
+   expect(copied[4]).toMatchObject({descrizione:"First child",parent_idx:null});
+   expect(orderedHierarchy(copied).map(({index,depth})=>[copied[index].descrizione,depth])).toEqual([
+     ["Assembly",1],["First child",2],["Second child",2],["Other root",1],["First child",1],
+   ]);
+ });
+ it("numbers roots, children and grandchildren by their sibling position",()=>{
+   const rows=[
+     row("First root",0),row("First child",0),row("Grandchild",0),row("Second child",0),
+     row("Second root",0),row("Second root child",0),
+   ];
+   rows[1].parent_idx=0;
+   rows[2].parent_idx=1;
+   rows[3].parent_idx=0;
+   rows[5].parent_idx=4;
+   expect([...hierarchyNumberLabels(rows).values()]).toEqual(["1","1.1","1.1.1","1.2","2","2.1"]);
  });
  it("dragging a component onto another assembles recursively to four levels with no double count",()=>{
    let r=[row("ROOT",999),row("L2",0,2),row("L3",0),row("L4",2,3),row("Extra",5)];

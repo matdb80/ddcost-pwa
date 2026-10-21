@@ -196,9 +196,18 @@ export const cycleRouter = createRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
+      const code=input.code?.trim()||undefined;
+      if(code){
+        const existing=await db.select({id:cycles.id}).from(cycles).where(and(
+          eq(cycles.userId,ctx.user.id),
+          sql`UPPER(TRIM(${cycles.code})) = ${code.toUpperCase()}`,
+        )).limit(1);
+        if(existing[0])
+          throw new Error("Codice già utilizzato. Inserire un codice diverso per creare un nuovo ciclo.");
+      }
       const result = await db.insert(cycles).values({
         userId: ctx.user.id,
-        code: input.code,
+        code,
         description: input.description,
         client: input.client,
         lot: input.lot,

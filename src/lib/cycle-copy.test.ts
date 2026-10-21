@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { serializeCycleDataJson } from "@/types/cycle";
-import { copyCycleAsNewDraft } from "./cycle-copy";
+import { copyCycleAsNamedDraft, copyCycleAsNewDraft } from "./cycle-copy";
 
 describe("copy cycle as a new draft", () => {
   it("keeps cycle data while removing the source identity and revision metadata", () => {
@@ -55,5 +55,22 @@ describe("copy cycle as a new draft", () => {
     expect(serialized).not.toHaveProperty("created_at");
     expect(source.dataJson).toContain('"root_id":70');
     expect(draft.righe[0]).not.toBe(sourceRows[0]);
+  });
+
+  it("prepares an independent duplicate with the requested new code and description",()=>{
+    const source={
+      id:12,rootId:10,rev:3,code:"CIC-10",description:"Ciclo originale",client:"Cliente",
+      lot:"100",dataJson:JSON.stringify({codice:"CIC-10",descrizione:"Ciclo originale",rev:3,rootId:10,righe:[]}),
+    };
+    const draft=copyCycleAsNamedDraft(source,"  CIC-10-COPIA  ","  Ciclo duplicato  ");
+    const serialized=serializeCycleDataJson(draft);
+    expect(draft.codice).toBe("CIC-10-COPIA");
+    expect(draft.descrizione).toBe("Ciclo duplicato");
+    expect(draft.id).toBeUndefined();
+    expect(draft.rootId).toBeUndefined();
+    expect(draft.rev).toBeUndefined();
+    expect(serialized).not.toHaveProperty("rootId");
+    expect(serialized).not.toHaveProperty("rev");
+    expect(()=>copyCycleAsNamedDraft(source," ","Duplicato")).toThrow(/codice e una nuova descrizione/);
   });
 });

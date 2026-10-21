@@ -42,11 +42,28 @@ export function orderedHierarchy(rows: RigaCiclo[]): {index: number; depth:numbe
   return out;
 }
 
-/** Copy a row and its descendant rows directly after its displayed subtree.
- * Parent references are remapped by row identity so an auto-assembly copy keeps
- * its original components and cost calculation.
+/** Assign 1, 1.1, 1.1.1 style labels using each row's position among siblings. */
+export function hierarchyNumberLabels(rows: RigaCiclo[]): Map<number,string> {
+  const labels=new Map<number,string>();
+  const visited=new Set<number>();
+  const visit=(index:number,path:number[])=>{
+    if(visited.has(index))return;
+    visited.add(index);
+    labels.set(index,path.join("."));
+    childrenOf(rows,index).forEach((child,position)=>visit(child,[...path,position+1]));
+  };
+  const roots=rows.flatMap((row,index)=>row.parent_idx==null?[index]:[]);
+  roots.forEach((index,position)=>visit(index,[position+1]));
+  // Preserve visibility and a stable label for malformed or orphaned rows.
+  rows.forEach((_,index)=>{if(!visited.has(index))labels.set(index,String(index+1));});
+  return labels;
+}
+
+/** Copy a row and its descendant rows as a new level-one branch at the end of
+ * the cycle list. Parent references inside the copied subtree are remapped by
+ * row identity so nested assemblies retain their own cost calculation.
  */
-export function copyRowAfter(rows:RigaCiclo[], index:number):RigaCiclo[] {
+export function copyRowToEnd(rows:RigaCiclo[], index:number):RigaCiclo[] {
   if (!rows[index]) throw new Error("Selezionare una riga da copiare");
 
   const subtree:number[]=[];
@@ -60,32 +77,19 @@ export function copyRowAfter(rows:RigaCiclo[], index:number):RigaCiclo[] {
   };
   collect(index);
 
-  const displayOrder=orderedHierarchy(rows).map(entry=>entry.index);
-  const sourcePosition=displayOrder.indexOf(index);
-  if(sourcePosition<0) throw new Error("Impossibile individuare la riga nella gerarchia");
-  const insertionPosition=sourcePosition+subtree.length;
-  const entries=[
-    ...displayOrder.slice(0,insertionPosition).map(oldIndex=>({oldIndex,copy:false})),
-    ...subtree.map(oldIndex=>({oldIndex,copy:true})),
-    ...displayOrder.slice(insertionPosition).map(oldIndex=>({oldIndex,copy:false})),
-  ];
-  const originalIndexToNew=new Map<number,number>();
-  const copiedIndexToNew=new Map<number,number>();
-  entries.forEach((entry,newIndex)=>{
-    (entry.copy?copiedIndexToNew:originalIndexToNew).set(entry.oldIndex,newIndex);
-  });
-
-  return entries.map(({oldIndex,copy})=>{
+  const copiedIndexToNew=new Map(subtree.map((oldIndex,offset)=>[oldIndex,rows.length+offset]));
+  const copies=subtree.map(oldIndex=>{
     const row={...rows[oldIndex]};
-    if(row.parent_idx!=null){
-      const parentIndex=copy&&copiedIndexToNew.has(row.parent_idx)
-        ? copiedIndexToNew.get(row.parent_idx)
-        : originalIndexToNew.get(row.parent_idx);
-      if(parentIndex===undefined) throw new Error("Riferimento al padre non valido; correggere la gerarchia prima di copiare");
-      row.parent_idx=parentIndex;
+    if(oldIndex===index){
+      if(row.parent_idx!=null)row.parent_idx=null;
+    }else if(row.parent_idx!=null && copiedIndexToNew.has(row.parent_idx)){
+      row.parent_idx=copiedIndexToNew.get(row.parent_idx);
+    }else if(row.parent_idx!=null){
+      throw new Error("Riferimento al padre non valido; correggere la gerarchia prima di copiare");
     }
     return row;
   });
+  return [...rows.map(row=>({...row})),...copies];
 }
 
 function isDescendant(rows: RigaCiclo[], candidate: number, ancestor: number): boolean {

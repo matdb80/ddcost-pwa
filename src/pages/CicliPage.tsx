@@ -1,10 +1,14 @@
 import Layout from "@/components/Layout";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import {trpc} from "@/providers/trpc";
-import {Fragment,useState} from "react";
+import {Fragment,useState,type FormEvent} from "react";
 import {Link} from "react-router";
-import {Plus,Search,Trash2,RotateCcw,Pencil,ChevronLeft,ChevronRight} from "lucide-react";
+import {Plus,Search,Trash2,RotateCcw,Pencil,Copy,ChevronLeft,ChevronRight} from "lucide-react";
 import {CALCULATION_FORMULAS} from "@/lib/calculation-formulas";
+import {copyCycleAsNamedDraft} from "@/lib/cycle-copy";
+import {ricalcolaCiclo} from "@/lib/cycle-calculator";
+import {serializeCycleDataJson} from "@/types/cycle";
+import {Dialog,DialogContent,DialogDescription,DialogFooter,DialogHeader,DialogTitle} from "@/components/ui/dialog";
 
 const PAGE_SIZE=25;
 const fmt=(value:string|number|null|undefined)=>{
@@ -17,11 +21,22 @@ export default function CicliPage(){
   const [page,setPage]=useState(1);
   const [showDeleted,setShowDeleted]=useState(false);
   const [expanded,setExpanded]=useState<Set<string>>(new Set());
+  const [duplicateSource,setDuplicateSource]=useState<{id:number;code:string|null;description:string|null;rev:number|null}|null>(null);
+  const [duplicateCode,setDuplicateCode]=useState("");
+  const [duplicateDescription,setDuplicateDescription]=useState("");
+  const [duplicatePreparationError,setDuplicatePreparationError]=useState("");
+  const [duplicateLoading,setDuplicateLoading]=useState(false);
+  const utils=trpc.useUtils();
   const query=trpc.cycle.listGrouped.useQuery({
     search:search||undefined,page,pageSize:PAGE_SIZE,includeDeleted:showDeleted,
   });
   const del=trpc.cycle.delete.useMutation({onSuccess:()=>void query.refetch()});
   const restore=trpc.cycle.restore.useMutation({onSuccess:()=>void query.refetch()});
+  const duplicateCycle=trpc.cycle.create.useMutation({onSuccess:async()=>{
+    setDuplicateSource(null);
+    setDuplicatePreparationError("");
+    await query.refetch();
+  }});
   const groups=query.data?.groups??[];
   const total=query.data?.total??0;
   const pages=Math.max(1,Math.ceil(total/PAGE_SIZE));
@@ -29,9 +44,51 @@ export default function CicliPage(){
   const toggle=(key:string)=>setExpanded(prev=>{
     const next=new Set(prev);if(next.has(key))next.delete(key);else next.add(key);return next;
   });
+  const openDuplicate=(c:(typeof groups)[number]["revisions"][number])=>{
+    if(c.deleted===1)return;
+    duplicateCycle.reset();
+    setDuplicatePreparationError("");
+    setDuplicateSource({id:c.id,code:c.code,description:c.description,rev:c.rev});
+    setDuplicateCode(c.code?.trim()?`${c.code.trim()}-COPIA`:"NUOVO-CICLO");
+    setDuplicateDescription(c.description?.trim()?`${c.description.trim()} (copia)`:"Ciclo duplicato");
+  };
+  const sameSourceCode=duplicateSource!==null && duplicateCode.trim().toLocaleUpperCase("it-IT")===
+    (duplicateSource.code??"").trim().toLocaleUpperCase("it-IT");
+  const sameSourceDescription=duplicateSource!==null && duplicateDescription.trim().toLocaleLowerCase("it-IT")===
+    (duplicateSource.description??"").trim().toLocaleLowerCase("it-IT");
+  const submitDuplicate=async(event:FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    if(!duplicateSource || !duplicateCode.trim() || !duplicateDescription.trim() || sameSourceCode || sameSourceDescription)return;
+    setDuplicateLoading(true);
+    setDuplicatePreparationError("");
+    try{
+      const source=await utils.cycle.get.fetch({id:duplicateSource.id});
+      if(!source || source.deleted===1)throw new Error("Il ciclo selezionato non è più disponibile.");
+      const draft=copyCycleAsNamedDraft(source,duplicateCode,duplicateDescription);
+      const calculated=ricalcolaCiclo(draft);
+      await duplicateCycle.mutateAsync({
+        code:calculated.codice,
+        description:calculated.descrizione,
+        client:calculated.cliente,
+        lot:String(calculated.lotto),
+        standardCost:String(calculated.costo_standard),
+        minimumPrice:String(calculated.prezzo_minimo),
+        dataJson:JSON.stringify(serializeCycleDataJson(calculated)),
+      });
+    }catch(error){
+      setDuplicatePreparationError(error instanceof Error?error.message:"Impossibile duplicare il ciclo selezionato.");
+    }finally{
+      setDuplicateLoading(false);
+    }
+  };
   const actions=(c:(typeof groups)[number]["revisions"][number])=>(
     <div className="flex items-center justify-center gap-3">
       {c.deleted!==1?<>
+        <button type="button" className="text-slate-500 hover:text-blue-700"
+          aria-label={`Duplica ciclo dalla revisione ${c.rev}`} title="Duplica ciclo"
+          onClick={()=>openDuplicate(c)}>
+          <Copy size={16}/>
+        </button>
         <Link to={`/cicli/${c.id}`} className="text-slate-500 hover:text-emerald-700"
           title="Apri o modifica revisione" aria-label={`Apri revisione ${c.rev}`}>
           <Pencil size={16}/>
@@ -110,7 +167,14 @@ export default function CicliPage(){
                   <td className="p-3 font-semibold">{last.rev}</td>
                   <td className="p-3 text-right tabular-nums">{last.standardCost!=null?<>€ {fmt(last.standardCost)}<FormulaTooltip label="Costo industriale standard del ciclo" formula={CALCULATION_FORMULAS.cycle.standardCost}/></>:"—"}</td>
                   <td className="p-3 text-right tabular-nums">{last.minimumPrice!=null?<>€ {fmt(last.minimumPrice)}<FormulaTooltip label="Prezzo minimo del ciclo" formula={CALCULATION_FORMULAS.cycle.minimumPrice}/></>:"—"}</td>
-                  <td className="p-3 text-center"><Link to={`/cicli/${last.id}`} className="text-emerald-700 hover:underline">Apri ultima</Link></td>
+                  <td className="p-3 text-center">
+                    <div className="flex items-center justify-center gap-3">
+                      <Link to={`/cicli/${last.id}`} className="text-emerald-700 hover:underline">Apri ultima</Link>
+                      {last.deleted!==1&&<button type="button" className="text-slate-500 hover:text-blue-700"
+                        aria-label={`Duplica ciclo ${last.code??"senza codice"}`} title="Duplica ciclo"
+                        onClick={()=>openDuplicate(last)}><Copy size={16}/></button>}
+                    </div>
+                  </td>
                 </tr>
                 {open&&g.revisions.map(c=><tr key={c.id} className={`border-b border-slate-100 ${c.deleted===1?"bg-red-50":"bg-slate-50/70"}`}>
                   <td className="py-2 pl-11 pr-3 text-slate-500">
@@ -138,5 +202,44 @@ export default function CicliPage(){
         </div>
       </div>
     </div>
+    <Dialog open={duplicateSource!==null} onOpenChange={open=>{
+      if(!open && !duplicateLoading && !duplicateCycle.isPending)setDuplicateSource(null);
+    }}>
+      <DialogContent>
+        <form onSubmit={submitDuplicate} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Duplica ciclo</DialogTitle>
+            <DialogDescription>
+              {duplicateSource&&<>Copia i dati della revisione {duplicateSource.rev??1} di <strong>{duplicateSource.code||"(senza codice)"}</strong>. Inserisci un codice e una descrizione diversi dall’originale.</>}
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <label htmlFor="duplicate-cycle-code" className="mb-1 block text-sm font-medium">Nuovo codice</label>
+            <input id="duplicate-cycle-code" required autoFocus value={duplicateCode}
+              onChange={event=>setDuplicateCode(event.target.value)}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+            {sameSourceCode&&<p className="mt-1 text-xs text-red-700">Il codice deve essere diverso da quello originale.</p>}
+          </div>
+          <div>
+            <label htmlFor="duplicate-cycle-description" className="mb-1 block text-sm font-medium">Nuova descrizione</label>
+            <input id="duplicate-cycle-description" required value={duplicateDescription}
+              onChange={event=>setDuplicateDescription(event.target.value)}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+            {sameSourceDescription&&<p className="mt-1 text-xs text-red-700">La descrizione deve essere diversa da quella originale.</p>}
+          </div>
+          {(duplicatePreparationError||duplicateCycle.error)&&<p role="alert" className="text-sm text-red-700">
+            {duplicatePreparationError||duplicateCycle.error?.message}
+          </p>}
+          <DialogFooter>
+            <button type="button" disabled={duplicateLoading||duplicateCycle.isPending}
+              onClick={()=>setDuplicateSource(null)} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">Annulla</button>
+            <button type="submit" disabled={!duplicateCode.trim()||!duplicateDescription.trim()||sameSourceCode||sameSourceDescription||duplicateLoading||duplicateCycle.isPending}
+              className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+              {duplicateLoading||duplicateCycle.isPending?"Duplicazione…":"Crea duplicato"}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   </Layout>;
 }

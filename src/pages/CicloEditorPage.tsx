@@ -35,7 +35,7 @@ import {
   serializeCycleDataJson,
 } from "@/types/cycle";
 import { ricalcolaCiclo, calcolaCostoRiga, costoRigaGerarchico } from "@/lib/cycle-calculator";
-import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, copyRowAfter, detachFromAssembly, orderedHierarchy, removeLeaf, moveRowAmongSiblings, childrenOf } from "@/lib/cycle-hierarchy";
+import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, copyRowToEnd, detachFromAssembly, hierarchyNumberLabels, orderedHierarchy, removeLeaf, moveRowAmongSiblings, childrenOf } from "@/lib/cycle-hierarchy";
 import { calculateSaleMargins, explainSalePrice, parseMarketPrice } from "@/lib/cycle-price-margins";
 import { copyCycleAsNewDraft } from "@/lib/cycle-copy";
 import { CALCULATION_FORMULAS, cycleCategoryFormula } from "@/lib/calculation-formulas";
@@ -226,6 +226,7 @@ export default function CicloEditorPage() {
   const hasSetupRowsWithReferenceLot = cycleRowLotReferences.some((row) => row.hasSetup);
 
   const treeOrder = useMemo(() => orderedHierarchy(model.righe), [model.righe]);
+  const treeNumbers = useMemo(() => hierarchyNumberLabels(model.righe), [model.righe]);
   const marketPrice = parseMarketPrice(marketPriceInput);
   const marketMargins = marketPrice === null ? null : calculateSaleMargins(marketPrice,simulatedModel.costo_standard,simulatedModel.full_cost);
   const marketExplanation = marketPrice === null ? null : explainSalePrice(marketPrice,simulatedModel.costo_standard,simulatedModel.full_cost);
@@ -387,7 +388,7 @@ export default function CicloEditorPage() {
   const copyRiga = (index:number) => {
     if(isReadOnly && !isNew)return;
     try {
-      const righe=copyRowAfter(model.righe,index);
+      const righe=copyRowToEnd(model.righe,index);
       setModel(prev=>({...prev,righe}));
       setSimulationExcluded(new Set());
       setHasRecalculated(false);
@@ -863,7 +864,7 @@ export default function CicloEditorPage() {
                         <span className="inline-flex items-center gap-1" style={{paddingLeft:Math.max(0,depth-1)*15}}>
                           {canEdit && <GripVertical className="w-3 h-3 text-slate-400" aria-hidden="true"/>}
                           {depth>1&&<CornerDownRight className="w-3 h-3 text-emerald-600" aria-hidden="true"/>}
-                          {i+1} {depth>0&&<span className="text-xs">L{depth}</span>}
+                          {treeNumbers.get(i)??(i+1)} {depth>0&&<span className="text-xs">L{depth}</span>}
                           {canEdit && canAddChild(model.righe,i) && (
                             <button type="button" draggable={false}
                               aria-label={"Aggiungi componente o lavorazione al livello " + (depth+1)}
@@ -886,7 +887,7 @@ export default function CicloEditorPage() {
                           Confezionamento: {r.tempo_confezionamento_min} min/scatola · {r.quantita_per_conf} pz/scatola
                         </span>}
                       </td>
-                      <td className="px-3 py-2 text-right text-xs">{r.nr_componenti}</td>
+                      <td className="px-3 py-2 text-right text-xs">{r.categoria==="LAVORAZIONE INTERNA"&&r.confezionamento===true?"—":r.nr_componenti}</td>
                       <td className={"px-3 py-2 text-right text-xs font-mono "+(cost===0&&simulationExcluded.size?"text-amber-700":"")}>
                         <span className="inline-flex items-center justify-end">{formatMoney(cost)}<FormulaTooltip label={`Costo riga ${r.categoria}`} formula={cycleCategoryFormula(r.categoria)}/></span>
                       </td>
@@ -905,8 +906,8 @@ export default function CicloEditorPage() {
                               onPointerDown={e=>e.stopPropagation()}
                               onDragStart={e=>e.preventDefault()}
                               onClick={e=>{e.stopPropagation();copyRiga(i);}}
-                              aria-label={`Copia riga ${i+1} sotto l'originale`}
-                              title={rowHasChildren?"Copia la riga e tutti i componenti collegati subito sotto":"Copia tutti i dati della riga subito sotto"}
+                              aria-label={`Copia riga ${treeNumbers.get(i)??i+1} in fondo al ciclo`}
+                              title={rowHasChildren?"Copia l'assieme e tutti i componenti collegati in fondo al ciclo":"Copia questa riga in fondo al ciclo come nuova riga di livello 1"}
                               className="p-1.5 text-blue-700 hover:bg-blue-50 rounded">
                               <Copy className="h-4 w-4"/>
                             </button>
@@ -1329,6 +1330,7 @@ export default function CicloEditorPage() {
                   />
                 </div>
                 )}
+                {!(rigaEdit.categoria === "LAVORAZIONE INTERNA" && rigaEdit.confezionamento === true) && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     Nr Componenti
@@ -1342,6 +1344,7 @@ export default function CicloEditorPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                 </div>
+                )}
                 {(rigaEdit.categoria === "LAVORAZIONE INTERNA") && (
                 <label className="col-span-2 md:col-span-3 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
                   <input
@@ -1370,16 +1373,19 @@ export default function CicloEditorPage() {
                 {(rigaEdit.categoria === "LAVORAZIONE INTERNA" && rigaEdit.confezionamento === true) && (
                 <>
                   <div>
-                    <label htmlFor="cycle-package-quantity" className="block text-xs font-medium text-slate-500 mb-1">Qtà per conf.</label>
+                    <label htmlFor="cycle-package-quantity" className="block text-xs font-medium text-slate-500 mb-1">Qtà per conf. *</label>
                     <input
                       id="cycle-package-quantity"
                       type="number"
                       min="1"
                       step="1"
+                      required
+                      aria-required="true"
                       value={rigaEdit.quantita_per_conf ?? 0}
                       onChange={(e) => handleRigaChange("quantita_per_conf", parseFloat(e.target.value) || 0)}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                     />
+                    <p className="mt-1 text-[11px] text-slate-500">Obbligatoria: il tempo per pezzo si calcola dividendo i minuti per scatola per questa quantità.</p>
                   </div>
                   <div>
                     <div className="mb-1 flex items-center gap-1">
