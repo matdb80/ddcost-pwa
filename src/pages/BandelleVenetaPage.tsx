@@ -1,12 +1,34 @@
 import Layout from "@/components/Layout";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useBlocker } from "react-router";
 import { Calculator, AlertCircle } from "lucide-react";
 
 export default function BandelleVenetaPage() {
   const [macro, setMacro] = useState("");
+  const [quantity,setQuantity]=useState("1");
+  const hasUnsavedInput=Boolean(macro)||quantity!=="1";
+  const blocker=useBlocker(({currentLocation,nextLocation})=>
+    hasUnsavedInput && (currentLocation.pathname!==nextLocation.pathname || currentLocation.search!==nextLocation.search)
+  );
+  useEffect(()=>{
+    if(!hasUnsavedInput)return;
+    const handler=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};
+    window.addEventListener("beforeunload",handler);
+    return()=>window.removeEventListener("beforeunload",handler);
+  },[hasUnsavedInput]);
 
   return (
     <Layout>
+      {blocker.state==="blocked" && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4">
+        <div role="dialog" aria-modal="true" aria-labelledby="bandelle-veneta-leave-title" className="w-full max-w-lg space-y-4 rounded-xl bg-white p-6 shadow-2xl">
+          <h2 id="bandelle-veneta-leave-title" className="text-lg font-semibold text-slate-900">Vuoi uscire dal calcolatore?</h2>
+          <p className="text-sm text-slate-700">La macro-categoria e la quantità inserite non sono salvate. Puoi restare oppure uscire e perderle.</p>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" onClick={()=>blocker.proceed()} className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700">Esci senza salvare</button>
+            <button type="button" onClick={()=>blocker.reset()} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">Continua qui</button>
+          </div>
+        </div>
+      </div>}
       <div className="max-w-4xl mx-auto">
         <h2 className="text-lg font-semibold text-slate-800 mb-4">
           Bandelle alla veneta Giotto Plus
@@ -51,15 +73,16 @@ export default function BandelleVenetaPage() {
               <input
                 type="number"
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                defaultValue={1}
+                value={quantity}
+                onChange={(e)=>setQuantity(e.target.value)}
               />
             </div>
           </div>
           <div className="mt-4 flex gap-2">
-            <button className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
+            <button type="button" className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
               Calcola prezzo
             </button>
-            <button className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors">
+            <button type="button" onClick={()=>{setMacro("");setQuantity("1");}} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors">
               Clear
             </button>
           </div>

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
-import { Navigate, Link } from "react-router";
+import { Navigate, Link, useBlocker } from "react-router";
 import {
   Dialog,
   DialogContent,
@@ -105,6 +105,17 @@ export default function FeedbackAdminPage() {
     { enabled: detailId !== null }
   );
   const settingsQuery = trpc.feedback.getSettings.useQuery();
+  const threshold=settingsQuery.data?.releaseThreshold??10;
+  const hasUnsavedThreshold=settingsOpen&&newThreshold!==threshold;
+  const blocker=useBlocker(({currentLocation,nextLocation})=>
+    hasUnsavedThreshold && (currentLocation.pathname!==nextLocation.pathname || currentLocation.search!==nextLocation.search)
+  );
+  useEffect(()=>{
+    if(!hasUnsavedThreshold)return;
+    const handler=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};
+    window.addEventListener("beforeunload",handler);
+    return()=>window.removeEventListener("beforeunload",handler);
+  },[hasUnsavedThreshold]);
 
   const utils = trpc.useUtils();
   const updateMutation = trpc.feedback.updateStatus.useMutation({
@@ -125,6 +136,12 @@ export default function FeedbackAdminPage() {
   const exportMutation = trpc.feedback.export.useMutation();
   const recordExportMutation = trpc.feedback.recordExport.useMutation();
 
+  const closeSettings=()=>{
+    if(hasUnsavedThreshold&&!window.confirm("La soglia modificata non è stata salvata. Chiudere e scartare la modifica?"))return;
+    if(hasUnsavedThreshold)setNewThreshold(threshold);
+    setSettingsOpen(false);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -138,7 +155,6 @@ export default function FeedbackAdminPage() {
   }
 
   const stats = statsQuery.data;
-  const threshold = settingsQuery.data?.releaseThreshold ?? 10;
   const pending = stats?.pendingForRelease ?? 0;
   const thresholdReached = pending >= threshold;
 
@@ -204,7 +220,7 @@ export default function FeedbackAdminPage() {
           <p className="text-sm text-slate-500">Gestione ticket di bug, miglioramenti e nuove funzioni</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => { setNewThreshold(threshold); setSettingsOpen(true); }}>
+          <Button variant="outline" size="sm" disabled={settingsQuery.isLoading} onClick={() => { setNewThreshold(threshold); setSettingsOpen(true); }}>
             <Settings className="w-4 h-4 mr-1" />
             Soglia: {threshold}
           </Button>
@@ -543,7 +559,17 @@ export default function FeedbackAdminPage() {
       </Dialog>
 
       {/* Settings Dialog */}
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+      {blocker.state==="blocked" && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4">
+        <div role="dialog" aria-modal="true" aria-labelledby="feedback-settings-leave-title" className="w-full max-w-lg space-y-4 rounded-xl bg-white p-6 shadow-2xl">
+          <h2 id="feedback-settings-leave-title" className="text-lg font-semibold text-slate-900">Modifica non salvata</h2>
+          <p className="text-sm text-slate-700">La soglia di release è stata modificata ma non salvata.</p>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" onClick={()=>blocker.proceed()} className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700">Esci senza salvare</button>
+            <button type="button" onClick={()=>blocker.reset()} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">Continua a modificare</button>
+          </div>
+        </div>
+      </div>}
+      <Dialog open={settingsOpen} onOpenChange={(open)=>open?setSettingsOpen(true):closeSettings()}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Configurazione soglia release</DialogTitle>
@@ -560,7 +586,7 @@ export default function FeedbackAdminPage() {
               />
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setSettingsOpen(false)}>Annulla</Button>
+              <Button variant="outline" onClick={closeSettings}>Annulla</Button>
               <Button
                 className="bg-emerald-600 hover:bg-emerald-700"
                 onClick={() => updateSettingsMutation.mutate({ releaseThreshold: newThreshold })}

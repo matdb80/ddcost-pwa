@@ -1,5 +1,6 @@
 import Layout from "@/components/Layout";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useBlocker } from "react-router";
 import { Calculator, Copy } from "lucide-react";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { nearestListedCollar, quoteBandellaT, type TKind, type TPosition, type TRequest, type TResponse, PRICES } from "@/lib/bandelle-t-listino";
@@ -22,6 +23,16 @@ export default function BandelleTPage() {
   const [req,setReq] = useState<TRequest>(initial);
   const [response,setResponse] = useState<TResponse|null>(null);
   const [message,setMessage] = useState("");
+  const hasUnsavedInput=JSON.stringify(req)!==JSON.stringify(initial)||response!==null;
+  const blocker=useBlocker(({currentLocation,nextLocation})=>
+    hasUnsavedInput && (currentLocation.pathname!==nextLocation.pathname || currentLocation.search!==nextLocation.search)
+  );
+  useEffect(()=>{
+    if(!hasUnsavedInput)return;
+    const handler=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};
+    window.addEventListener("beforeunload",handler);
+    return()=>window.removeEventListener("beforeunload",handler);
+  },[hasUnsavedInput]);
   const collarRows = PRICES[req.kind];
   const minCollar = collarRows[0].collo;
   const maxCollar = collarRows[collarRows.length-1].collo;
@@ -64,6 +75,16 @@ export default function BandelleTPage() {
     void navigator.clipboard.writeText(text).then(()=>setMessage("Riepilogo copiato."),()=>setMessage("Copia non riuscita."));
   };
   return <Layout>
+    {blocker.state==="blocked" && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="bandelle-t-leave-title" className="w-full max-w-lg space-y-4 rounded-xl bg-white p-6 shadow-2xl">
+        <h2 id="bandelle-t-leave-title" className="text-lg font-semibold text-slate-900">Vuoi uscire dal calcolatore?</h2>
+        <p className="text-sm text-slate-700">I dati inseriti e il risultato del calcolo non sono salvati. Puoi restare oppure uscire e perderli.</p>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={()=>blocker.proceed()} className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700">Esci senza salvare</button>
+          <button type="button" onClick={()=>blocker.reset()} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">Continua qui</button>
+        </div>
+      </div>
+    </div>}
     <div className="max-w-5xl mx-auto pb-10 space-y-5">
       <div>
         <h2 className="text-lg font-semibold text-slate-800">Bandelle a T — Listino Smeralda</h2>
