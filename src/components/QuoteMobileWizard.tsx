@@ -36,6 +36,8 @@ type Props={
   busy:boolean;
   unsavedChanges:boolean;
   onUnsavedLocalChange:(dirty:boolean)=>void;
+  hideDocumentTotalInPdf:boolean;
+  onHideDocumentTotalInPdfChange:(hide:boolean)=>void;
   priceProductIndex:number;
   onUpdate:(key:string,value:unknown,economic?:boolean)=>void;
   onUpdateProduct:(index:number,key:string,value:unknown)=>void;
@@ -58,6 +60,7 @@ export default function QuoteMobileWizard(props:Props){
     doc,preview,locked,isNew,numericId,isSavedDraft,groups,loadingGroups,error,draftMessage,
     copyMessage,busy,unsavedChanges,onUnsavedLocalChange,priceProductIndex,onUpdate,onUpdateProduct,
     onAddProduct,onCopyProductAndScaleLot,onRemoveProduct,onCreateGroup,onPriceProductIndex,onListinoDiscount,
+    hideDocumentTotalInPdf,onHideDocumentTotalInPdfChange,
     onSave,onSaveDraft,onCopy,onExportPdf,onEdit,onUpgrade,onDesktop,
   }=props;
   const [advanced,setAdvanced]=useState(false);
@@ -275,6 +278,12 @@ export default function QuoteMobileWizard(props:Props){
               className={actionClass+" w-full border border-slate-300 text-slate-700 disabled:opacity-40"}>
               <Copy size={18}/> Copia per email / documento
             </button>
+            <label className="flex min-h-12 items-center gap-3 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-700">
+              <input type="checkbox" checked={hideDocumentTotalInPdf}
+                onChange={e=>onHideDocumentTotalInPdfChange(e.target.checked)}
+                className="h-5 w-5 shrink-0 accent-emerald-600"/>
+              Nascondi totale documento nel PDF cliente
+            </label>
             <button type="button" onClick={onExportPdf} disabled={busy||!canShare}
               className={actionClass+" w-full border border-slate-300 text-slate-700 disabled:opacity-40"}>
               <FileText size={18}/> Esporta PDF cliente

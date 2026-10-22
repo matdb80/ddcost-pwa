@@ -124,6 +124,7 @@ export default function PreventivoEditorPage() {
   const [readOnly, setReadOnly] = useState(!isNew);
   const [dirtyCalculation, setDirtyCalculation] = useState(false);
   const [listinoModified, setListinoModified] = useState(false);
+  const [hideDocumentTotalInPdf, setHideDocumentTotalInPdf] = useState(false);
   const [priceProductIndex, setPriceProductIndex] = useState(0);
   const [error, setError] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
@@ -305,7 +306,9 @@ export default function PreventivoEditorPage() {
     setError("");
     try {
       const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
-      openCommercialOfferPrintWindow(buildOneTimeQuotePrintHtml(computed,numericId || undefined));
+      openCommercialOfferPrintWindow(buildOneTimeQuotePrintHtml(computed,numericId || undefined,undefined,{
+        hideDocumentTotal: hideDocumentTotalInPdf,
+      }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Impossibile esportare il PDF cliente");
     }
@@ -441,6 +444,8 @@ export default function PreventivoEditorPage() {
           busy={draftSaving||create.isPending||revise.isPending||finalizeDraftMutation.isPending}
           unsavedChanges={unsavedChanges}
           onUnsavedLocalChange={setWizardLocalDirty}
+          hideDocumentTotalInPdf={hideDocumentTotalInPdf}
+          onHideDocumentTotalInPdfChange={setHideDocumentTotalInPdf}
           priceProductIndex={priceProductIndex}
           onUpdate={update} onUpdateProduct={updateProduct}
           onAddProduct={()=>update("prodotti",[...doc.prodotti,blankProduct()],true)}
@@ -500,6 +505,11 @@ export default function PreventivoEditorPage() {
             className="border border-emerald-600 text-emerald-700 px-4 py-2 rounded flex gap-2 items-center">
             <Copy size={16}/> Copia per email / documento
           </button>
+          <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium">
+            <input type="checkbox" className="h-4 w-4 accent-emerald-600"
+              checked={hideDocumentTotalInPdf} onChange={e=>setHideDocumentTotalInPdf(e.target.checked)}/>
+            Nascondi totale documento nel PDF cliente
+          </label>
           <button type="button" onClick={exportCustomerPdf} disabled={!canExportPdf}
             className="border border-slate-300 text-slate-700 disabled:opacity-40 px-4 py-2 rounded flex gap-2 items-center"
             title="Esporta il documento con i soli dati destinati al cliente">

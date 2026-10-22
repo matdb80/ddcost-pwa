@@ -14,6 +14,7 @@ export function buildOneTimeQuotePrintHtml(
   quote: QuoteDocument,
   quoteId?: number,
   logoUrl = "/images/ddf-logo.png",
+  options: { hideDocumentTotal?: boolean } = {},
 ): string {
   const products = Array.isArray(quote.prodotti) ? quote.prodotti as Product[] : [];
   const rows = products.map((product, index) => {
@@ -29,6 +30,9 @@ export function buildOneTimeQuotePrintHtml(
   const total = storedTotal == null
     ? products.reduce((sum, product) => sum + number(product.totale_finale ?? product.totale), 0)
     : number(storedTotal);
+  const totalBlock = options.hideDocumentTotal
+    ? ""
+    : `<div class="total">Totale netto preventivo: € ${money(total)}</div>`;
   const client = escapeHtml(quote.cliente || "");
   const reference = escapeHtml(quote.riferimento_preventivo || "");
   const title = escapeHtml(quote.titolo_preventivo || "Preventivo una tantum");
@@ -72,7 +76,7 @@ export function buildOneTimeQuotePrintHtml(
 </section>
 <h2>Prodotti e prezzi netti</h2>
 <table><thead><tr><th class="num">#</th><th>Prodotto</th><th class="num">Quantità</th><th class="num">Prezzo netto unitario</th><th class="num">Totale netto</th></tr></thead><tbody>${rows}</tbody></table>
-<div class="total">Totale netto preventivo: € ${money(total)}</div>
+${totalBlock}
 ${noteBlock}
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>
 </body></html>`;

@@ -52,4 +52,21 @@ describe("customer PDF for one-time quotes",()=>{
     expect(html).toContain("/logo?name=&lt;x&gt;");
     expect(html).not.toContain("<script>alert");
   });
+
+  it("can omit the document total while keeping each product line total",()=>{
+    const html=buildOneTimeQuotePrintHtml({
+      prodotti:[{
+        codice:"A-101",
+        descrizione:"Maniglia",
+        quantita:10,
+        prezzo_netto_unitario_finale:12.34,
+        totale_finale:123.4,
+      }],
+      totale_finale:123.4,
+    },4330015,undefined,{hideDocumentTotal:true});
+
+    expect(html).not.toContain("Totale netto preventivo:");
+    expect(html).toContain("<th class=\"num\">Totale netto</th>");
+    expect(html).toContain("<td class=\"num\">€ 123,40</td>");
+  });
 });
