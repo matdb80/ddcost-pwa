@@ -55,7 +55,7 @@ describe("Bandelle dritte Giotto Plus — tabella e supplementi del 24/10/2026",
 
   it("non applica il listino delle dritte ad altre famiglie o tipologie", () => {
     expect(() => calculate({ kind: "snodate" })).toThrow(/listino.*non è ancora definito/);
-    expect(() => calculate({ kind: "dritte-con-sormonto" })).toThrow(/listino.*non è ancora definito/);
+    expect(() => calculate({ kind: "dritte-con-sormonto" })).toThrow(/tipologie ammesse/);
     expect(() => calculate({ typology: "occhio-centrale-pvc" })).toThrow(/tipologie ammesse/);
     expect(() => calculate({ typology: "" })).toThrow(/tipologie ammesse/);
   });
@@ -85,5 +85,66 @@ describe("Bandelle dritte Giotto Plus — tabella e supplementi del 24/10/2026",
 
   it.each([-0.5, 0.25, 0.75, NaN, Infinity])("rifiuta aumenti di spessore non definiti: %s mm", (extraThicknessMm) => {
     expect(() => calculate({ extraThicknessMm })).toThrow(/zero o un multiplo di 0,5 mm/);
+  });
+});
+
+const calculateOverlap = (changes: Partial<BandellaVenetaRequest> = {}) => quoteBandellaVeneta({
+  kind: "dritte-con-sormonto",
+  typology: "occhio-decentrato",
+  screwHoles: 3,
+  quantity: 25,
+  ...changes,
+});
+
+describe("Bandelle dritte con sormonto — immagine image(9).png del 24/10/2026", () => {
+  it.each([
+    [3, 25, 7.21, 180.25],
+    [4, 15, 8.30, 124.50],
+    [5, 35, 5.54, 193.90],
+    [6, 50, 5.14, 257],
+    [7, 70, 4.85, 339.50],
+    [8, 90, 4.86, 437.40],
+    [9, 4, 15.37, 61.48],
+    [10, 20, 10.71, 214.20],
+    [11, 100, 5.29, 529],
+    [12, 60, 5.99, 359.40],
+  ])("quota %i fori e %i pezzi a %f euro, totale %f", (screwHoles, quantity, unit, total) => {
+    expect(calculateOverlap({ screwHoles, quantity })).toMatchObject({ base: unit, supplements: 0, unit, total });
+  });
+
+  it.each(["occhio-decentrato", "occhio-centrale", "occhio-zancato"])("usa il listino dedicato per %s", (typology) => {
+    expect(calculateOverlap({ typology })).toMatchObject({ typology, tier: "21–30", base: 7.21, unit: 7.21, total: 180.25 });
+  });
+
+  it.each([[1, 13.05], [2, 26.10], [3, 39.15]])("applica la fascia minima a %i pezzi, totale %f", (quantity, total) => {
+    expect(calculateOverlap({ quantity })).toMatchObject({ tier: "4–10", minimumTierApplied: true, unit: 13.05, total });
+  });
+
+  it("mantiene separati i listini e i numeri di fori delle due categorie", () => {
+    expect(calculate().base).toBe(6.46);
+    expect(calculateOverlap().base).toBe(7.21);
+    expect(calculateOverlap({ screwHoles: 4 }).base).toBe(7.43);
+    expect(() => calculate({ screwHoles: 4 })).toThrow(/numero di fori vite/);
+    expect(calculate({ screwHoles: 2 }).base).toBe(6.27);
+    expect(() => calculateOverlap({ screwHoles: 2 })).toThrow(/numero di fori vite/);
+    expect(() => calculateOverlap({ typology: "occhio-decentrato-legno" })).toThrow(/tipologie ammesse/);
+  });
+
+  it("somma i quattro supplementi per pezzo al prezzo della tabella sormonto", () => {
+    const result = calculateOverlap({ weldedEyes: true, extraThicknessMm: 0.5, reinforcement: true, nonStandardDiameter: true });
+    expect(result).toMatchObject({ base: 7.21, supplements: 6.50, unit: 13.71, total: 342.75 });
+    expect(result.additions.map((addition) => addition.euro)).toEqual([1.50, 1, 2, 2]);
+  });
+
+  it("calcola l'aumento dello spessore e gli occhi saldati anche sotto 4 pezzi", () => {
+    expect(calculateOverlap({ quantity: 2, extraThicknessMm: 1, weldedEyes: true })).toMatchObject({ base: 13.05, supplements: 3.50, unit: 16.55, total: 33.10 });
+  });
+
+  it("rifiuta combinazioni senza prezzo e spessori non definiti", () => {
+    expect(() => calculateOverlap({ screwHoles: 13 })).toThrow(/numero di fori vite/);
+    expect(() => calculateOverlap({ screwHoles: 3.5 })).toThrow(/numero di fori vite/);
+    expect(() => calculateOverlap({ quantity: 101 })).toThrow(/quantità intera da 1 a 100/);
+    expect(() => calculateOverlap({ quantity: 0 })).toThrow(/quantità intera da 1 a 100/);
+    expect(() => calculateOverlap({ extraThicknessMm: 0.25 })).toThrow(/multiplo di 0,5 mm/);
   });
 });

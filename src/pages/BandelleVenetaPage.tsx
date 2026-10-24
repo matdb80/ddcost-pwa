@@ -5,13 +5,10 @@ import { useBlocker } from "react-router";
 import { Calculator, AlertCircle } from "lucide-react";
 import {
   BANDELLE_VENETA_TYPES,
-  BANDELLE_DRITTE_TYPOLOGIES,
-  BANDELLE_DRITTE_VARIANTS,
-  BANDELLE_DRITTE_PRICES,
-  BANDELLE_DRITTE_SUPPLEMENTS,
+  BANDELLE_VENETA_CONFIGURATIONS,
   quoteBandellaVeneta,
   type BandellaVenetaType,
-  type BandellaDrittaTypology,
+  type BandellaVenetaTypology,
   type BandellaVenetaQuote,
 } from "@/lib/bandelle-veneta";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
@@ -24,7 +21,7 @@ const inputClass = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm 
 
 export default function BandelleVenetaPage() {
   const [bandellaType, setBandellaType] = useState<BandellaVenetaType | "">("");
-  const [straightTypology, setStraightTypology] = useState<BandellaDrittaTypology | "">("");
+  const [typology, setTypology] = useState<BandellaVenetaTypology | "">("");
   const [screwHoles, setScrewHoles] = useState("");
   const [quantity, setQuantity] = useState("");
   const [weldedEyes, setWeldedEyes] = useState(false);
@@ -33,7 +30,10 @@ export default function BandelleVenetaPage() {
   const [nonStandardDiameter, setNonStandardDiameter] = useState(false);
   const [response, setResponse] = useState<BandellaVenetaQuote | null>(null);
   const [message, setMessage] = useState("");
-  const hasUnsavedInput = Boolean(bandellaType || straightTypology || screwHoles || quantity)
+  const configuration = bandellaType ? BANDELLE_VENETA_CONFIGURATIONS[bandellaType] : undefined;
+  const supplementRates = configuration?.supplements;
+  const priceRows = configuration?.prices;
+  const hasUnsavedInput = Boolean(bandellaType || typology || screwHoles || quantity)
     || weldedEyes || extraThicknessMm !== "0" || reinforcement || nonStandardDiameter;
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
     hasUnsavedInput && (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search),
@@ -58,7 +58,7 @@ export default function BandelleVenetaPage() {
   };
   const reset = () => {
     setBandellaType("");
-    setStraightTypology("");
+    setTypology("");
     setQuantity("");
     resetOptions();
     clearResult();
@@ -72,7 +72,7 @@ export default function BandelleVenetaPage() {
     try {
       setResponse(quoteBandellaVeneta({
         kind: bandellaType,
-        typology: straightTypology,
+        typology,
         screwHoles: Number(screwHoles),
         quantity: Number(quantity),
         weldedEyes,
@@ -117,7 +117,7 @@ export default function BandelleVenetaPage() {
                 value={bandellaType}
                 onChange={(event) => {
                   setBandellaType(event.target.value as BandellaVenetaType | "");
-                  setStraightTypology("");
+                  setTypology("");
                   resetOptions();
                   clearResult();
                 }}
@@ -128,27 +128,27 @@ export default function BandelleVenetaPage() {
                 ))}
               </select>
             </div>
-            {bandellaType === "dritte" && (
+            {configuration && (
               <div>
                 <label htmlFor="bandella-veneta-typology" className="mb-1 block text-sm font-medium text-slate-600">Tipologia</label>
                 <select
                   id="bandella-veneta-typology"
                   className={inputClass}
-                  value={straightTypology}
+                  value={typology}
                   onChange={(event) => {
-                    setStraightTypology(event.target.value as BandellaDrittaTypology | "");
+                    setTypology(event.target.value as BandellaVenetaTypology | "");
                     resetOptions();
                     clearResult();
                   }}
                 >
                   <option value="">Seleziona la tipologia...</option>
-                  {BANDELLE_DRITTE_TYPOLOGIES.map((typology) => (
-                    <option key={typology.value} value={typology.value}>{typology.label}</option>
+                  {configuration.typologies.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
               </div>
             )}
-            {bandellaType === "dritte" && straightTypology && (
+            {priceRows && typology && (
               <>
                 <div>
                   <label htmlFor="bandella-veneta-holes" className="mb-1 block text-sm font-medium text-slate-600">Numero di fori vite</label>
@@ -160,7 +160,7 @@ export default function BandelleVenetaPage() {
                     onChange={(event) => { setScrewHoles(event.target.value); clearResult(); }}
                   >
                     <option value="">Seleziona il numero di fori...</option>
-                    {BANDELLE_DRITTE_PRICES.map((row) => (
+                    {priceRows.map((row) => (
                       <option key={row.screwHoles} value={row.screwHoles}>{row.screwHoles} fori</option>
                     ))}
                   </select>
@@ -186,17 +186,20 @@ export default function BandelleVenetaPage() {
               </>
             )}
           </div>
-          {bandellaType && bandellaType !== "dritte" && (
-            <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">Le opzioni e il listino per questo tipo di bandella sono in preparazione.</p>
+          {bandellaType && !priceRows && (
+            <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+              {configuration
+                ? "Il listino per questo tipo di bandella è da definire."
+                : "Le opzioni e il listino per questo tipo di bandella sono in preparazione."}
+            </p>
           )}
-          {bandellaType === "dritte" && straightTypology && (
-            <>
+          {supplementRates && typology && (
               <fieldset className="mt-5 rounded-lg border border-slate-200 p-3">
                 <legend className="px-1 text-sm font-semibold text-slate-800">Supplementi per pezzo</legend>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={weldedEyes} onChange={(event) => { setWeldedEyes(event.target.checked); clearResult(); }} className="h-4 w-4 accent-emerald-600" />
-                    Occhi saldati (+{prices2(BANDELLE_DRITTE_SUPPLEMENTS.weldedEyes)} €/pz)
+                    Occhi saldati (+{prices2(supplementRates.weldedEyes)} €/pz)
                   </label>
                   <div>
                     <label htmlFor="bandella-veneta-thickness" className="mb-1 block text-sm font-medium text-slate-600">Aumento spessore rispetto allo standard (mm)</label>
@@ -205,32 +208,33 @@ export default function BandelleVenetaPage() {
                       type="number"
                       inputMode="decimal"
                       min={0}
-                      step={BANDELLE_DRITTE_SUPPLEMENTS.extraThicknessStepMm}
+                      step={supplementRates.extraThicknessStepMm}
                       className={inputClass}
                       value={extraThicknessMm}
                       placeholder="0"
                       aria-describedby="bandella-veneta-thickness-help"
                       onChange={(event) => { setExtraThicknessMm(event.target.value); clearResult(); }}
                     />
-                    <p id="bandella-veneta-thickness-help" className="mt-1 text-xs text-slate-500">+{prices2(BANDELLE_DRITTE_SUPPLEMENTS.extraThicknessPerStep)} €/pz ogni 0,5 mm aggiuntivi.</p>
+                    <p id="bandella-veneta-thickness-help" className="mt-1 text-xs text-slate-500">+{prices2(supplementRates.extraThicknessPerStep)} €/pz ogni {supplementRates.extraThicknessStepMm.toLocaleString("it-IT")} mm aggiuntivi.</p>
                   </div>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={reinforcement} onChange={(event) => { setReinforcement(event.target.checked); clearResult(); }} className="h-4 w-4 accent-emerald-600" />
-                    Rinforzo (+{prices2(BANDELLE_DRITTE_SUPPLEMENTS.reinforcement)} €/pz)
+                    Rinforzo (+{prices2(supplementRates.reinforcement)} €/pz)
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={nonStandardDiameter} onChange={(event) => { setNonStandardDiameter(event.target.checked); clearResult(); }} className="h-4 w-4 accent-emerald-600" />
-                    Diametro occhio diverso da Ø12 mm (+{prices2(BANDELLE_DRITTE_SUPPLEMENTS.nonStandardDiameter)} €/pz)
+                    Diametro occhio diverso da Ø12 mm (+{prices2(supplementRates.nonStandardDiameter)} €/pz)
                   </label>
                 </div>
               </fieldset>
-              <div className="mt-4 rounded-lg bg-slate-50 p-3">
-                <h4 className="text-sm font-semibold text-slate-800">Varianti ammesse</h4>
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-                  {BANDELLE_DRITTE_VARIANTS.map((variant) => <li key={variant.value}>{variant.label}</li>)}
-                </ul>
-              </div>
-            </>
+          )}
+          {configuration && typology && (
+            <div className="mt-4 rounded-lg bg-slate-50 p-3">
+              <h4 className="text-sm font-semibold text-slate-800">Varianti ammesse</h4>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                {configuration.variants.map((variant) => <li key={variant.value}>{variant.label}</li>)}
+              </ul>
+            </div>
           )}
           {message && (
             <p role="alert" className="mt-4 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
@@ -238,7 +242,7 @@ export default function BandelleVenetaPage() {
             </p>
           )}
           <div className="mt-4 flex gap-2">
-            <button type="submit" disabled={bandellaType !== "dritte" || !straightTypology || !screwHoles || !quantity} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="submit" disabled={!priceRows || !supplementRates || !typology || !screwHoles || !quantity} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
               Calcola prezzo
             </button>
             <button type="button" onClick={reset} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-200">Azzera</button>

@@ -106,7 +106,7 @@ export const CALCULATION_FORMULAS = {
   },
   bandelleVeneta: {
     basePrice:
-      "Prezzo base unitario = importo della tabella Bandelle dritte all'incrocio tra numero di fori vite e fascia della quantità. Per 1–3 pezzi si usa il prezzo unitario della fascia 4–10. Il prezzo della fascia si applica a tutti i pezzi del lotto.",
+      "Prezzo base unitario = importo della tabella del tipo di bandella selezionato all'incrocio tra numero di fori vite e fascia della quantità. Per 1–3 pezzi si usa il prezzo unitario della fascia 4–10. Il prezzo della fascia si applica a tutti i pezzi del lotto.",
     additions:
       "Supplementi per pezzo = somma delle modifiche selezionate: occhi saldati 1,50 €; aumento dello spessore 1,00 € ogni 0,5 mm rispetto allo standard; rinforzo 2,00 €; diametro occhio diverso da Ø12 mm 2,00 €.",
     unitPrice:
