@@ -148,3 +148,57 @@ describe("Bandelle dritte con sormonto — immagine image(9).png del 24/10/2026"
     expect(() => calculateOverlap({ extraThicknessMm: 0.25 })).toThrow(/multiplo di 0,5 mm/);
   });
 });
+
+const calculateZancate = (changes: Partial<BandellaVenetaRequest> = {}) => quoteBandellaVeneta({
+  kind: "dritte-zancate",
+  typology: "zanca-filo-legno",
+  screwHoles: 5,
+  quantity: 25,
+  ...changes,
+});
+
+describe("Bandelle dritte zancate — immagine image(10).png del 24/10/2026", () => {
+  it.each([
+    [5, 25, 6.63, 165.75],
+    [6, 15, 7.77, 116.55],
+    [7, 35, 5.10, 178.50],
+    [8, 50, 4.73, 236.50],
+    [9, 70, 4.46, 312.20],
+    [10, 90, 4.47, 402.30],
+    [11, 4, 16.84, 67.36],
+    [12, 20, 11.06, 221.20],
+    [13, 100, 4.87, 487],
+    [14, 60, 5.51, 330.60],
+    [15, 81, 4.89, 396.09],
+  ])("quota %i fori e %i pezzi a %f euro, totale %f", (screwHoles, quantity, unit, total) => {
+    expect(calculateZancate({ screwHoles, quantity })).toMatchObject({ base: unit, supplements: 0, unit, total });
+  });
+
+  it.each(["zanca-filo-legno", "zanca-90-legno", "zanca-filo-pvc", "zanca-90-pvc"])("usa il listino zancate per %s", (typology) => {
+    expect(calculateZancate({ typology })).toMatchObject({ typology, tier: "21–30", base: 6.63, unit: 6.63, total: 165.75 });
+  });
+
+  it.each([[1, 13.57], [2, 27.14], [3, 40.71]])("applica la fascia minima a %i pezzi, totale %f", (quantity, total) => {
+    expect(calculateZancate({ quantity })).toMatchObject({ tier: "4–10", minimumTierApplied: true, unit: 13.57, total });
+  });
+
+  it("mantiene separati listini, tipologie e numeri di fori tra le categorie", () => {
+    expect(calculateZancate().base).toBe(6.63);
+    expect(calculateOverlap({ screwHoles: 5 }).base).toBe(5.90);
+    expect(() => calculateZancate({ screwHoles: 4 })).toThrow(/numero di fori vite/);
+    expect(() => calculateZancate({ typology: "occhio-zancato" })).toThrow(/tipologie ammesse/);
+    expect(() => calculateOverlap({ typology: "zanca-filo-legno" })).toThrow(/tipologie ammesse/);
+  });
+
+  it("somma tutti i supplementi confermati al prezzo della tabella zancate", () => {
+    const result = calculateZancate({ weldedEyes: true, extraThicknessMm: 0.5, reinforcement: true, nonStandardDiameter: true });
+    expect(result).toMatchObject({ base: 6.63, supplements: 6.50, unit: 13.13, total: 328.25 });
+    expect(result.additions.map((addition) => addition.euro)).toEqual([1.50, 1, 2, 2]);
+  });
+
+  it("rifiuta quantità e spessori non definiti", () => {
+    expect(() => calculateZancate({ quantity: 101 })).toThrow(/quantità intera da 1 a 100/);
+    expect(() => calculateZancate({ quantity: 0 })).toThrow(/quantità intera da 1 a 100/);
+    expect(() => calculateZancate({ extraThicknessMm: 0.25 })).toThrow(/multiplo di 0,5 mm/);
+  });
+});

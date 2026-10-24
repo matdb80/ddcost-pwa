@@ -42,8 +42,25 @@ export const BANDELLE_DRITTE_CON_SORMONTO_VARIANTS = [
   { value: "posizione-occhio", label: "Variazione della posizione dell'occhio (decentratura a misura)" },
 ] as const;
 
+// Tipologie e varianti delle dritte zancate, definite da Matteo il 24/10/2026.
+export const BANDELLE_DRITTE_ZANCATE_TYPOLOGIES = [
+  { value: "zanca-filo-legno", label: "Zanca a filo LEGNO" },
+  { value: "zanca-90-legno", label: "Zanca a 90° LEGNO" },
+  { value: "zanca-filo-pvc", label: "Zanca a filo PVC" },
+  { value: "zanca-90-pvc", label: "Zanca a 90° PVC" },
+] as const;
+
+export const BANDELLE_DRITTE_ZANCATE_VARIANTS = [
+  { value: "numero-fori-vite", label: "Variazione del numero di fori vite" },
+  { value: "posizione-fori-vite", label: "Variazione della posizione dei fori vite" },
+  { value: "lunghezza-totale", label: "Lunghezza totale" },
+  { value: "applicazione-sormonto", label: "Applicazione del sormonto" },
+  { value: "variazione-zanca", label: "Variazione della zanca (max 60 mm)" },
+] as const;
+
 export type BandellaVenetaTypology = BandellaDrittaTypology
-  | (typeof BANDELLE_DRITTE_CON_SORMONTO_TYPOLOGIES)[number]["value"];
+  | (typeof BANDELLE_DRITTE_CON_SORMONTO_TYPOLOGIES)[number]["value"]
+  | (typeof BANDELLE_DRITTE_ZANCATE_TYPOLOGIES)[number]["value"];
 
 type BandellaVenetaPriceRow = {
   screwHoles: number;
@@ -114,6 +131,26 @@ export const BANDELLE_DRITTE_CON_SORMONTO_PRICES = [
   { screwHoles: 12, prices: [16.25, 11.59, 6.88, 6.47, 5.99, 5.55, 5.44] },
 ] as const satisfies readonly BandellaVenetaPriceRow[];
 
+/**
+ * Listino dedicato alle bandelle dritte zancate, immagine "image(10).png"
+ * fornita da Matteo il 24/10/2026. Prezzi unitari in euro per 5–15 fori vite.
+ * Le sette colonne seguono BANDELLE_VENETA_LOT_TIERS. Si usano i valori esatti
+ * della tabella, anche quando non crescono con il numero di fori.
+ */
+export const BANDELLE_DRITTE_ZANCATE_PRICES = [
+  { screwHoles: 5, prices: [13.57, 7.48, 6.63, 5.86, 4.43, 4.31, 3.43] },
+  { screwHoles: 6, prices: [14.05, 7.77, 6.84, 6.04, 4.56, 4.44, 3.52] },
+  { screwHoles: 7, prices: [14.30, 8.21, 5.43, 5.10, 4.70, 4.32, 4.22] },
+  { screwHoles: 8, prices: [14.86, 8.77, 5.46, 5.13, 4.73, 4.36, 4.25] },
+  { screwHoles: 9, prices: [15.50, 9.41, 5.58, 5.23, 4.85, 4.46, 4.37] },
+  { screwHoles: 10, prices: [15.75, 9.66, 5.69, 5.35, 4.94, 4.57, 4.47] },
+  { screwHoles: 11, prices: [16.84, 10.33, 5.79, 5.46, 5.06, 4.67, 4.58] },
+  { screwHoles: 12, prices: [18.03, 11.06, 5.95, 5.62, 5.21, 4.82, 4.72] },
+  { screwHoles: 13, prices: [19.29, 11.83, 6.14, 5.80, 5.36, 4.96, 4.87] },
+  { screwHoles: 14, prices: [20.64, 12.66, 6.33, 5.95, 5.51, 5.11, 5.00] },
+  { screwHoles: 15, prices: [22.08, 13.54, 6.79, 6.20, 5.80, 5.30, 4.89] },
+] as const satisfies readonly BandellaVenetaPriceRow[];
+
 export const BANDELLE_DRITTE_SUPPLEMENTS = {
   weldedEyes: 1.50,
   extraThicknessStepMm: 0.5,
@@ -124,6 +161,15 @@ export const BANDELLE_DRITTE_SUPPLEMENTS = {
 
 // Supplementi confermati separatamente per le bandelle dritte con sormonto.
 export const BANDELLE_DRITTE_CON_SORMONTO_SUPPLEMENTS = {
+  weldedEyes: 1.50,
+  extraThicknessStepMm: 0.5,
+  extraThicknessPerStep: 1,
+  reinforcement: 2,
+  nonStandardDiameter: 2,
+} as const;
+
+// Supplementi confermati separatamente per le bandelle dritte zancate.
+export const BANDELLE_DRITTE_ZANCATE_SUPPLEMENTS = {
   weldedEyes: 1.50,
   extraThicknessStepMm: 0.5,
   extraThicknessPerStep: 1,
@@ -143,6 +189,12 @@ export const BANDELLE_VENETA_CONFIGURATIONS: Partial<Record<BandellaVenetaType, 
     variants: BANDELLE_DRITTE_CON_SORMONTO_VARIANTS,
     prices: BANDELLE_DRITTE_CON_SORMONTO_PRICES,
     supplements: BANDELLE_DRITTE_CON_SORMONTO_SUPPLEMENTS,
+  },
+  "dritte-zancate": {
+    typologies: BANDELLE_DRITTE_ZANCATE_TYPOLOGIES,
+    variants: BANDELLE_DRITTE_ZANCATE_VARIANTS,
+    prices: BANDELLE_DRITTE_ZANCATE_PRICES,
+    supplements: BANDELLE_DRITTE_ZANCATE_SUPPLEMENTS,
   },
 };
 
