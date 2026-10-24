@@ -104,6 +104,16 @@ export const CALCULATION_FORMULAS = {
     materialCost:
       "Costo materiale €/pz = peso teorico kg/pezzo × costo materiale €/kg. Non comprende fori, sagome, sfridi o lavorazioni aggiuntive.",
   },
+  bandelleVeneta: {
+    basePrice:
+      "Prezzo base unitario = importo della tabella Bandelle dritte all'incrocio tra numero di fori vite e fascia della quantità. Per 1–3 pezzi si usa il prezzo unitario della fascia 4–10. Il prezzo della fascia si applica a tutti i pezzi del lotto.",
+    additions:
+      "Supplementi per pezzo = somma delle modifiche selezionate: occhi saldati 1,50 €; aumento dello spessore 1,00 € ogni 0,5 mm rispetto allo standard; rinforzo 2,00 €; diametro occhio diverso da Ø12 mm 2,00 €.",
+    unitPrice:
+      "Prezzo di vendita unitario = prezzo base della tabella + somma dei supplementi per pezzo selezionati.",
+    lotTotal:
+      "Totale lotto = prezzo di vendita unitario, comprensivo dei supplementi, × quantità effettivamente acquistata. Anche per 1–3 pezzi si moltiplica per la quantità richiesta. Gli importi sono calcolati in centesimi e mostrati con due decimali.",
+  },
   bandelleT: {
     basePrice:
       "Prezzo base €/pz = prezzo del listino Smeralda per tipologia, misura di collo più vicina a quella inserita e fascia di quantità. In caso di pari distanza viene usata la misura superiore. Fuori dall'intervallo pubblicato si usa il limite più vicino come prezzo indicativo, da verificare. Il valore del listino già include l'aumento del 4,5% indicato dal 01/03/2026.",
