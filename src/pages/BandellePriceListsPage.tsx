@@ -3,37 +3,41 @@ import { Link, useBlocker } from "react-router";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
-import { BANDELLE_VENETA_TYPES, BANDELLE_VENETA_CONFIGURATIONS, BANDELLE_VENETA_LOT_TIERS, type BandellaVenetaType, type BandellaVenetaPriceRow } from "@/lib/bandelle-veneta";
-import { applyBandellePriceOperations, bandellaCellId, bandellaRowKey, type BandellePriceBook, type BandellePriceOperation } from "@/lib/bandelle-pricebook";
+import { PRICE_LIST_CATALOGS, selectablePriceCells, type PriceListFamily } from "@/lib/price-list-catalog";
+import type { PriceBook, PriceOperation } from "@/lib/percentage-pricebook";
 
-const money = (cents: number) => `${(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const button = "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-40";
-type Snapshot = { revision: number; prices: BandellePriceBook; author: string; createdAt: string };
+type Snapshot = { revision: number; prices: PriceBook; author: string; createdAt: string };
 
-export default function BandellePriceListsPage() {
+export default function BandellePriceListsPage({ family = "veneta" }: { family?: PriceListFamily }) {
+  const catalog = PRICE_LIST_CATALOGS[family];
+  const api = family === "t" ? trpc.bandelleTPrice : trpc.bandellePrice;
   const { user } = useAuth();
-  const query = trpc.bandellePrice.get.useQuery(undefined, { refetchOnWindowFocus: false });
+  const query = api.get.useQuery(undefined, { refetchOnWindowFocus: false });
   return <Layout><div className="mx-auto max-w-7xl space-y-4">
-    <Link className="text-sm text-emerald-700 underline" to="/bandelle-veneta">← Torna al calcolatore</Link>
-    <h2 className="text-xl font-semibold">Gestione listini · Bandelle Giotto Plus</h2>
+    <Link className="text-sm text-emerald-700 underline" to={catalog.calculatorPath}>← Torna al calcolatore</Link>
+    <h2 className="text-xl font-semibold">Gestione listini · {catalog.title}</h2>
     {query.isFetching ? <p>Caricamento listino…</p> : query.error ? <div role="alert">{query.error.message} <button className={button} onClick={() => void query.refetch()}>Riprova</button></div>
-      : query.data && <PriceEditor key={query.data.revision} snapshot={query.data} canEdit={user?.role === "admin"} reload={() => query.refetch()} />}
+      : query.data && <PriceEditor family={family} key={`${family}-${query.data.revision}`} snapshot={query.data} canEdit={user?.role === "admin"} reload={() => query.refetch()} />}
   </div></Layout>;
 }
 
-function PriceEditor({ snapshot, canEdit, reload }: { snapshot: Snapshot; canEdit: boolean; reload: () => Promise<unknown> }) {
-  const [kind, setKind] = useState<BandellaVenetaType>("dritte");
+function PriceEditor({ snapshot, canEdit, reload, family }: { family: PriceListFamily; snapshot: Snapshot; canEdit: boolean; reload: () => Promise<unknown> }) {
+  const catalog = PRICE_LIST_CATALOGS[family];
+  const api = family === "t" ? trpc.bandelleTPrice : trpc.bandellePrice;
+  const money = (units: number) => `${(units / 10 ** catalog.decimals).toLocaleString("it-IT", { minimumFractionDigits: catalog.decimals, maximumFractionDigits: catalog.decimals })} €`;
+  const [kind, setKind] = useState(catalog.tables[0].value);
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [percent, setPercent] = useState("");
-  const [operations, setOperations] = useState<BandellePriceOperation[]>([]);
+  const [operations, setOperations] = useState<PriceOperation[]>([]);
   const [error, setError] = useState("");
   const [restoreRevision, setRestoreRevision] = useState<number | null>(null);
-  const history = trpc.bandellePrice.history.useQuery(undefined, { enabled: canEdit, refetchOnWindowFocus: false });
-  const save = trpc.bandellePrice.save.useMutation();
-  const restore = trpc.bandellePrice.restore.useMutation();
+  const history = api.history.useQuery(undefined, { enabled: canEdit, refetchOnWindowFocus: false });
+  const save = api.save.useMutation();
+  const restore = api.restore.useMutation();
   const utils = trpc.useUtils();
   const busy = save.isPending || restore.isPending;
-  const draft = operations.length ? applyBandellePriceOperations(snapshot.prices, operations) : snapshot.prices;
+  const draft = operations.length ? catalog.apply(snapshot.prices, operations) : snapshot.prices;
   const changed = Object.keys(draft).filter(id => draft[id] !== snapshot.prices[id]);
   const dirty = operations.length > 0;
   const blocker = useBlocker(dirty || busy);
@@ -43,9 +47,10 @@ function PriceEditor({ snapshot, canEdit, reload }: { snapshot: Snapshot; canEdi
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty, busy]);
-  const config = BANDELLE_VENETA_CONFIGURATIONS[kind]!;
-  const rows = config.prices!;
-  const rowIds = (row: BandellaVenetaPriceRow) => row.prices.map((_, tier) => bandellaCellId(kind, row, tier));
+  const config = catalog.tables.find(table => table.value === kind)!;
+  const rows = config.rows;
+  const rowIds = selectablePriceCells;
+  const columnIds = (index: number) => rows.flatMap(row => row.cellIds[index] === null ? [] : [row.cellIds[index]!]);
   const tableIds = rows.flatMap(rowIds);
   const toggle = (ids: string[]) => setSelection(previous => {
     const next = new Set(previous);
@@ -58,13 +63,13 @@ function PriceEditor({ snapshot, canEdit, reload }: { snapshot: Snapshot; canEdi
       const normalized = percent.trim().replace(",", ".").replace("−", "-");
       if (!/^[+-]?\d+(?:\.\d{1,2})?$/.test(normalized)) throw new Error("Inserisci una percentuale con al massimo due decimali, ad esempio 5 oppure 2,50.");
       const next = [...operations, { cellIds: [...selection], basisPoints: Math.round(Number(normalized) * 100) }];
-      applyBandellePriceOperations(snapshot.prices, next);
+      catalog.apply(snapshot.prices, next);
       setOperations(next); setRestoreRevision(null); setError("");
     } catch (e) { setError(e instanceof Error ? e.message : "Variazione non valida."); }
   };
   const afterSave = async () => {
     setOperations([]); setError("");
-    await utils.bandellePrice.history.invalidate();
+    await (family === "t" ? utils.bandelleTPrice : utils.bandellePrice).history.invalidate();
     await reload();
   };
   const saveDraft = async () => {
@@ -85,42 +90,43 @@ function PriceEditor({ snapshot, canEdit, reload }: { snapshot: Snapshot; canEdi
         <button disabled={busy} className={button} onClick={() => toggle(tableIds)}>Seleziona / deseleziona categoria</button>
         <button disabled={busy || !selection.size} className={button} onClick={() => setSelection(new Set())}>Azzera selezione</button>
       </div>
-      <p className="text-sm"><strong>{selection.size} celle selezionate</strong> in {BANDELLE_VENETA_TYPES.filter(type => [...selection].some(id => id.startsWith(`${type.value}:`))).length} categorie. Puoi selezionare anche righe, colonne o singole celle.</p>
+      <p className="text-sm"><strong>{selection.size} celle selezionate</strong> in {catalog.tables.filter(table => table.rows.some(row => rowIds(row).some(id => selection.has(id)))).length} categorie. Puoi selezionare anche righe, colonne o singole celle.</p>
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm font-medium">Variazione %<input aria-label="Variazione percentuale" inputMode="decimal" className="mt-1 block w-40 rounded-lg border px-3 py-2" placeholder="Es. 5 oppure −3" value={percent} onChange={e => setPercent(e.target.value)} disabled={busy} /></label>
         <button disabled={busy || !selection.size || !percent} className={button} onClick={preview}>Applica in anteprima</button>
         <button disabled={busy || !dirty} className={button} onClick={() => { setOperations(operations.slice(0, -1)); setError(""); }}>Annulla ultima variazione</button>
       </div>
-      <p className="text-xs text-slate-500">Nuovo prezzo = prezzo attuale × (1 + variazione / 100), arrotondato al centesimo. Percentuali positive aumentano i prezzi; negative li riducono. Più variazioni si applicano in successione ai prezzi in anteprima.</p>
+      <p className="text-xs text-slate-500">Nuovo prezzo = prezzo attuale × (1 + variazione / 100), arrotondato {catalog.decimals === 3 ? "al millesimo (3 decimali)" : "al centesimo"}. Percentuali positive aumentano i prezzi; negative li riducono. Più variazioni si applicano in successione ai prezzi in anteprima.</p>
     </section>}
     <nav aria-label="Categorie di bandelle" className="flex flex-wrap gap-2">
-      {BANDELLE_VENETA_TYPES.map(type => <button key={type.value} onClick={() => setKind(type.value)} aria-pressed={kind === type.value} className={`${button} ${kind === type.value ? "!border-emerald-700 !bg-emerald-50 font-semibold text-emerald-900" : ""}`}>
-        {type.label.replace("Bandelle ", "")} {changed.some(id => id.startsWith(`${type.value}:`)) ? "•" : ""}
+      {catalog.tables.map(type => <button key={type.value} onClick={() => setKind(type.value)} aria-pressed={kind === type.value} className={`${button} ${kind === type.value ? "!border-emerald-700 !bg-emerald-50 font-semibold text-emerald-900" : ""}`}>
+        {type.label.replace("Bandelle ", "")} {type.rows.some(row => rowIds(row).some(id => changed.includes(id))) ? "•" : ""}
       </button>)}
     </nav>
     <section className="overflow-hidden rounded-xl border bg-white">
       <div className="space-y-1 border-b p-4">
-        <h3 className="font-semibold">{BANDELLE_VENETA_TYPES.find(type => type.value === kind)?.label}</h3>
-        <p className="text-sm text-slate-600">La tabella vale per: {config.typologies.map(t => t.label).join(", ")}.</p>
-        {kind === "vicentine-doppie" && <p className="text-xs">Le coppie asimmetriche usano la somma dei fori; per i totali dispari si ricalcola la media dei prezzi aggiornati.</p>}
+        <h3 className="font-semibold">{config.label}</h3>
+        <p className="text-sm text-slate-600">{config.description}</p>
+        {config.note && <p className="text-xs">{config.note}</p>}
       </div>
       <div className="max-h-[65vh] overflow-auto">
         <table className="w-full border-collapse text-sm">
-          <caption className="sr-only">Prezzi unitari per numero di fori e lotto. Seleziona una cella per includerla nella variazione.</caption>
+          <caption className="sr-only">Prezzi unitari per {config.rowHeader} e lotto. Seleziona una cella per includerla nella variazione.</caption>
           <thead className="sticky top-0 z-20 bg-slate-100"><tr>
-            <th className="sticky left-0 z-30 min-w-28 border-b bg-slate-100 p-3 text-left">Fori vite{kind.startsWith("snodate") && <span className="block text-xs font-normal">spalla+punta</span>}</th>
-            {BANDELLE_VENETA_LOT_TIERS.map((tier, index) => <th key={tier.label} className="min-w-28 border-b p-3">
-              {canEdit && <input type="checkbox" disabled={busy} aria-label={`Seleziona colonna ${tier.label}`} className="mr-2 accent-emerald-600" checked={rows.every(row => selection.has(bandellaCellId(kind, row, index)))} onChange={() => toggle(rows.map(row => bandellaCellId(kind, row, index)))} />}{tier.label} pz
+            <th className="sticky left-0 z-30 min-w-28 border-b bg-slate-100 p-3 text-left">{config.rowHeader}</th>
+            {catalog.tiers.map((tier, index) => <th key={tier.label} className="min-w-28 border-b p-3">
+              {canEdit && <input type="checkbox" disabled={busy || !columnIds(index).length} aria-label={`Seleziona colonna ${tier.label}`} className="mr-2 accent-emerald-600" checked={columnIds(index).length > 0 && columnIds(index).every(id => selection.has(id))} onChange={() => toggle(columnIds(index))} />}{tier.label} pz
             </th>)}
           </tr></thead>
-          <tbody>{rows.map(row => <tr key={bandellaRowKey(row)}>
+          <tbody>{rows.map(row => <tr key={row.key}>
             <th className="sticky left-0 z-10 border-b bg-slate-50 p-3 text-left font-medium">
-              {canEdit && <input type="checkbox" disabled={busy} aria-label={`Seleziona riga ${bandellaRowKey(row)}`} className="mr-2 accent-emerald-600" checked={rowIds(row).every(id => selection.has(id))} onChange={() => toggle(rowIds(row))} />}
-              {kind === "vicentine-doppie" ? `${row.screwHoles / 2}+${row.screwHoles / 2}` : bandellaRowKey(row)}
+              {canEdit && <input type="checkbox" disabled={busy} aria-label={`Seleziona riga ${row.key}`} className="mr-2 accent-emerald-600" checked={rowIds(row).every(id => selection.has(id))} onChange={() => toggle(rowIds(row))} />}
+              {row.label}
             </th>
-            {row.prices.map((_, tier) => {
-              const id = bandellaCellId(kind, row, tier); const modified = draft[id] !== snapshot.prices[id];
-              return <td key={id} className="border-b border-l p-1 text-center"><button type="button" disabled={busy || !canEdit} aria-pressed={selection.has(id)} aria-label={`${bandellaRowKey(row)} fori, lotto ${BANDELLE_VENETA_LOT_TIERS[tier].label}: ${money(draft[id])}`} onClick={() => toggle([id])}
+            {row.cellIds.map((id, tier) => {
+              if (id === null) return <td key={tier} className="border-b border-l bg-slate-50 p-3 text-center text-xs text-slate-500">Non disponibile</td>;
+              const modified = draft[id] !== snapshot.prices[id];
+              return <td key={id} className="border-b border-l p-1 text-center"><button type="button" disabled={busy || !canEdit} aria-pressed={selection.has(id)} aria-label={`${config.rowHeader} ${row.label}, lotto ${catalog.tiers[tier].label}: ${money(draft[id])}`} onClick={() => toggle([id])}
                 className={`w-full rounded p-2 tabular-nums ${selection.has(id) ? "bg-blue-100 ring-2 ring-inset ring-blue-600" : "hover:bg-slate-50"} ${modified ? "font-semibold text-emerald-800" : ""}`}>
                 {modified && <span className="block text-xs font-normal text-slate-500 line-through">{money(snapshot.prices[id])}</span>}{money(draft[id])}
               </button></td>;

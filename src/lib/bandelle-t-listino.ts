@@ -92,10 +92,10 @@ export function nearestListedCollar(kind: TKind, requested: number): number | nu
   }
   return closest.collo;
 }
-export function quoteBandellaT(r: TRequest): TResponse {
+export function quoteBandellaT(r: TRequest, savedPrices?: TPriceRow[]): TResponse {
   if (!Number.isInteger(r.quantity) || r.quantity < 4 || r.quantity > 100)
     throw new Error("Listino valido esclusivamente per lotti da 4 a 100 pezzi. Richiedere quotazione manuale.");
-  const rows = PRICES[r.kind];
+  const rows = savedPrices ?? PRICES[r.kind];
   if (!rows) throw new Error("Tipologia non valida");
   if (!Number.isInteger(r.collar) || r.collar <= 0)
     throw new Error("Il collo D deve essere una misura intera maggiore di zero.");

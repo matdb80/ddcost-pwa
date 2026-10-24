@@ -1,10 +1,12 @@
 import Layout from "@/components/Layout";
 import { useEffect, useState } from "react";
-import { useBlocker } from "react-router";
+import { Link, useBlocker } from "react-router";
 import { Calculator, Copy } from "lucide-react";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { nearestListedCollar, quoteBandellaT, type TKind, type TPosition, type TRequest, type TResponse, PRICES } from "@/lib/bandelle-t-listino";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
+import { trpc } from "@/providers/trpc";
+import { bandelleTRowsWithPrices } from "@/lib/bandelle-t-pricebook";
 
 const AMBITI: Array<{ id: TKind; title: string; desc: string; img: string }> = [
   { id:"standard", title:"Occhio standard", desc:"Occhio centrale o decentrato con posizionamento standard", img:"/images/occhio standard.png" },
@@ -20,6 +22,8 @@ const prices3 = (n:number) => n.toLocaleString("it-IT",{minimumFractionDigits:3,
 const prices2 = (n:number) => n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2});
 
 export default function BandelleTPage() {
+  const priceBook = trpc.bandelleTPrice.get.useQuery(undefined, { staleTime: 0 });
+  const [responseRevision, setResponseRevision] = useState<number | null>(null);
   const [req,setReq] = useState<TRequest>(initial);
   const [response,setResponse] = useState<TResponse|null>(null);
   const [message,setMessage] = useState("");
@@ -47,10 +51,13 @@ export default function BandelleTPage() {
     setResponse(null);
     setMessage("");
   };
-  const calculate = () => {
+  const calculate = async () => {
     try {
-      const result = quoteBandellaT(req);
+      const latest = await priceBook.refetch();
+      if (latest.error || !latest.data) throw new Error("Impossibile leggere il listino aggiornato. Riprova prima di calcolare.");
+      const result = quoteBandellaT(req, bandelleTRowsWithPrices(req.kind, latest.data.prices));
       setResponse(result);
+      setResponseRevision(latest.data.revision);
       setMessage("");
     } catch (err) {
       setResponse(null);
@@ -69,8 +76,8 @@ export default function BandelleTPage() {
       "Bandella a T occhio " + eyeType + " C=" + response.requestedCollar + " mm",
       "Collo di listino usato per il calcolo: " + response.size + " mm",
       "Lotto: " + req.quantity,
-      "Prezzo netto unitario: " + prices2(roundedUnit),
-      "Totale : " + prices2(roundedTotal),
+      "Prezzo netto unitario: " + prices2(roundedUnit) + " €",
+      "Totale : " + prices2(roundedTotal) + " €",
     ].join("\n");
     void navigator.clipboard.writeText(text).then(()=>setMessage("Riepilogo copiato."),()=>setMessage("Copia non riuscita."));
   };
@@ -87,11 +94,16 @@ export default function BandelleTPage() {
     </div>}
     <div className="max-w-5xl mx-auto pb-10 space-y-5">
       <div>
-        <h2 className="text-lg font-semibold text-slate-800">Bandelle a T — Listino Smeralda</h2>
-        <p className="text-sm text-slate-500">Lama 16 cm · Tabelle originali del file XLSM · Aggiornamento prezzi indicato nel foglio: +4,5% dal 01/03/2026, già incluso.</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-slate-800">Bandelle a T — Listino Smeralda</h2>
+          <Link to="/bandelle-t/listini" className="rounded-lg border border-emerald-700 bg-white px-4 py-2 text-sm font-semibold text-emerald-800">Gestione listini</Link>
+        </div>
+        <p className="mt-2 text-sm text-slate-500">Lama 16 cm · Prezzi correnti dal listino condiviso. Il listino iniziale comprende già l’aumento del 4,5% del 01/03/2026.</p>
       </div>
+      {priceBook.isLoading && <p className="text-sm text-slate-600">Caricamento listino aggiornato…</p>}
+      {priceBook.error && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm">Listino non disponibile. <button type="button" className="underline" onClick={() => void priceBook.refetch()}>Riprova</button></p>}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {AMBITI.map(a=><button type="button" key={a.id} onClick={()=>selectKind(a.id)}
+        {AMBITI.map(a=><button type="button" key={a.id} disabled={priceBook.isFetching} onClick={()=>selectKind(a.id)}
           className={"text-left p-4 rounded-xl border-2 transition-all "+(req.kind===a.id?"border-emerald-500 bg-emerald-50":"border-slate-200 bg-white hover:border-emerald-300")}>
           <div className="h-24 bg-white rounded-lg border border-slate-100 mb-3 flex items-center justify-center overflow-hidden">
             <img src={a.img} alt={a.title} className="max-h-full max-w-full object-contain" />
@@ -101,6 +113,7 @@ export default function BandelleTPage() {
         </button>)}
       </div>
       <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        <fieldset disabled={priceBook.isFetching} className="space-y-4">
         <h3 className="font-semibold flex items-center gap-2"><Calculator size={18} className="text-emerald-600"/>Dati di calcolo</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Quantità lotto (4–100 pz)
@@ -142,12 +155,14 @@ export default function BandelleTPage() {
         </div>
         {req.kind==="misura"&&<p className="text-slate-600 text-sm">Posizione occhio a disegno. Prima dell'ordine occorre definire le quote e completare il codice variabile.</p>}
         <div className="flex gap-3 flex-wrap">
-          <button type="button" onClick={calculate} className="bg-emerald-600 text-white rounded px-4 py-2 font-semibold hover:bg-emerald-700">Calcola prezzo</button>
+          <button type="button" disabled={priceBook.isFetching || !priceBook.data || !!priceBook.error} onClick={() => void calculate()} className="bg-emerald-600 text-white rounded px-4 py-2 font-semibold hover:bg-emerald-700 disabled:opacity-40">Calcola prezzo</button>
           <button type="button" onClick={()=>{setReq(initial);setResponse(null);setMessage("");}} className="bg-slate-100 rounded px-4 py-2">Azzera</button>
         </div>
         {message&&<div role="status" className="bg-amber-50 border border-amber-200 text-amber-900 rounded p-3 text-sm">{message}</div>}
+        </fieldset>
       </section>
       {response&&<section className="bg-white rounded-xl border-2 border-emerald-200 p-6 space-y-3">
+        <p className="text-xs text-slate-600">Listino revisione {responseRevision}</p>
         <div className="flex justify-between gap-3 flex-wrap items-center"><h3 className="font-semibold text-xl">Preventivo da listino</h3>
           <button type="button" onClick={copyResult} className="border rounded px-3 py-2 text-sm flex gap-2 items-center"><Copy size={16}/>Copia riepilogo</button>
         </div>
@@ -163,7 +178,7 @@ export default function BandelleTPage() {
         {response.additions.length>0&&<div className="border-t pt-2 text-sm">
           {response.additions.map((a,i)=><p key={i}>{a.description}: +{prices2(a.euro)} €/pz<FormulaTooltip label={`Supplemento ${a.description}`} formula={CALCULATION_FORMULAS.bandelleT.additions}/></p>)}
         </div>}
-        <p className="text-2xl font-bold text-emerald-800 border-t pt-3">Totale lotto ({req.quantity} pz): € {prices2(response.total)}<FormulaTooltip label="Totale lotto" formula={CALCULATION_FORMULAS.bandelleT.lotTotal}/></p>
+        <p className="text-2xl font-bold text-emerald-800 border-t pt-3">Totale lotto ({req.quantity} pz): {prices2(response.total)} €<FormulaTooltip label="Totale lotto" formula={CALCULATION_FORMULAS.bandelleT.lotTotal}/></p>
         {response.notes.map((n,i)=><p className="text-sm text-slate-600" key={i}>{n}</p>)}
         <p className="text-xs text-amber-800 bg-amber-50 rounded p-3">Il risultato è basato soltanto sulle combinazioni disponibili nel listino. Per misure e lavorazioni fuori standard è necessaria una verifica tecnico-commerciale; i valori non vengono salvati automaticamente come preventivi aziendali.</p>
       </section>}

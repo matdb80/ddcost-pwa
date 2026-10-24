@@ -95,6 +95,17 @@ export const bandellePriceRevisions = mysqlTable("bandelle_price_revisions", {
   operationsJson: mediumtext("operationsJson").notNull(),
 });
 
+// Smeralda prices use integer thousandths of euro in their independent snapshots.
+export const bandelleTPriceRevisions = mysqlTable("bandelle_t_price_revisions", {
+  id: bigint("id", { mode: "number", unsigned: true }).primaryKey(),
+  dataJson: mediumtext("dataJson").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  createdBy: bigint("createdBy", { mode: "number", unsigned: true }),
+  createdByName: varchar("createdByName", { length: 320 }).notNull(),
+  description: text("description").notNull(),
+  operationsJson: mediumtext("operationsJson").notNull(),
+});
+
 // ============================================================
 // DDCost - Preventivi Unatantum
 // ============================================================

@@ -43,6 +43,7 @@ const router = createBrowserRouter([
   {path:"/cicli/new", element:<ProtectedRoute><CicloEditorPage /></ProtectedRoute>},
   {path:"/cicli/:id", element:<ProtectedRoute><CicloEditorPage /></ProtectedRoute>},
   {path:"/bandelle-t", element:<ProtectedRoute><BandelleTPage /></ProtectedRoute>},
+  {path:"/bandelle-t/listini", element:<ProtectedRoute><BandellePriceListsPage family="t" /></ProtectedRoute>},
   {path:"/bandelle-veneta", element:<ProtectedRoute><BandelleVenetaPage /></ProtectedRoute>},
   {path:"/bandelle-veneta/listini", element:<ProtectedRoute><BandellePriceListsPage /></ProtectedRoute>},
   {path:"/preventivi", element:<ProtectedRoute><PreventiviPage /></ProtectedRoute>},
