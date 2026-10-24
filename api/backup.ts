@@ -21,6 +21,7 @@ const TABLES = [
   "feedback_settings",
   "feedback_exports",
   "product_groups",
+  "bandelle_price_revisions",
 ] as const;
 
 type BackupTable = (typeof TABLES)[number];

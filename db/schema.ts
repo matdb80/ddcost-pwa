@@ -84,6 +84,17 @@ export const productGroups = mysqlTable("product_groups", {
 });
 export type ProductGroup = typeof productGroups.$inferSelect;
 
+// Append-only shared Giotto Plus price snapshots; id is a consecutive revision.
+export const bandellePriceRevisions = mysqlTable("bandelle_price_revisions", {
+  id: bigint("id", { mode: "number", unsigned: true }).primaryKey(),
+  dataJson: mediumtext("dataJson").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  createdBy: bigint("createdBy", { mode: "number", unsigned: true }),
+  createdByName: varchar("createdByName", { length: 320 }).notNull(),
+  description: text("description").notNull(),
+  operationsJson: mediumtext("operationsJson").notNull(),
+});
+
 // ============================================================
 // DDCost - Preventivi Unatantum
 // ============================================================

@@ -1,7 +1,7 @@
 import Layout from "@/components/Layout";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { useEffect, useState } from "react";
-import { useBlocker } from "react-router";
+import { Link, useBlocker } from "react-router";
 import { Calculator, AlertCircle } from "lucide-react";
 import {
   BANDELLE_VENETA_TYPES,
@@ -12,6 +12,8 @@ import {
   type BandellaVenetaQuote,
 } from "@/lib/bandelle-veneta";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
+import { trpc } from "@/providers/trpc";
+import { bandelleRowsWithPrices } from "@/lib/bandelle-pricebook";
 
 const prices2 = (value: number) => value.toLocaleString("it-IT", {
   minimumFractionDigits: 2,
@@ -20,6 +22,8 @@ const prices2 = (value: number) => value.toLocaleString("it-IT", {
 const inputClass = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500";
 
 export default function BandelleVenetaPage() {
+  const priceBook = trpc.bandellePrice.get.useQuery(undefined, { staleTime: 0 });
+  const [responseRevision, setResponseRevision] = useState<number | null>(null);
   const [bandellaType, setBandellaType] = useState<BandellaVenetaType | "">("");
   const [typology, setTypology] = useState<BandellaVenetaTypology | "">("");
   const [screwHoles, setScrewHoles] = useState("");
@@ -75,13 +79,15 @@ export default function BandelleVenetaPage() {
     resetOptions();
     clearResult();
   };
-  const calculate = () => {
+  const calculate = async () => {
     if (!bandellaType) {
       setResponse(null);
       setMessage("Seleziona il tipo di bandella.");
       return;
     }
     try {
+      const latest = await priceBook.refetch();
+      if (latest.error || !latest.data) throw new Error("Impossibile leggere il listino aggiornato. Riprova prima di calcolare.");
       setResponse(quoteBandellaVeneta({
         kind: bandellaType,
         typology,
@@ -96,7 +102,8 @@ export default function BandelleVenetaPage() {
         extraThicknessMm: Number(extraThicknessMm),
         reinforcement,
         nonStandardDiameter,
-      }));
+      }, bandelleRowsWithPrices(bandellaType, latest.data.prices)));
+      setResponseRevision(latest.data.revision);
       setMessage("");
     } catch (error) {
       setResponse(null);
@@ -119,8 +126,14 @@ export default function BandelleVenetaPage() {
         </div>
       )}
       <div className="mx-auto max-w-4xl space-y-4">
-        <h2 className="text-lg font-semibold text-slate-800">Bandelle alla veneta Giotto Plus</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-slate-800">Bandelle alla veneta Giotto Plus</h2>
+          <Link to="/bandelle-veneta/listini" className="rounded-lg border border-emerald-700 bg-white px-4 py-2 text-sm font-semibold text-emerald-800">Gestione listini</Link>
+        </div>
+        {priceBook.isLoading && <p className="text-sm text-slate-600">Caricamento listino aggiornato…</p>}
+        {priceBook.error && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm">Listino non disponibile. <button type="button" className="underline" onClick={() => void priceBook.refetch()}>Riprova</button></p>}
         <form noValidate onSubmit={(event) => { event.preventDefault(); calculate(); }} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+          <fieldset disabled={priceBook.isFetching}>
           <h3 className="mb-4 flex items-center gap-2 font-semibold text-slate-800">
             <Calculator className="h-4 w-4 text-emerald-600" />
             Dati calcolo
@@ -297,16 +310,18 @@ export default function BandelleVenetaPage() {
             </p>
           )}
           <div className="mt-4 flex gap-2">
-            <button type="submit" disabled={!priceRows || !supplementRates || !typology || !(isDouble ? holesFirst && holesSecond : isJointed ? shoulderHoles && tipHoles : screwHoles) || !quantity} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="submit" disabled={priceBook.isFetching || !priceBook.data || !!priceBook.error || !priceRows || !supplementRates || !typology || !(isDouble ? holesFirst && holesSecond : isJointed ? shoulderHoles && tipHoles : screwHoles) || !quantity} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
               Calcola prezzo
             </button>
             <button type="button" onClick={reset} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-200">Azzera</button>
           </div>
+          </fieldset>
         </form>
 
         {response && (
           <section aria-label="Risultato del calcolo" aria-live="polite" className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:p-6">
             <h3 className="font-semibold text-slate-800">Prezzo di vendita</h3>
+            <p className="text-xs text-slate-600">Listino revisione {responseRevision}</p>
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <div><dt className="text-slate-600">{isJointed ? "Fori vite spalla+punta" : "Numero di fori vite"}</dt><dd className="font-semibold">{response.holePair ? `${response.holePair[0]}+${response.holePair[1]} (${response.screwHoles} totali)` : response.screwHoles}</dd></div>
               <div><dt className="text-slate-600">Fascia lotto</dt><dd className="font-semibold">{response.tier} pz</dd></div>

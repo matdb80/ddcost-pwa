@@ -7,6 +7,7 @@ import CicliPage from "./pages/CicliPage"
 import CicloEditorPage from "./pages/CicloEditorPage"
 import BandelleTPage from "./pages/BandelleTPage"
 import BandelleVenetaPage from "./pages/BandelleVenetaPage"
+import BandellePriceListsPage from "./pages/BandellePriceListsPage"
 import PreventiviPage from "./pages/PreventiviPage"
 import PreventivoEditorPage from "./pages/PreventivoEditorPage"
 import OffertePage from "./pages/OffertePage"
@@ -43,6 +44,7 @@ const router = createBrowserRouter([
   {path:"/cicli/:id", element:<ProtectedRoute><CicloEditorPage /></ProtectedRoute>},
   {path:"/bandelle-t", element:<ProtectedRoute><BandelleTPage /></ProtectedRoute>},
   {path:"/bandelle-veneta", element:<ProtectedRoute><BandelleVenetaPage /></ProtectedRoute>},
+  {path:"/bandelle-veneta/listini", element:<ProtectedRoute><BandellePriceListsPage /></ProtectedRoute>},
   {path:"/preventivi", element:<ProtectedRoute><PreventiviPage /></ProtectedRoute>},
   {path:"/preventivi/new", element:<ProtectedRoute><PreventivoEditorPage /></ProtectedRoute>},
   {path:"/preventivi/:id", element:<ProtectedRoute><PreventivoEditorPage /></ProtectedRoute>},

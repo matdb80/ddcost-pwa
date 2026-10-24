@@ -124,7 +124,7 @@ export type BandellaVenetaTypology = BandellaDrittaTypology
   | (typeof BANDELLE_SNODATE_TYPOLOGIES)[number]["value"]
   | (typeof BANDELLE_SNODATE_ZANCATE_TYPOLOGIES)[number]["value"];
 
-type BandellaVenetaPriceRow = {
+export type BandellaVenetaPriceRow = {
   screwHoles: number;
   shoulderHoles?: number;
   tipHoles?: number;
@@ -495,12 +495,13 @@ export type BandellaVenetaQuote = {
   total: number;
 };
 
-export function quoteBandellaVeneta(request: BandellaVenetaRequest): BandellaVenetaQuote {
+export function quoteBandellaVeneta(request: BandellaVenetaRequest, savedPrices?: readonly BandellaVenetaPriceRow[]): BandellaVenetaQuote {
   const configuration = BANDELLE_VENETA_CONFIGURATIONS[request.kind];
   if (!configuration?.prices || !configuration.supplements) {
     throw new Error("Il listino per questo tipo di bandella non è ancora definito.");
   }
   const supplementRates = configuration.supplements;
+  const prices = savedPrices ?? configuration.prices;
   const typology = configuration.typologies.find((option) => option.value === request.typology);
   if (!typology) {
     throw new Error("Seleziona una delle tipologie ammesse per il tipo di bandella scelto.");
@@ -533,15 +534,15 @@ export function quoteBandellaVeneta(request: BandellaVenetaRequest): BandellaVen
     }
     holePair = [shoulderHoles, tipHoles];
   }
-  const row = configuration.prices.find((price) => isJointed
+  const row = prices.find((price) => isJointed
     ? price.shoulderHoles === request.shoulderHoles && price.tipHoles === request.tipHoles
     : price.screwHoles === request.screwHoles);
   let interpolatedFrom: BandellaVenetaQuote["interpolatedFrom"];
   let lowerRow: BandellaVenetaPriceRow | undefined;
   let upperRow: BandellaVenetaPriceRow | undefined;
   if (!row && isDouble && request.screwHoles > 4 && request.screwHoles < 12 && request.screwHoles % 2 === 1) {
-    lowerRow = configuration.prices.find((price) => price.screwHoles === request.screwHoles - 1);
-    upperRow = configuration.prices.find((price) => price.screwHoles === request.screwHoles + 1);
+    lowerRow = prices.find((price) => price.screwHoles === request.screwHoles - 1);
+    upperRow = prices.find((price) => price.screwHoles === request.screwHoles + 1);
     if (lowerRow && upperRow) interpolatedFrom = [lowerRow.screwHoles, upperRow.screwHoles];
   }
   if (!row && !interpolatedFrom) {

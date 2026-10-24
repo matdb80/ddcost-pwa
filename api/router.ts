@@ -5,6 +5,7 @@ import { simulationRouter } from "./simulation-router";
 import { offerRouter } from "./offer-router";
 import { feedbackRouter } from "./feedback-router";
 import { productGroupRouter } from "./product-group-router";
+import { bandellePriceRouter } from "./bandelle-price-router";
 import { createRouter, publicQuery } from "./middleware";
 
 export const appRouter = createRouter({
@@ -16,6 +17,7 @@ export const appRouter = createRouter({
   offer: offerRouter,
   feedback: feedbackRouter,
   productGroup: productGroupRouter,
+  bandellePrice: bandellePriceRouter,
 });
 
 export type AppRouter = typeof appRouter;
