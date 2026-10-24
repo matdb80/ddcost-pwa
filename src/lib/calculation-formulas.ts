@@ -109,6 +109,8 @@ export const CALCULATION_FORMULAS = {
       "Prezzo base unitario = importo della tabella del tipo di bandella selezionato all'incrocio tra numero di fori vite e fascia della quantità. Per 1–3 pezzi si usa il prezzo unitario della fascia 4–10. Il prezzo della fascia si applica a tutti i pezzi del lotto.",
     doubleBasePrice:
       "Vicentine doppie: ciascuna metà ha da 2 a 6 fori vite e il minimo è 2+2. Si sommano i fori delle due metà. Se il totale è 4, 6, 8, 10 o 12 si prende la riga corrispondente. Per 5, 7, 9 o 11 fori si usa la media dei prezzi delle due righe adiacenti nella fascia del lotto, arrotondata al centesimo. Per 1–3 pezzi si usa il prezzo della fascia 4–10.",
+    jointedBasePrice:
+      "Snodate: il prezzo base unitario è quello della riga esatta spalla+punta (spalla 2–5 fori, punta 2–12) e della fascia di quantità. Coppie con la stessa somma possono avere prezzi diversi. Per 1–3 pezzi si usa il prezzo unitario della fascia 4–10.",
     additions:
       "Supplementi per pezzo = somma delle modifiche selezionate: occhi saldati 1,50 €; aumento dello spessore 1,00 € ogni 0,5 mm rispetto allo standard; rinforzo 2,00 €; diametro occhio diverso da Ø12 mm 2,00 €.",
     unitPrice:

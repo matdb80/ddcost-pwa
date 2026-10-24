@@ -89,14 +89,31 @@ export const BANDELLE_VICENTINE_DOPPIE_VARIANTS = [
   { value: "zanca-centrale", label: "Applicazione di una zanca centrale" },
 ] as const;
 
+// Tipologie e varianti delle snodate, definite da Matteo il 24/10/2026.
+export const BANDELLE_SNODATE_TYPOLOGIES = [
+  { value: "mestrina-legno", label: "Mestrina Legno" },
+  { value: "padovana-legno", label: "Padovana Legno" },
+  { value: "mestrina-pvc", label: "Mestrina PVC" },
+  { value: "padovana-pvc", label: "Padovana PVC" },
+] as const;
+
+export const BANDELLE_SNODATE_VARIANTS = [
+  { value: "numero-fori-vite", label: "Variazione del numero di fori vite" },
+  { value: "posizione-fori-vite", label: "Variazione della posizione dei fori vite" },
+  { value: "lunghezza-totale", label: "Lunghezza totale" },
+] as const;
+
 export type BandellaVenetaTypology = BandellaDrittaTypology
   | (typeof BANDELLE_DRITTE_CON_SORMONTO_TYPOLOGIES)[number]["value"]
   | (typeof BANDELLE_DRITTE_ZANCATE_TYPOLOGIES)[number]["value"]
   | (typeof BANDELLE_VICENTINE_DRITTE_TYPOLOGIES)[number]["value"]
-  | (typeof BANDELLE_VICENTINE_DOPPIE_TYPOLOGIES)[number]["value"];
+  | (typeof BANDELLE_VICENTINE_DOPPIE_TYPOLOGIES)[number]["value"]
+  | (typeof BANDELLE_SNODATE_TYPOLOGIES)[number]["value"];
 
 type BandellaVenetaPriceRow = {
   screwHoles: number;
+  shoulderHoles?: number;
+  tipHoles?: number;
   prices: readonly [number, number, number, number, number, number, number];
 };
 
@@ -213,6 +230,60 @@ export const BANDELLE_VICENTINE_DOPPIE_PRICES = [
   { screwHoles: 12, prices: [14.38, 8.42, 6.29, 5.81, 5.40, 5.00, 4.67] },
 ] as const satisfies readonly BandellaVenetaPriceRow[];
 
+/**
+ * Listino delle bandelle snodate dall'immagine "image(20261024-073706).png"
+ * fornita da Matteo il 24/10/2026. La riga è identificata dalla coppia
+ * spalla+punta, non dal solo totale dei fori. Le colonne seguono le sette
+ * BANDELLE_VENETA_LOT_TIERS. Si rispettano anche le anomalie del listino:
+ * per esempio 5+4 ha un prezzo inferiore a 4+4 in alcune fasce.
+ */
+export const BANDELLE_SNODATE_PRICES = [
+  { shoulderHoles: 2, tipHoles: 2, screwHoles: 4, prices: [11.78, 6.55, 5.13, 4.63, 4.22, 3.98, 3.90] },
+  { shoulderHoles: 3, tipHoles: 2, screwHoles: 5, prices: [10.19, 6.60, 5.18, 4.67, 4.27, 4.02, 3.94] },
+  { shoulderHoles: 4, tipHoles: 2, screwHoles: 6, prices: [9.20, 6.71, 5.29, 4.78, 4.38, 4.13, 4.04] },
+  { shoulderHoles: 5, tipHoles: 2, screwHoles: 7, prices: [8.49, 6.77, 5.35, 4.85, 4.45, 4.20, 4.12] },
+  { shoulderHoles: 2, tipHoles: 3, screwHoles: 5, prices: [11.88, 6.66, 5.24, 4.72, 4.33, 4.08, 3.99] },
+  { shoulderHoles: 3, tipHoles: 3, screwHoles: 6, prices: [11.92, 6.70, 5.28, 4.78, 4.37, 4.13, 4.04] },
+  { shoulderHoles: 4, tipHoles: 3, screwHoles: 7, prices: [12.03, 6.80, 5.38, 4.88, 4.47, 4.23, 4.15] },
+  { shoulderHoles: 5, tipHoles: 3, screwHoles: 8, prices: [12.10, 6.88, 5.45, 4.95, 4.55, 4.29, 4.22] },
+  { shoulderHoles: 2, tipHoles: 4, screwHoles: 6, prices: [12.57, 7.35, 5.93, 5.41, 5.02, 4.77, 4.69] },
+  { shoulderHoles: 3, tipHoles: 4, screwHoles: 7, prices: [12.61, 7.39, 5.97, 5.47, 5.06, 4.82, 4.73] },
+  { shoulderHoles: 4, tipHoles: 4, screwHoles: 8, prices: [12.72, 7.49, 6.07, 5.57, 5.16, 4.92, 4.84] },
+  { shoulderHoles: 5, tipHoles: 4, screwHoles: 9, prices: [12.01, 6.77, 5.35, 4.85, 4.45, 4.20, 4.12] },
+  { shoulderHoles: 2, tipHoles: 5, screwHoles: 7, prices: [12.65, 7.43, 6.01, 5.51, 5.10, 4.86, 4.78] },
+  { shoulderHoles: 3, tipHoles: 5, screwHoles: 8, prices: [12.71, 7.48, 6.05, 5.55, 5.15, 4.90, 4.82] },
+  { shoulderHoles: 4, tipHoles: 5, screwHoles: 9, prices: [12.81, 7.59, 6.17, 5.65, 5.26, 5.01, 4.92] },
+  { shoulderHoles: 5, tipHoles: 5, screwHoles: 10, prices: [12.87, 7.65, 6.23, 5.73, 5.32, 5.08, 5.00] },
+  { shoulderHoles: 2, tipHoles: 6, screwHoles: 8, prices: [12.74, 7.51, 6.09, 5.59, 5.18, 4.92, 4.86] },
+  { shoulderHoles: 3, tipHoles: 6, screwHoles: 9, prices: [12.78, 7.56, 6.13, 5.63, 5.22, 4.96, 4.90] },
+  { shoulderHoles: 4, tipHoles: 6, screwHoles: 10, prices: [12.88, 7.66, 6.24, 5.74, 5.33, 5.07, 5.01] },
+  { shoulderHoles: 5, tipHoles: 6, screwHoles: 11, prices: [12.96, 7.73, 6.31, 5.81, 5.40, 5.14, 5.08] },
+  { shoulderHoles: 2, tipHoles: 7, screwHoles: 9, prices: [13.07, 7.85, 6.43, 5.93, 5.52, 5.28, 5.19] },
+  { shoulderHoles: 3, tipHoles: 7, screwHoles: 10, prices: [12.83, 7.61, 6.19, 5.67, 5.28, 5.03, 4.94] },
+  { shoulderHoles: 4, tipHoles: 7, screwHoles: 11, prices: [12.98, 7.75, 6.33, 5.83, 5.42, 5.18, 5.10] },
+  { shoulderHoles: 5, tipHoles: 7, screwHoles: 12, prices: [13.05, 7.83, 6.41, 5.90, 5.50, 5.26, 5.17] },
+  { shoulderHoles: 2, tipHoles: 8, screwHoles: 10, prices: [12.93, 7.70, 6.28, 5.77, 5.37, 5.12, 5.04] },
+  { shoulderHoles: 3, tipHoles: 8, screwHoles: 11, prices: [12.97, 7.74, 6.32, 5.82, 5.41, 5.17, 5.09] },
+  { shoulderHoles: 4, tipHoles: 8, screwHoles: 12, prices: [13.07, 7.85, 6.43, 5.93, 5.52, 5.28, 5.19] },
+  { shoulderHoles: 5, tipHoles: 8, screwHoles: 13, prices: [13.15, 7.92, 6.50, 6.00, 5.59, 5.34, 5.27] },
+  { shoulderHoles: 2, tipHoles: 9, screwHoles: 11, prices: [13.00, 7.77, 6.35, 5.85, 5.44, 5.19, 5.12] },
+  { shoulderHoles: 3, tipHoles: 9, screwHoles: 12, prices: [13.05, 7.82, 6.40, 5.89, 5.50, 5.25, 5.16] },
+  { shoulderHoles: 4, tipHoles: 9, screwHoles: 13, prices: [13.16, 7.92, 6.50, 6.00, 5.60, 5.35, 5.27] },
+  { shoulderHoles: 5, tipHoles: 9, screwHoles: 14, prices: [13.22, 7.99, 6.57, 6.07, 5.66, 5.42, 5.34] },
+  { shoulderHoles: 2, tipHoles: 10, screwHoles: 12, prices: [14.19, 8.97, 7.54, 7.03, 6.64, 6.38, 6.30] },
+  { shoulderHoles: 3, tipHoles: 10, screwHoles: 13, prices: [14.23, 9.01, 7.59, 7.09, 6.68, 6.44, 6.35] },
+  { shoulderHoles: 4, tipHoles: 10, screwHoles: 14, prices: [14.34, 9.11, 7.69, 7.19, 6.78, 6.54, 6.46] },
+  { shoulderHoles: 5, tipHoles: 10, screwHoles: 15, prices: [14.41, 9.19, 7.76, 7.26, 6.86, 6.61, 6.53] },
+  { shoulderHoles: 2, tipHoles: 11, screwHoles: 13, prices: [14.29, 9.06, 7.64, 7.13, 6.73, 6.48, 6.40] },
+  { shoulderHoles: 3, tipHoles: 11, screwHoles: 14, prices: [14.33, 9.10, 7.68, 7.18, 6.77, 6.53, 6.45] },
+  { shoulderHoles: 4, tipHoles: 11, screwHoles: 15, prices: [14.43, 9.21, 7.79, 7.28, 6.88, 6.64, 6.55] },
+  { shoulderHoles: 5, tipHoles: 11, screwHoles: 16, prices: [14.50, 9.28, 7.86, 7.36, 6.95, 6.70, 6.63] },
+  { shoulderHoles: 2, tipHoles: 12, screwHoles: 14, prices: [14.37, 9.14, 7.71, 7.21, 6.81, 6.56, 6.48] },
+  { shoulderHoles: 3, tipHoles: 12, screwHoles: 15, prices: [14.41, 9.19, 7.76, 7.26, 6.86, 6.61, 6.53] },
+  { shoulderHoles: 4, tipHoles: 12, screwHoles: 16, prices: [14.52, 9.29, 7.87, 7.37, 6.96, 6.72, 6.64] },
+  { shoulderHoles: 5, tipHoles: 12, screwHoles: 17, prices: [14.59, 9.36, 7.94, 7.43, 7.03, 6.78, 6.70] },
+] as const satisfies readonly BandellaVenetaPriceRow[];
+
 export const BANDELLE_DRITTE_SUPPLEMENTS = {
   weldedEyes: 1.50,
   extraThicknessStepMm: 0.5,
@@ -257,6 +328,15 @@ export const BANDELLE_VICENTINE_DOPPIE_SUPPLEMENTS = {
   nonStandardDiameter: 2,
 } as const;
 
+// Supplementi confermati separatamente per le bandelle snodate.
+export const BANDELLE_SNODATE_SUPPLEMENTS = {
+  weldedEyes: 1.50,
+  extraThicknessStepMm: 0.5,
+  extraThicknessPerStep: 1,
+  reinforcement: 2,
+  nonStandardDiameter: 2,
+} as const;
+
 export const BANDELLE_VENETA_CONFIGURATIONS: Partial<Record<BandellaVenetaType, BandellaVenetaConfiguration>> = {
   dritte: {
     typologies: BANDELLE_DRITTE_TYPOLOGIES,
@@ -288,6 +368,12 @@ export const BANDELLE_VENETA_CONFIGURATIONS: Partial<Record<BandellaVenetaType, 
     prices: BANDELLE_VICENTINE_DOPPIE_PRICES,
     supplements: BANDELLE_VICENTINE_DOPPIE_SUPPLEMENTS,
   },
+  snodate: {
+    typologies: BANDELLE_SNODATE_TYPOLOGIES,
+    variants: BANDELLE_SNODATE_VARIANTS,
+    prices: BANDELLE_SNODATE_PRICES,
+    supplements: BANDELLE_SNODATE_SUPPLEMENTS,
+  },
 };
 
 export type BandellaVenetaRequest = {
@@ -296,6 +382,8 @@ export type BandellaVenetaRequest = {
   screwHoles: number;
   holesFirst?: number;
   holesSecond?: number;
+  shoulderHoles?: number;
+  tipHoles?: number;
   quantity: number;
   weldedEyes?: boolean;
   extraThicknessMm?: number;
@@ -332,6 +420,7 @@ export function quoteBandellaVeneta(request: BandellaVenetaRequest): BandellaVen
     throw new Error("Inserisci una quantità intera da 1 a 100 pezzi. Per lotti oltre 100 pezzi il prezzo è da definire.");
   }
   const isDouble = request.kind === "vicentine-doppie";
+  const isJointed = request.kind === "snodate";
   let holePair: BandellaVenetaQuote["holePair"];
   if (isDouble) {
     const { holesFirst, holesSecond } = request;
@@ -343,7 +432,19 @@ export function quoteBandellaVeneta(request: BandellaVenetaRequest): BandellaVen
     }
     holePair = [holesFirst, holesSecond];
   }
-  const row = configuration.prices.find((price) => price.screwHoles === request.screwHoles);
+  if (isJointed) {
+    const { shoulderHoles, tipHoles } = request;
+    if (typeof shoulderHoles !== "number" || typeof tipHoles !== "number"
+      || !Number.isInteger(shoulderHoles) || !Number.isInteger(tipHoles)
+      || shoulderHoles < 2 || shoulderHoles > 5 || tipHoles < 2 || tipHoles > 12
+      || shoulderHoles + tipHoles !== request.screwHoles) {
+      throw new Error("Indica i fori della spalla da 2 a 5 e della punta da 2 a 12; il totale deve essere la loro somma.");
+    }
+    holePair = [shoulderHoles, tipHoles];
+  }
+  const row = configuration.prices.find((price) => isJointed
+    ? price.shoulderHoles === request.shoulderHoles && price.tipHoles === request.tipHoles
+    : price.screwHoles === request.screwHoles);
   let interpolatedFrom: BandellaVenetaQuote["interpolatedFrom"];
   let lowerRow: BandellaVenetaPriceRow | undefined;
   let upperRow: BandellaVenetaPriceRow | undefined;

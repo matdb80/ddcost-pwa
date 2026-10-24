@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { quoteBandellaVeneta, type BandellaVenetaRequest } from "./bandelle-veneta";
+import { BANDELLE_SNODATE_PRICES, quoteBandellaVeneta, type BandellaVenetaRequest } from "./bandelle-veneta";
 
 const base: BandellaVenetaRequest = {
   kind: "dritte",
@@ -54,7 +54,7 @@ describe("Bandelle dritte Giotto Plus — tabella e supplementi del 24/10/2026",
   });
 
   it("non applica il listino delle dritte ad altre famiglie o tipologie", () => {
-    expect(() => calculate({ kind: "snodate" })).toThrow(/listino.*non è ancora definito/);
+    expect(() => calculate({ kind: "snodate" })).toThrow(/tipologie ammesse/);
     expect(() => calculate({ kind: "dritte-con-sormonto" })).toThrow(/tipologie ammesse/);
     expect(() => calculate({ typology: "occhio-centrale-pvc" })).toThrow(/tipologie ammesse/);
     expect(() => calculate({ typology: "" })).toThrow(/tipologie ammesse/);
@@ -332,5 +332,95 @@ describe("Bandelle vicentine doppie — somma fori e listino image(20261024-0721
     expect(() => calculateVicentineDoppie({ holesFirst: 1.5, holesSecond: 2, screwHoles: 3.5 })).toThrow(/fori delle due metà/);
     expect(() => calculateVicentineDoppie({ holesFirst: 7, holesSecond: 2, screwHoles: 9 })).toThrow(/fori delle due metà/);
     expect(() => calculateVicentineDoppie({ holesFirst: 1, holesSecond: 1, screwHoles: 2 })).toThrow(/da 2 a 6 per lato/);
+  });
+});
+
+const calculateSnodate = (changes: Partial<BandellaVenetaRequest> = {}) => quoteBandellaVeneta({
+  kind: "snodate",
+  typology: "mestrina-legno",
+  shoulderHoles: 2,
+  tipHoles: 2,
+  screwHoles: 4,
+  quantity: 25,
+  ...changes,
+});
+
+describe("Bandelle snodate — listino spalla+punta image(20261024-073706).png", () => {
+  it("copre una volta sola ciascuna delle 44 coppie tabellate", () => {
+    const combinations = BANDELLE_SNODATE_PRICES.map((row) => `${row.shoulderHoles}+${row.tipHoles}`);
+    expect(BANDELLE_SNODATE_PRICES).toHaveLength(44);
+    expect(new Set(combinations).size).toBe(44);
+    for (let shoulder = 2; shoulder <= 5; shoulder += 1) {
+      for (let tip = 2; tip <= 12; tip += 1) {
+        expect(combinations).toContain(`${shoulder}+${tip}`);
+      }
+    }
+    for (const row of BANDELLE_SNODATE_PRICES) {
+      expect(row.screwHoles).toBe(row.shoulderHoles + row.tipHoles);
+      expect(row.prices).toHaveLength(7);
+    }
+  });
+
+  it.each([
+    [2, 2, 25, 5.13, 128.25],
+    [3, 2, 15, 6.60, 99],
+    [4, 2, 35, 4.78, 167.30],
+    [5, 2, 90, 4.12, 370.80],
+    [2, 3, 25, 5.24, 131],
+    [3, 3, 25, 5.28, 132],
+    [5, 4, 25, 5.35, 133.75],
+    [2, 7, 4, 13.07, 52.28],
+    [3, 7, 4, 12.83, 51.32],
+    [5, 8, 60, 5.59, 335.40],
+    [2, 9, 70, 5.19, 363.30],
+    [4, 10, 20, 9.11, 182.20],
+    [5, 11, 81, 6.63, 537.03],
+    [5, 12, 100, 6.70, 670],
+  ])("quota spalla+punta %i+%i a %i pezzi: %f euro, totale %f", (shoulderHoles, tipHoles, quantity, base, total) => {
+    expect(calculateSnodate({ shoulderHoles, tipHoles, screwHoles: shoulderHoles + tipHoles, quantity }))
+      .toMatchObject({ holePair: [shoulderHoles, tipHoles], screwHoles: shoulderHoles + tipHoles, base, unit: base, total });
+  });
+
+  it("usa la coppia esatta, anche quando il totale dei fori è uguale", () => {
+    expect(calculateSnodate({ shoulderHoles: 3, tipHoles: 2, screwHoles: 5 }).base).toBe(5.18);
+    expect(calculateSnodate({ shoulderHoles: 2, tipHoles: 3, screwHoles: 5 }).base).toBe(5.24);
+    expect(calculateSnodate({ shoulderHoles: 4, tipHoles: 4, screwHoles: 8 }).base).toBe(6.07);
+    expect(calculateSnodate({ shoulderHoles: 5, tipHoles: 4, screwHoles: 9 }).base).toBe(5.35);
+  });
+
+  it.each([
+    [4, 10.19, "4–10"], [10, 10.19, "4–10"],
+    [11, 6.60, "11–20"], [20, 6.60, "11–20"],
+    [21, 5.18, "21–30"], [30, 5.18, "21–30"],
+    [31, 4.67, "31–40"], [40, 4.67, "31–40"],
+    [41, 4.27, "41–60"], [60, 4.27, "41–60"],
+    [61, 4.02, "61–80"], [80, 4.02, "61–80"],
+    [81, 3.94, "81–100"], [100, 3.94, "81–100"],
+  ] as const)("per 3+2 e %i pezzi usa %f euro nella fascia %s", (quantity, base, tier) => {
+    expect(calculateSnodate({ shoulderHoles: 3, tipHoles: 2, screwHoles: 5, quantity })).toMatchObject({ base, tier });
+  });
+
+  it.each(["mestrina-legno", "padovana-legno", "mestrina-pvc", "padovana-pvc"])("applica il listino per %s", (typology) => {
+    expect(calculateSnodate({ typology })).toMatchObject({ typology, base: 5.13 });
+  });
+
+  it.each([[1, 11.78], [2, 23.56], [3, 35.34]])("per %i pezzi usa la fascia minima e totalizza %f", (quantity, total) => {
+    expect(calculateSnodate({ quantity })).toMatchObject({ minimumTierApplied: true, tier: "4–10", base: 11.78, total });
+  });
+
+  it("somma tutti i supplementi confermati per pezzo", () => {
+    expect(calculateSnodate({ shoulderHoles: 3, tipHoles: 2, screwHoles: 5,
+      weldedEyes: true, extraThicknessMm: 0.5, reinforcement: true, nonStandardDiameter: true,
+    })).toMatchObject({ base: 5.18, supplements: 6.50, unit: 11.68, total: 292 });
+  });
+
+  it("rifiuta coppie mancanti, fori fuori listino e combinazioni incoerenti", () => {
+    expect(() => calculateSnodate({ shoulderHoles: undefined })).toThrow(/fori della spalla/);
+    expect(() => calculateSnodate({ tipHoles: undefined })).toThrow(/fori della spalla/);
+    expect(() => calculateSnodate({ shoulderHoles: 1, tipHoles: 2, screwHoles: 3 })).toThrow(/spalla da 2 a 5/);
+    expect(() => calculateSnodate({ shoulderHoles: 6, tipHoles: 2, screwHoles: 8 })).toThrow(/spalla da 2 a 5/);
+    expect(() => calculateSnodate({ shoulderHoles: 2, tipHoles: 13, screwHoles: 15 })).toThrow(/punta da 2 a 12/);
+    expect(() => calculateSnodate({ shoulderHoles: 2, tipHoles: 3, screwHoles: 6 })).toThrow(/totale deve essere la loro somma/);
+    expect(() => calculateSnodate({ quantity: 101 })).toThrow(/quantità intera da 1 a 100/);
   });
 });
