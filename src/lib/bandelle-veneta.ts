@@ -58,9 +58,24 @@ export const BANDELLE_DRITTE_ZANCATE_VARIANTS = [
   { value: "variazione-zanca", label: "Variazione della zanca (max 60 mm)" },
 ] as const;
 
+// Tipologie e varianti delle vicentine dritte, definite da Matteo il 24/10/2026.
+export const BANDELLE_VICENTINE_DRITTE_TYPOLOGIES = [
+  { value: "dritte-legno", label: "Dritte LEGNO" },
+  { value: "dritte-pvc", label: "Dritte PVC" },
+  { value: "dritte-sormonto-pvc-alluminio", label: "Dritte con sormonto PVC/Alluminio" },
+] as const;
+
+export const BANDELLE_VICENTINE_DRITTE_VARIANTS = [
+  { value: "numero-fori-vite", label: "Variazione del numero di fori vite" },
+  { value: "posizione-fori-vite", label: "Variazione della posizione dei fori vite" },
+  { value: "lunghezza-totale", label: "Lunghezza totale" },
+  { value: "applicazione-sormonto", label: "Applicazione del sormonto" },
+] as const;
+
 export type BandellaVenetaTypology = BandellaDrittaTypology
   | (typeof BANDELLE_DRITTE_CON_SORMONTO_TYPOLOGIES)[number]["value"]
-  | (typeof BANDELLE_DRITTE_ZANCATE_TYPOLOGIES)[number]["value"];
+  | (typeof BANDELLE_DRITTE_ZANCATE_TYPOLOGIES)[number]["value"]
+  | (typeof BANDELLE_VICENTINE_DRITTE_TYPOLOGIES)[number]["value"];
 
 type BandellaVenetaPriceRow = {
   screwHoles: number;
@@ -151,6 +166,19 @@ export const BANDELLE_DRITTE_ZANCATE_PRICES = [
   { screwHoles: 15, prices: [22.08, 13.54, 6.79, 6.20, 5.80, 5.30, 4.89] },
 ] as const satisfies readonly BandellaVenetaPriceRow[];
 
+/**
+ * Listino delle bandelle vicentine dritte, immagine "image(20261024-071349).png"
+ * fornita da Matteo il 24/10/2026. Prezzi unitari in euro per 2–5 fori vite.
+ * Le sette colonne seguono BANDELLE_VENETA_LOT_TIERS. Non si aggiunge un
+ * supplemento per il sormonto alla tipologia che lo prevede.
+ */
+export const BANDELLE_VICENTINE_DRITTE_PRICES = [
+  { screwHoles: 2, prices: [13.73, 6.91, 3.97, 3.03, 2.65, 2.42, 2.22] },
+  { screwHoles: 3, prices: [13.79, 6.97, 4.01, 3.07, 2.70, 2.47, 2.25] },
+  { screwHoles: 4, prices: [13.93, 7.10, 4.12, 3.17, 2.79, 2.56, 2.35] },
+  { screwHoles: 5, prices: [14.55, 7.71, 4.63, 3.62, 3.23, 3.01, 2.79] },
+] as const satisfies readonly BandellaVenetaPriceRow[];
+
 export const BANDELLE_DRITTE_SUPPLEMENTS = {
   weldedEyes: 1.50,
   extraThicknessStepMm: 0.5,
@@ -177,6 +205,15 @@ export const BANDELLE_DRITTE_ZANCATE_SUPPLEMENTS = {
   nonStandardDiameter: 2,
 } as const;
 
+// Supplementi confermati separatamente per le bandelle vicentine dritte.
+export const BANDELLE_VICENTINE_DRITTE_SUPPLEMENTS = {
+  weldedEyes: 1.50,
+  extraThicknessStepMm: 0.5,
+  extraThicknessPerStep: 1,
+  reinforcement: 2,
+  nonStandardDiameter: 2,
+} as const;
+
 export const BANDELLE_VENETA_CONFIGURATIONS: Partial<Record<BandellaVenetaType, BandellaVenetaConfiguration>> = {
   dritte: {
     typologies: BANDELLE_DRITTE_TYPOLOGIES,
@@ -195,6 +232,12 @@ export const BANDELLE_VENETA_CONFIGURATIONS: Partial<Record<BandellaVenetaType, 
     variants: BANDELLE_DRITTE_ZANCATE_VARIANTS,
     prices: BANDELLE_DRITTE_ZANCATE_PRICES,
     supplements: BANDELLE_DRITTE_ZANCATE_SUPPLEMENTS,
+  },
+  "vicentine-dritte": {
+    typologies: BANDELLE_VICENTINE_DRITTE_TYPOLOGIES,
+    variants: BANDELLE_VICENTINE_DRITTE_VARIANTS,
+    prices: BANDELLE_VICENTINE_DRITTE_PRICES,
+    supplements: BANDELLE_VICENTINE_DRITTE_SUPPLEMENTS,
   },
 };
 

@@ -202,3 +202,61 @@ describe("Bandelle dritte zancate — immagine image(10).png del 24/10/2026", ()
     expect(() => calculateZancate({ extraThicknessMm: 0.25 })).toThrow(/multiplo di 0,5 mm/);
   });
 });
+
+const calculateVicentineDritte = (changes: Partial<BandellaVenetaRequest> = {}) => quoteBandellaVeneta({
+  kind: "vicentine-dritte",
+  typology: "dritte-legno",
+  screwHoles: 3,
+  quantity: 25,
+  ...changes,
+});
+
+describe("Bandelle vicentine dritte — immagine image(20261024-071349).png", () => {
+  it.each([
+    [2, 25, 3.97, 99.25],
+    [3, 25, 4.01, 100.25],
+    [4, 35, 3.17, 110.95],
+    [5, 90, 2.79, 251.10],
+  ])("quota %i fori e %i pezzi a %f euro, totale %f", (screwHoles, quantity, unit, total) => {
+    expect(calculateVicentineDritte({ screwHoles, quantity })).toMatchObject({ base: unit, supplements: 0, unit, total });
+  });
+
+  it.each([
+    [4, 13.79, "4–10"], [10, 13.79, "4–10"],
+    [11, 6.97, "11–20"], [20, 6.97, "11–20"],
+    [21, 4.01, "21–30"], [30, 4.01, "21–30"],
+    [31, 3.07, "31–40"], [40, 3.07, "31–40"],
+    [41, 2.70, "41–60"], [60, 2.70, "41–60"],
+    [61, 2.47, "61–80"], [80, 2.47, "61–80"],
+    [81, 2.25, "81–100"], [100, 2.25, "81–100"],
+  ] as const)("a %i pezzi applica %f euro nella fascia %s", (quantity, unit, tier) => {
+    expect(calculateVicentineDritte({ quantity })).toMatchObject({ unit, tier, minimumTierApplied: false });
+  });
+
+  it.each(["dritte-legno", "dritte-pvc", "dritte-sormonto-pvc-alluminio"])("usa la tabella vicentine per %s", (typology) => {
+    expect(calculateVicentineDritte({ typology })).toMatchObject({ typology, base: 4.01, total: 100.25 });
+  });
+
+  it.each([[1, 13.79], [2, 27.58], [3, 41.37]])("per %i pezzi usa la fascia minima e totalizza %f", (quantity, total) => {
+    expect(calculateVicentineDritte({ quantity })).toMatchObject({ tier: "4–10", minimumTierApplied: true, unit: 13.79, total });
+  });
+
+  it("applica i quattro supplementi a ogni pezzo del lotto", () => {
+    const result = calculateVicentineDritte({ weldedEyes: true, extraThicknessMm: 0.5, reinforcement: true, nonStandardDiameter: true });
+    expect(result).toMatchObject({ base: 4.01, supplements: 6.50, unit: 10.51, total: 262.75 });
+    expect(result.additions.map((addition) => addition.euro)).toEqual([1.50, 1, 2, 2]);
+  });
+
+  it("non mescola i prezzi con le dritte o il sormonto", () => {
+    expect(calculateVicentineDritte().base).toBe(4.01);
+    expect(calculate().base).toBe(6.46);
+    expect(calculateOverlap().base).toBe(7.21);
+    expect(() => calculateVicentineDritte({ typology: "occhio-decentrato" })).toThrow(/tipologie ammesse/);
+  });
+
+  it("rifiuta fori, lotti e spessori per i quali manca un prezzo definito", () => {
+    expect(() => calculateVicentineDritte({ screwHoles: 6 })).toThrow(/numero di fori vite/);
+    expect(() => calculateVicentineDritte({ quantity: 101 })).toThrow(/quantità intera da 1 a 100/);
+    expect(() => calculateVicentineDritte({ extraThicknessMm: 0.25 })).toThrow(/multiplo di 0,5 mm/);
+  });
+});
