@@ -370,20 +370,24 @@ export function createMicrosoftCallbackHandler() {
       return c.json({ error: "State mismatch" }, 400);
     }
 
+    let authPhase = "token_exchange";
     try {
       const tokenResp = await exchangeMicrosoftCode(
         code,
         stateData.pkceVerifier,
       );
+      authPhase = "id_token_verification";
       const claims = await verifyMicrosoftIdToken(
         tokenResp.id_token,
         stateData.nonce,
       );
 
       // ── Authorization: only allowed OIDs may access ──
+      authPhase = "oid_authorization";
       checkAllowedOid(claims.oid);
 
       // Upsert user in database (authorized users are admin)
+      authPhase = "database_user_upsert";
       await upsertUser({
         unionId: claims.oid,
         name: claims.name || claims.preferred_username || "Microsoft User",
@@ -393,6 +397,7 @@ export function createMicrosoftCallbackHandler() {
       });
 
       // Create session JWT (unionId = Microsoft OID, clientId = Tenant ID)
+      authPhase = "session_signing";
       const sessionToken = await signSessionToken({
         unionId: claims.oid,
         clientId: claims.tid,
@@ -405,8 +410,13 @@ export function createMicrosoftCallbackHandler() {
       });
 
       return c.redirect(stateData.redirectTo, 302);
-    } catch (err: any) {
-      console.error("[Microsoft OAuth] Callback failed");
+    } catch {
+      // Stage-only diagnostic: log the step, never tokens, passwords, or DB URLs.
+      if (env.appOrigin === "https://ddcost-collaudo.onrender.com") {
+        console.error("[Microsoft OAuth] Callback failed at phase:", authPhase);
+      } else {
+        console.error("[Microsoft OAuth] Callback failed");
+      }
       return c.json({ error: "Authentication failed" }, 500);
     }
   };

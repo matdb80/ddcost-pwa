@@ -20,6 +20,7 @@ export async function runDbDiagnostics() {
   try {
     connection = await mysql.createConnection({
       uri: dbUrl,
+      ssl: { rejectUnauthorized: true },
       connectTimeout: 8000,
     });
 
@@ -28,6 +29,26 @@ export async function runDbDiagnostics() {
     console.log("[DDCost] DB connection: FAILED");
     console.log("[DDCost] Error code:", err.code || "UNKNOWN");
     console.log("[DDCost] Error errno:", err.errno || "N/A");
+    // Never log error.message verbatim: a driver error may contain credentials.
+    // Only emit a safe classification to guide a staging connection fix.
+    const diagnostic = String(err?.message || "").toLowerCase();
+    const category =
+      /ip address|ip is not|not in.*(whitelist|allowlist|network)|authorized network|firewall|not allowed to connect|public endpoint is disabled/.test(diagnostic) ? "NETWORK_ACCESS" :
+      /tls|ssl|certificate|secure connection|handshake/.test(diagnostic) ? "TLS" :
+      /access denied|authentication failed|incorrect password|invalid password|password authentication/.test(diagnostic) ? "CREDENTIALS" :
+      /unknown database|database.*not found/.test(diagnostic) ? "DATABASE_NAME" :
+      /cluster|branch|username|invalid user|not found/.test(diagnostic) ? "TIDB_TARGET" :
+      "OTHER";
+    console.log("[DDCost] DB failure category:", category);
+    if (category === "TIDB_TARGET") {
+      console.log("[DDCost] TiDB target detail:", [
+        /branch/.test(diagnostic) ? "BRANCH" : null,
+        /cluster/.test(diagnostic) ? "CLUSTER" : null,
+        /username|invalid user|user not found/.test(diagnostic) ? "USERNAME" : null,
+        /not found|does not exist|unknown/.test(diagnostic) ? "NOT_FOUND" : null,
+        /not available|suspended|disabled/.test(diagnostic) ? "NOT_AVAILABLE" : null,
+      ].filter(Boolean).join("+") || "UNCLASSIFIED");
+    }
     return;
   }
 
