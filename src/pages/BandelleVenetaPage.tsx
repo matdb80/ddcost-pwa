@@ -35,10 +35,12 @@ export default function BandelleVenetaPage() {
   const [response, setResponse] = useState<BandellaVenetaQuote | null>(null);
   const [message, setMessage] = useState("");
   const isDouble = bandellaType === "vicentine-doppie";
-  const isJointed = bandellaType === "snodate";
+  const isJointed = bandellaType === "snodate" || bandellaType === "snodate-zancate";
   const configuration = bandellaType ? BANDELLE_VENETA_CONFIGURATIONS[bandellaType] : undefined;
   const supplementRates = configuration?.supplements;
   const priceRows = configuration?.prices;
+  const shoulderOptions = [...new Set(priceRows?.flatMap((row) => row.shoulderHoles === undefined ? [] : [row.shoulderHoles]) ?? [])].sort((a, b) => a - b);
+  const tipOptions = [...new Set(priceRows?.flatMap((row) => row.shoulderHoles === Number(shoulderHoles) && row.tipHoles !== undefined ? [row.tipHoles] : []) ?? [])].sort((a, b) => a - b);
   const hasUnsavedInput = Boolean(bandellaType || typology || screwHoles || holesFirst || holesSecond || shoulderHoles || tipHoles || quantity)
     || weldedEyes || extraThicknessMm !== "0" || reinforcement || nonStandardDiameter;
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
@@ -187,19 +189,19 @@ export default function BandelleVenetaPage() {
                   <>
                     <div>
                       <label htmlFor="bandella-veneta-shoulder-holes" className="mb-1 block text-sm font-medium text-slate-600">Fori vite spalla</label>
-                      <select id="bandella-veneta-shoulder-holes" className={inputClass} value={shoulderHoles} onChange={(event) => { setShoulderHoles(event.target.value); clearResult(); }}>
+                      <select id="bandella-veneta-shoulder-holes" className={inputClass} value={shoulderHoles} onChange={(event) => { setShoulderHoles(event.target.value); setTipHoles(""); clearResult(); }}>
                         <option value="">Seleziona i fori della spalla...</option>
-                        {[2, 3, 4, 5].map((holes) => <option key={holes} value={holes}>{holes}</option>)}
+                        {shoulderOptions.map((holes) => <option key={holes} value={holes}>{holes}</option>)}
                       </select>
                     </div>
                     <div>
                       <label htmlFor="bandella-veneta-tip-holes" className="mb-1 block text-sm font-medium text-slate-600">Fori vite punta</label>
-                      <select id="bandella-veneta-tip-holes" className={inputClass} value={tipHoles} onChange={(event) => { setTipHoles(event.target.value); clearResult(); }}>
+                      <select id="bandella-veneta-tip-holes" className={inputClass} value={tipHoles} disabled={!shoulderHoles} onChange={(event) => { setTipHoles(event.target.value); clearResult(); }}>
                         <option value="">Seleziona i fori della punta...</option>
-                        {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((holes) => <option key={holes} value={holes}>{holes}</option>)}
+                        {tipOptions.map((holes) => <option key={holes} value={holes}>{holes}</option>)}
                       </select>
                     </div>
-                    <p className="text-xs text-slate-500 md:col-span-2">Per le snodate il prezzo dipende dalla coppia spalla+punta, non dalla sola somma dei fori.</p>
+                    <p className="text-xs text-slate-500 md:col-span-2">Il prezzo dipende dalla coppia esatta spalla+punta; sono selezionabili solo le coppie presenti nel listino.</p>
                   </>
                 ) : (
                   <div>
@@ -308,7 +310,7 @@ export default function BandelleVenetaPage() {
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <div><dt className="text-slate-600">{isJointed ? "Fori vite spalla+punta" : "Numero di fori vite"}</dt><dd className="font-semibold">{response.holePair ? `${response.holePair[0]}+${response.holePair[1]} (${response.screwHoles} totali)` : response.screwHoles}</dd></div>
               <div><dt className="text-slate-600">Fascia lotto</dt><dd className="font-semibold">{response.tier} pz</dd></div>
-              <div><dt className="text-slate-600">Prezzo base</dt><dd className="font-semibold">{prices2(response.base)} €/pz<FormulaTooltip label="Prezzo base" formula={isJointed ? CALCULATION_FORMULAS.bandelleVeneta.jointedBasePrice : response.holePair ? CALCULATION_FORMULAS.bandelleVeneta.doubleBasePrice : CALCULATION_FORMULAS.bandelleVeneta.basePrice} /></dd></div>
+              <div><dt className="text-slate-600">Prezzo base</dt><dd className="font-semibold">{prices2(response.base)} €/pz<FormulaTooltip label="Prezzo base" formula={bandellaType === "snodate-zancate" ? CALCULATION_FORMULAS.bandelleVeneta.jointedZancateBasePrice : isJointed ? CALCULATION_FORMULAS.bandelleVeneta.jointedBasePrice : response.holePair ? CALCULATION_FORMULAS.bandelleVeneta.doubleBasePrice : CALCULATION_FORMULAS.bandelleVeneta.basePrice} /></dd></div>
               <div><dt className="text-slate-600">Supplementi</dt><dd className="font-semibold">{prices2(response.supplements)} €/pz<FormulaTooltip label="Supplementi per pezzo" formula={CALCULATION_FORMULAS.bandelleVeneta.additions} /></dd></div>
               <div className="col-span-2">
                 <dt className="text-slate-600">Prezzo di vendita unitario</dt>

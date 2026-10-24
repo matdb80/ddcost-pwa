@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BANDELLE_SNODATE_PRICES, quoteBandellaVeneta, type BandellaVenetaRequest } from "./bandelle-veneta";
+import { BANDELLE_SNODATE_PRICES, BANDELLE_SNODATE_ZANCATE_PRICES, BANDELLE_VENETA_CONFIGURATIONS, quoteBandellaVeneta, type BandellaVenetaRequest } from "./bandelle-veneta";
 
 const base: BandellaVenetaRequest = {
   kind: "dritte",
@@ -422,5 +422,99 @@ describe("Bandelle snodate — listino spalla+punta image(20261024-073706).png",
     expect(() => calculateSnodate({ shoulderHoles: 2, tipHoles: 13, screwHoles: 15 })).toThrow(/punta da 2 a 12/);
     expect(() => calculateSnodate({ shoulderHoles: 2, tipHoles: 3, screwHoles: 6 })).toThrow(/totale deve essere la loro somma/);
     expect(() => calculateSnodate({ quantity: 101 })).toThrow(/quantità intera da 1 a 100/);
+  });
+});
+
+describe("Listino snodate zancate — image(20261024-074709).png", () => {
+  it("conserva le 49 coppie esatte senza duplicati o righe incomplete", () => {
+    const combinations = BANDELLE_SNODATE_ZANCATE_PRICES.map((row) => `${row.shoulderHoles}+${row.tipHoles}`);
+    expect(combinations).toHaveLength(49);
+    expect(new Set(combinations).size).toBe(49);
+    for (let shoulder = 2; shoulder <= 5; shoulder += 1) {
+      for (let tip = 2; tip <= 12; tip += 1) {
+        expect(combinations).toContain(`${shoulder}+${tip}`);
+      }
+    }
+    for (const pair of ["6+5", "7+5", "7+6", "8+6", "8+7"]) expect(combinations).toContain(pair);
+    for (const row of BANDELLE_SNODATE_ZANCATE_PRICES) {
+      expect(row.screwHoles).toBe(row.shoulderHoles + row.tipHoles);
+      expect(row.prices).toHaveLength(7);
+      for (const value of row.prices) expect(Math.abs(value * 100 - Math.round(value * 100))).toBeLessThan(1e-9);
+    }
+  });
+
+  it.each([
+    [2, 2, [15.43, 7.88, 5.83, 5.10, 4.51, 4.16, 4.04]],
+    [3, 2, [13.10, 7.93, 5.87, 5.14, 4.57, 4.21, 4.09]],
+    [5, 4, [15.84, 8.30, 6.24, 5.52, 4.93, 4.58, 4.46]],
+    [6, 5, [17.36, 9.43, 7.27, 6.51, 5.89, 5.52, 5.40]],
+    [7, 6, [19.13, 10.40, 8.02, 7.17, 6.50, 6.09, 5.95]],
+    [8, 7, [21.10, 11.46, 8.84, 7.91, 7.17, 6.71, 6.56]],
+    [2, 8, [16.57, 9.03, 6.97, 5.25, 5.66, 5.31, 5.18]],
+    [2, 10, [17.84, 10.29, 8.23, 6.51, 6.93, 6.57, 6.45]],
+    [5, 12, [18.24, 10.69, 8.63, 7.91, 7.33, 6.97, 6.84]],
+  ])("mantiene i sette prezzi dell'immagine per %i+%i", (shoulder, tip, prices) => {
+    const row = BANDELLE_SNODATE_ZANCATE_PRICES.find((item) => item.shoulderHoles === shoulder && item.tipHoles === tip);
+    expect(row?.prices).toEqual(prices);
+  });
+});
+
+const calculateSnodateZancate = (changes: Partial<BandellaVenetaRequest> = {}) => quoteBandellaVeneta({
+  kind: "snodate-zancate",
+  typology: "mestrina-zancata-legno",
+  shoulderHoles: 2,
+  tipHoles: 2,
+  screwHoles: 4,
+  quantity: 25,
+  ...changes,
+});
+
+describe("Bandelle snodate zancate — tipologie, coppie e supplementi", () => {
+  it("ammette solo le due tipologie mestrina e le quattro varianti dichiarate", () => {
+    expect(BANDELLE_VENETA_CONFIGURATIONS["snodate-zancate"]?.typologies.map((item) => item.label)).toEqual(["Mestrina Legno", "Mestrina PVC"]);
+    expect(BANDELLE_VENETA_CONFIGURATIONS["snodate-zancate"]?.variants.map((item) => item.label)).toEqual([
+      "Variazione del numero di fori vite", "Lunghezza totale", "Applicazione di un sormonto",
+      "Variazione zanca a filo (max 30 mm, solo versione Mestrina)",
+    ]);
+    expect(calculateSnodateZancate({ typology: "mestrina-zancata-pvc" }).base).toBe(5.83);
+    expect(() => calculateSnodateZancate({ typology: "padovana-legno" })).toThrow(/tipologie ammesse/);
+    expect(() => calculateSnodate({ typology: "mestrina-zancata-legno" })).toThrow(/tipologie ammesse/);
+  });
+
+  it.each([
+    [2, 2, 25, 5.83, 145.75], [3, 2, 25, 5.87, 146.75], [2, 3, 25, 5.93, 148.25],
+    [6, 5, 15, 9.43, 141.45], [8, 7, 25, 8.84, 221],
+    [2, 8, 35, 5.25, 183.75], [2, 9, 60, 5.74, 344.40],
+    [2, 10, 35, 6.51, 227.85], [2, 10, 50, 6.93, 346.50],
+  ])("quota la coppia esatta %i+%i a %i pezzi: %f €/pz, totale %f €", (shoulderHoles, tipHoles, quantity, base, total) => {
+    expect(calculateSnodateZancate({ shoulderHoles, tipHoles, screwHoles: shoulderHoles + tipHoles, quantity }))
+      .toMatchObject({ holePair: [shoulderHoles, tipHoles], base, unit: base, total });
+  });
+
+  it.each([
+    [4, 15.43, "4–10"], [11, 7.88, "11–20"], [21, 5.83, "21–30"],
+    [31, 5.10, "31–40"], [41, 4.51, "41–60"], [61, 4.16, "61–80"], [81, 4.04, "81–100"],
+  ] as const)("per %i pezzi usa il prezzo %f nella fascia %s", (quantity, base, tier) => {
+    expect(calculateSnodateZancate({ quantity })).toMatchObject({ base, tier });
+  });
+
+  it.each([[1, 15.43], [2, 30.86], [3, 46.29]])("per %i pezzi usa il prezzo minimo e totalizza %f €", (quantity, total) => {
+    expect(calculateSnodateZancate({ quantity })).toMatchObject({ minimumTierApplied: true, base: 15.43, total });
+  });
+
+  it("somma tutti i supplementi confermati per pezzo", () => {
+    expect(calculateSnodateZancate({ weldedEyes: true, extraThicknessMm: 0.5,
+      reinforcement: true, nonStandardDiameter: true,
+    })).toMatchObject({ base: 5.83, supplements: 6.50, unit: 12.33, total: 308.25 });
+  });
+
+  it("non inventa un prezzo per le coppie assenti, anche se il totale coincide", () => {
+    expect(() => calculateSnodateZancate({ shoulderHoles: 6, tipHoles: 2, screwHoles: 8 })).toThrow(/coppia di fori/);
+    expect(() => calculateSnodateZancate({ shoulderHoles: 1, tipHoles: 2, screwHoles: 3 })).toThrow(/coppia di fori/);
+    expect(() => calculateSnodateZancate({ shoulderHoles: 8, tipHoles: 5, screwHoles: 13 })).toThrow(/coppia di fori/);
+    expect(() => calculateSnodateZancate({ shoulderHoles: 2, tipHoles: 3, screwHoles: 6 })).toThrow(/totale deve essere la loro somma/);
+    expect(() => calculateSnodateZancate({ quantity: 101 })).toThrow(/quantità intera da 1 a 100/);
+    expect(() => calculateSnodateZancate({ extraThicknessMm: 0.25 })).toThrow(/multiplo di 0,5 mm/);
+    expect(() => calculateSnodate({ shoulderHoles: 8, tipHoles: 7, screwHoles: 15 })).toThrow(/spalla da 2 a 5/);
   });
 });
