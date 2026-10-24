@@ -72,10 +72,28 @@ export const BANDELLE_VICENTINE_DRITTE_VARIANTS = [
   { value: "applicazione-sormonto", label: "Applicazione del sormonto" },
 ] as const;
 
+// Tipologie e varianti delle vicentine doppie, definite da Matteo il 24/10/2026.
+export const BANDELLE_VICENTINE_DOPPIE_TYPOLOGIES = [
+  { value: "normale", label: "Normale" },
+  { value: "zancate", label: "Zancate" },
+  { value: "sormonto", label: "Sormonto" },
+  { value: "zancate-con-sormonto", label: "Zancate con sormonto" },
+  { value: "per-pvc", label: "Per PVC" },
+] as const;
+
+export const BANDELLE_VICENTINE_DOPPIE_VARIANTS = [
+  { value: "numero-fori-vite", label: "Variazione del numero di fori vite" },
+  { value: "posizione-fori-vite", label: "Variazione della posizione dei fori vite" },
+  { value: "lunghezza-totale", label: "Lunghezza totale" },
+  { value: "applicazione-sormonto", label: "Applicazione del sormonto" },
+  { value: "zanca-centrale", label: "Applicazione di una zanca centrale" },
+] as const;
+
 export type BandellaVenetaTypology = BandellaDrittaTypology
   | (typeof BANDELLE_DRITTE_CON_SORMONTO_TYPOLOGIES)[number]["value"]
   | (typeof BANDELLE_DRITTE_ZANCATE_TYPOLOGIES)[number]["value"]
-  | (typeof BANDELLE_VICENTINE_DRITTE_TYPOLOGIES)[number]["value"];
+  | (typeof BANDELLE_VICENTINE_DRITTE_TYPOLOGIES)[number]["value"]
+  | (typeof BANDELLE_VICENTINE_DOPPIE_TYPOLOGIES)[number]["value"];
 
 type BandellaVenetaPriceRow = {
   screwHoles: number;
@@ -179,6 +197,22 @@ export const BANDELLE_VICENTINE_DRITTE_PRICES = [
   { screwHoles: 5, prices: [14.55, 7.71, 4.63, 3.62, 3.23, 3.01, 2.79] },
 ] as const satisfies readonly BandellaVenetaPriceRow[];
 
+/**
+ * Listino delle bandelle vicentine doppie dall'immagine
+ * "image(20261024-072132).png", fornita da Matteo il 24/10/2026.
+ * I fori indicati 2+2, 3+3, ..., 6+6 sono memorizzati come totale 4, 6, ..., 12.
+ * Le sette colonne seguono BANDELLE_VENETA_LOT_TIERS. Per un totale dispari
+ * compreso tra due righe si usa la media dei prezzi della fascia corrispondente.
+ * Il minimo ammesso è 2+2: ogni metà ha da 2 a 6 fori vite.
+ */
+export const BANDELLE_VICENTINE_DOPPIE_PRICES = [
+  { screwHoles: 4, prices: [13.64, 7.67, 5.54, 5.06, 4.66, 4.25, 3.93] },
+  { screwHoles: 6, prices: [13.79, 7.84, 5.71, 5.23, 4.83, 4.41, 4.09] },
+  { screwHoles: 8, prices: [14.00, 8.04, 5.90, 5.42, 5.03, 4.62, 4.29] },
+  { screwHoles: 10, prices: [14.18, 8.21, 6.08, 5.60, 5.20, 4.80, 4.47] },
+  { screwHoles: 12, prices: [14.38, 8.42, 6.29, 5.81, 5.40, 5.00, 4.67] },
+] as const satisfies readonly BandellaVenetaPriceRow[];
+
 export const BANDELLE_DRITTE_SUPPLEMENTS = {
   weldedEyes: 1.50,
   extraThicknessStepMm: 0.5,
@@ -214,6 +248,15 @@ export const BANDELLE_VICENTINE_DRITTE_SUPPLEMENTS = {
   nonStandardDiameter: 2,
 } as const;
 
+// Supplementi confermati separatamente per le bandelle vicentine doppie.
+export const BANDELLE_VICENTINE_DOPPIE_SUPPLEMENTS = {
+  weldedEyes: 1.50,
+  extraThicknessStepMm: 0.5,
+  extraThicknessPerStep: 1,
+  reinforcement: 2,
+  nonStandardDiameter: 2,
+} as const;
+
 export const BANDELLE_VENETA_CONFIGURATIONS: Partial<Record<BandellaVenetaType, BandellaVenetaConfiguration>> = {
   dritte: {
     typologies: BANDELLE_DRITTE_TYPOLOGIES,
@@ -239,12 +282,20 @@ export const BANDELLE_VENETA_CONFIGURATIONS: Partial<Record<BandellaVenetaType, 
     prices: BANDELLE_VICENTINE_DRITTE_PRICES,
     supplements: BANDELLE_VICENTINE_DRITTE_SUPPLEMENTS,
   },
+  "vicentine-doppie": {
+    typologies: BANDELLE_VICENTINE_DOPPIE_TYPOLOGIES,
+    variants: BANDELLE_VICENTINE_DOPPIE_VARIANTS,
+    prices: BANDELLE_VICENTINE_DOPPIE_PRICES,
+    supplements: BANDELLE_VICENTINE_DOPPIE_SUPPLEMENTS,
+  },
 };
 
 export type BandellaVenetaRequest = {
   kind: BandellaVenetaType;
   typology: string;
   screwHoles: number;
+  holesFirst?: number;
+  holesSecond?: number;
   quantity: number;
   weldedEyes?: boolean;
   extraThicknessMm?: number;
@@ -255,6 +306,8 @@ export type BandellaVenetaRequest = {
 export type BandellaVenetaQuote = {
   typology: BandellaVenetaTypology;
   screwHoles: number;
+  holePair?: readonly [number, number];
+  interpolatedFrom?: readonly [number, number];
   quantity: number;
   tier: string;
   minimumTierApplied: boolean;
@@ -278,8 +331,28 @@ export function quoteBandellaVeneta(request: BandellaVenetaRequest): BandellaVen
   if (!Number.isInteger(request.quantity) || request.quantity < 1 || request.quantity > 100) {
     throw new Error("Inserisci una quantità intera da 1 a 100 pezzi. Per lotti oltre 100 pezzi il prezzo è da definire.");
   }
+  const isDouble = request.kind === "vicentine-doppie";
+  let holePair: BandellaVenetaQuote["holePair"];
+  if (isDouble) {
+    const { holesFirst, holesSecond } = request;
+    if (typeof holesFirst !== "number" || typeof holesSecond !== "number"
+      || !Number.isInteger(holesFirst) || !Number.isInteger(holesSecond)
+      || holesFirst < 2 || holesFirst > 6 || holesSecond < 2 || holesSecond > 6
+      || holesFirst + holesSecond !== request.screwHoles) {
+      throw new Error("Indica i fori delle due metà, da 2 a 6 per lato; il totale deve essere la loro somma.");
+    }
+    holePair = [holesFirst, holesSecond];
+  }
   const row = configuration.prices.find((price) => price.screwHoles === request.screwHoles);
-  if (!row) {
+  let interpolatedFrom: BandellaVenetaQuote["interpolatedFrom"];
+  let lowerRow: BandellaVenetaPriceRow | undefined;
+  let upperRow: BandellaVenetaPriceRow | undefined;
+  if (!row && isDouble && request.screwHoles > 4 && request.screwHoles < 12 && request.screwHoles % 2 === 1) {
+    lowerRow = configuration.prices.find((price) => price.screwHoles === request.screwHoles - 1);
+    upperRow = configuration.prices.find((price) => price.screwHoles === request.screwHoles + 1);
+    if (lowerRow && upperRow) interpolatedFrom = [lowerRow.screwHoles, upperRow.screwHoles];
+  }
+  if (!row && !interpolatedFrom) {
     throw new Error("Il prezzo per questo numero di fori vite non è ancora definito.");
   }
   const extraThicknessMm = request.extraThicknessMm ?? 0;
@@ -291,7 +364,11 @@ export function quoteBandellaVeneta(request: BandellaVenetaRequest): BandellaVen
   const tierIndex = BANDELLE_VENETA_LOT_TIERS.findIndex(
     (tier) => tierQuantity >= tier.min && tierQuantity <= tier.max,
   );
-  const base = row.prices[tierIndex];
+  // La media può finire a mezzo centesimo: si arrotonda il prezzo unitario al centesimo superiore.
+  const baseCents = row
+    ? Math.round(row.prices[tierIndex] * 100)
+    : Math.round((Math.round(lowerRow!.prices[tierIndex] * 100) + Math.round(upperRow!.prices[tierIndex] * 100)) / 2);
+  const base = baseCents / 100;
   const additions: BandellaVenetaQuote["additions"] = [];
   if (request.weldedEyes) {
     additions.push({ description: "Occhi saldati", euro: supplementRates.weldedEyes });
@@ -310,10 +387,12 @@ export function quoteBandellaVeneta(request: BandellaVenetaRequest): BandellaVen
   }
   // Il calcolo in centesimi evita residui decimali; si fattura la quantità effettiva.
   const supplementCents = additions.reduce((sum, addition) => sum + Math.round(addition.euro * 100), 0);
-  const unitCents = Math.round(base * 100) + supplementCents;
+  const unitCents = baseCents + supplementCents;
   return {
     typology: typology.value,
     screwHoles: request.screwHoles,
+    holePair,
+    interpolatedFrom,
     quantity: request.quantity,
     tier: BANDELLE_VENETA_LOT_TIERS[tierIndex].label,
     minimumTierApplied: request.quantity < BANDELLE_VENETA_LOT_TIERS[0].min,

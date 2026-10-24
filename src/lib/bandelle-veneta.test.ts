@@ -260,3 +260,77 @@ describe("Bandelle vicentine dritte — immagine image(20261024-071349).png", ()
     expect(() => calculateVicentineDritte({ extraThicknessMm: 0.25 })).toThrow(/multiplo di 0,5 mm/);
   });
 });
+
+const calculateVicentineDoppie = (changes: Partial<BandellaVenetaRequest> = {}) => quoteBandellaVeneta({
+  kind: "vicentine-doppie",
+  typology: "normale",
+  holesFirst: 2,
+  holesSecond: 2,
+  screwHoles: 4,
+  quantity: 25,
+  ...changes,
+});
+
+describe("Bandelle vicentine doppie — somma fori e listino image(20261024-072132).png", () => {
+  it.each([
+    [2, 2, 25, 5.54, 138.50],
+    [3, 3, 15, 7.84, 117.60],
+    [4, 4, 35, 5.42, 189.70],
+    [5, 5, 50, 5.20, 260],
+    [6, 6, 90, 4.67, 420.30],
+  ])("usa la riga esplicita %i+%i per %i pezzi: %f euro, totale %f", (holesFirst, holesSecond, quantity, unit, total) => {
+    expect(calculateVicentineDoppie({ holesFirst, holesSecond, screwHoles: holesFirst + holesSecond, quantity }))
+      .toMatchObject({ holePair: [holesFirst, holesSecond], screwHoles: holesFirst + holesSecond, base: unit, unit, total });
+  });
+
+  it.each([
+    [2, 4, 6, 5.71], [4, 2, 6, 5.71], [2, 6, 8, 5.90], [3, 5, 8, 5.90],
+  ])("per %i+%i prende la riga del totale %i: %f euro", (holesFirst, holesSecond, screwHoles, base) => {
+    expect(calculateVicentineDoppie({ holesFirst, holesSecond, screwHoles })).toMatchObject({ base, interpolatedFrom: undefined });
+  });
+
+  it.each([
+    [2, 3, 5, 5.63, [4, 6]], [3, 2, 5, 5.63, [4, 6]],
+    [3, 4, 7, 5.81, [6, 8]],
+    [4, 5, 9, 5.99, [8, 10]],
+    [5, 6, 11, 6.19, [10, 12]],
+  ])("per %i+%i interpola il totale %i tra le righe %j", (holesFirst, holesSecond, screwHoles, base, interpolatedFrom) => {
+    expect(calculateVicentineDoppie({ holesFirst, holesSecond, screwHoles })).toMatchObject({ base, interpolatedFrom });
+  });
+
+  it.each([
+    [4, 13.72, "4–10"], [11, 7.76, "11–20"], [21, 5.63, "21–30"],
+    [31, 5.15, "31–40"], [41, 4.75, "41–60"], [61, 4.33, "61–80"], [81, 4.01, "81–100"],
+  ] as const)("per 2+3 e lotto %i applica %f euro nella fascia %s", (quantity, base, tier) => {
+    expect(calculateVicentineDoppie({ holesFirst: 2, holesSecond: 3, screwHoles: 5, quantity }))
+      .toMatchObject({ base, tier, interpolatedFrom: [4, 6] });
+  });
+
+  it.each(["normale", "zancate", "sormonto", "zancate-con-sormonto", "per-pvc"])("applica il listino %s", (typology) => {
+    expect(calculateVicentineDoppie({ typology })).toMatchObject({ typology, base: 5.54 });
+  });
+
+  it.each([[1, 13.64], [2, 27.28], [3, 40.92]])("per %i pezzi usa la fascia minima e totalizza %f", (quantity, total) => {
+    expect(calculateVicentineDoppie({ quantity })).toMatchObject({ minimumTierApplied: true, tier: "4–10", base: 13.64, total });
+  });
+
+  it("applica i supplementi anche al prezzo interpolato per ogni pezzo", () => {
+    expect(calculateVicentineDoppie({ holesFirst: 2, holesSecond: 3, screwHoles: 5,
+      weldedEyes: true, extraThicknessMm: 0.5, reinforcement: true, nonStandardDiameter: true,
+    })).toMatchObject({ base: 5.63, supplements: 6.50, unit: 12.13, total: 303.25 });
+  });
+
+  it("non ammette mai una metà con un solo foro", () => {
+    expect(() => calculateVicentineDoppie({ holesFirst: 1, holesSecond: 2, screwHoles: 3 })).toThrow(/da 2 a 6 per lato/);
+    expect(() => calculateVicentineDoppie({ holesFirst: 2, holesSecond: 1, screwHoles: 3 })).toThrow(/da 2 a 6 per lato/);
+    expect(() => calculateVicentineDoppie({ holesFirst: 1, holesSecond: 3, screwHoles: 4 })).toThrow(/da 2 a 6 per lato/);
+  });
+
+  it("rifiuta coppie mancanti, incoerenti o fuori limite", () => {
+    expect(() => calculateVicentineDoppie({ holesFirst: undefined })).toThrow(/fori delle due metà/);
+    expect(() => calculateVicentineDoppie({ holesFirst: 3, screwHoles: 4 })).toThrow(/deve essere la loro somma/);
+    expect(() => calculateVicentineDoppie({ holesFirst: 1.5, holesSecond: 2, screwHoles: 3.5 })).toThrow(/fori delle due metà/);
+    expect(() => calculateVicentineDoppie({ holesFirst: 7, holesSecond: 2, screwHoles: 9 })).toThrow(/fori delle due metà/);
+    expect(() => calculateVicentineDoppie({ holesFirst: 1, holesSecond: 1, screwHoles: 2 })).toThrow(/da 2 a 6 per lato/);
+  });
+});
