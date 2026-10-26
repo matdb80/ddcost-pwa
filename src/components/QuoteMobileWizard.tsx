@@ -1,3 +1,4 @@
+import SalesHandoffPanel from "./SalesHandoffPanel";
 import {useEffect, useMemo, useRef, useState} from "react";
 import {Link} from "react-router";
 import {
@@ -174,6 +175,7 @@ export default function QuoteMobileWizard(props:Props){
       <div className="mt-5">
         {current.id==="riepilogo" ? (
           <div className="space-y-4">
+            {!isNew && !isSavedDraft && <SalesHandoffPanel kind="quote" sourceId={numericId} disabled={unsavedChanges}/>}
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-slate-50 p-4 text-sm">
               <div><dt className="text-slate-500">Cliente</dt><dd className="break-words font-semibold">{doc.cliente||"—"}</dd></div>
               <div><dt className="text-slate-500">Prodotti / pezzi</dt><dd className="font-semibold">{doc.prodotti.length} / {preview?.quantita??"—"}</dd></div>
