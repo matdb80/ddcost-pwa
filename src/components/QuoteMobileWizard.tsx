@@ -172,38 +172,7 @@ export default function QuoteMobileWizard(props:Props){
       <h1 className="mt-6 text-xl font-bold leading-tight">{current.title}</h1>
       <p className="mt-2 text-sm leading-relaxed text-slate-600">{current.hint}</p>
       <div className="mt-5">
-        {current.id.endsWith(":done") && product && productIndex!==undefined ? (
-          <div className="space-y-3">
-            <p className="text-sm font-medium">{product.descrizione||"Prodotto senza descrizione"}</p>
-            <dl className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 text-sm">
-              <div><dt className="text-slate-500">Quantità</dt><dd className="font-semibold">{product.quantita} pz</dd></div>
-              <div><dt className="text-slate-500">Costo pieno €/pz</dt><dd className="font-semibold">{hasPreview?euro(preview?.prodotti?.[productIndex]?.full_cost):"—"}{hasPreview&&<FormulaTooltip label="Full cost del prodotto" formula={CALCULATION_FORMULAS.quote.productFullCost}/>}</dd></div>
-              <div><dt className="text-slate-500">Prezzo €/pz</dt><dd className="font-semibold">{hasPreview?euro(preview?.prodotti?.[productIndex]?.prezzo_netto_unitario_finale):"—"}{hasPreview&&<FormulaTooltip label="Prezzo finale unitario" formula={CALCULATION_FORMULAS.quote.productFinalPrice}/>}</dd></div>
-              <div><dt className="text-slate-500">Totale prodotto</dt><dd className="font-semibold">{hasPreview?"€ "+euro(preview?.prodotti?.[productIndex]?.totale_finale):"—"}{hasPreview&&<FormulaTooltip label="Totale riga prodotto" formula={CALCULATION_FORMULAS.quote.productTotal}/>}</dd></div>
-            </dl>
-            {Array.isArray(product.oggetto_modifica)&&product.oggetto_modifica.length>0&&
-              <p className="text-xs text-slate-600"><strong>Oggetto della modifica:</strong> {product.oggetto_modifica.join(", ")}</p>}
-            {doc.trattamenti_modalita==="ore_lavoro" &&
-              <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
-                Costo trattamenti inglobati nel tempo di produzione. Includi il tempo dei trattamenti
-                nelle ore complessive di lavorazione di questo prodotto.
-              </p>}
-            {product.costo_materiale_noto===false &&
-              <p className="text-xs text-slate-600">
-                Costo materiale calcolato da peso: {hasPreview?"€ "+euro(preview?.prodotti?.[productIndex]?.materiale_calcolato_cad):"da completare"}{hasPreview&&<FormulaTooltip label="Costo materiale per pezzo" formula={CALCULATION_FORMULAS.material.materialCost}/>} /pz.
-                Il calcolo usa il peso teorico del grezzo rettangolare.
-              </p>}
-            {!locked && <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={addAnotherProduct}
-                className={actionClass+" border border-emerald-700 text-emerald-800"}><Plus size={17}/> Altro prodotto</button>
-              {doc.prodotti.length>1 && <button type="button" onClick={()=>{
-                if(!window.confirm("Rimuovere questo prodotto dal preventivo?"))return;
-                onRemoveProduct(productIndex);
-                goto("riepilogo");
-              }} className={actionClass+" border border-red-200 text-red-700"}><Trash2 size={17}/> Elimina</button>}
-            </div>}
-          </div>
-        ):current.id==="riepilogo" ? (
+        {current.id==="riepilogo" ? (
           <div className="space-y-4">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-slate-50 p-4 text-sm">
               <div><dt className="text-slate-500">Cliente</dt><dd className="break-words font-semibold">{doc.cliente||"—"}</dd></div>
@@ -249,13 +218,19 @@ export default function QuoteMobileWizard(props:Props){
                 <button type="button" onClick={()=>goto("p:"+i+":descrizione")}
                   className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
                   <span className="min-w-0">
-                    <span className="block truncate">{i+1}. {p.descrizione||"Prodotto da completare"}</span>
+                    <span className="block break-words">{i+1}. {p.descrizione||"Prodotto da completare"}</span>
+                    <span className="mt-1 block text-xs text-slate-600">{p.quantita} pz · {hasPreview?"€ "+euro(preview?.prodotti?.[i]?.prezzo_netto_unitario_finale)+" /pz":"Da calcolare"}</span>
                     {doc.trattamenti_modalita==="ore_lavoro" &&
                       <span className="mt-1 block text-xs font-medium text-amber-800">Costo trattamenti inglobati nel tempo di produzione</span>}
                   </span>
                   <span className="shrink-0 font-semibold">{hasPreview?"€ "+euro(preview?.prodotti?.[i]?.totale_finale):"—"}</span>
                 </button>
                 <FormulaTooltip label={`Totale prodotto ${i+1}`} formula={CALCULATION_FORMULAS.quote.productTotal}/>
+                {!locked && doc.prodotti.length>1 && <button type="button"
+                  aria-label={`Elimina prodotto ${i+1}`}
+                  onClick={()=>{
+                    if(window.confirm("Rimuovere questo prodotto dal preventivo?"))onRemoveProduct(i);
+                  }} className="ml-2 min-h-11 min-w-11 text-red-700"><Trash2 size={17}/></button>}
               </div>)}
             </div>
             {costVersion<3 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
@@ -392,20 +367,8 @@ export default function QuoteMobileWizard(props:Props){
     {draftMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{draftMessage}</p>}
     {copyMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{copyMessage}</p>}
 
-    <div className="rounded-xl border border-slate-200 bg-white p-3">
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="flex items-center gap-1.5 font-medium text-slate-600"><FileText size={16}/> Totale provvisorio<FormulaTooltip label="Totale preventivo provvisorio" formula={CALCULATION_FORMULAS.quote.quoteTotal}/></span>
-        <strong className="text-lg tabular-nums">{hasPreview?"€ "+price:"Da calcolare"}</strong>
-      </div>
-      {hasPreview && <p className="mt-1 text-xs text-slate-500">Margine netto: {cashMargin.toFixed(1).replace(".",",")}%<FormulaTooltip label="Margine netto complessivo" formula={CALCULATION_FORMULAS.quote.netMarginPercent}/></p>}
-      {!locked && current.id!=="riepilogo" && <button type="button" disabled={busy||!unsavedChanges}
-        onClick={onSaveDraft} className="mt-3 min-h-11 w-full rounded-lg border border-emerald-600 font-semibold text-emerald-800 disabled:opacity-40">
-        <Save size={16} className="mr-2 inline"/> {busy?"Salvataggio...":"Salva bozza"}
-      </button>}
-    </div>
-
     <nav aria-label="Navigazione guidata" className="fixed bottom-0 left-0 right-0 z-30 flex flex-col gap-2 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-5px_24px_rgba(15,23,42,.1)] backdrop-blur">
-      {!locked && <div className="mx-auto flex w-full max-w-xl gap-2">
+      {!locked && current.id==="riepilogo" && <div className="mx-auto flex w-full max-w-xl gap-2">
         <button type="button" onClick={addAnotherProduct}
           aria-label="Aggiungi prodotto" title="Aggiungi prodotto"
           className={actionClass+" min-w-0 flex-1 border border-emerald-700 px-2 text-xs leading-tight text-emerald-800"}>
