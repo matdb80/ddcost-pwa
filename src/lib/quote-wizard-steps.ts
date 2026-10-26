@@ -59,7 +59,6 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
       add("prezzo_manuale","Prezzo manuale per pezzo","Facoltativo: prevale sul prezzo calcolato.",{kind:"number",numeric:"euro",advanced:true});
       add("quadrabile","Prezzo modificabile dalla quadratura?","Disattivando, il prezzo della riga non viene rettificato.",{kind:"checkbox",advanced:true});
     }
-    steps.push(step("p:"+i+":done","Riepilogo del prodotto",s,"Controlla il risultato o aggiungi un altro prodotto."));
   });
   // Current cost models ask for the treatment allocation exactly once. Global
   // mode has one quote-wide amount; split mode has one €/piece value per
