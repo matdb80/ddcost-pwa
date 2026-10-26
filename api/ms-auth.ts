@@ -12,6 +12,7 @@
  * - Session re-verification: allowed-OID and tenant checks run on every request.
  */
 
+import {colleaguePermission} from "./colleague-access";
 import type { Context } from "hono";
 import { setCookie } from "hono/cookie";
 import * as jose from "jose";
@@ -291,13 +292,14 @@ export async function authenticateRequest(headers: Headers) {
   }
 
   // Re-verify authorization on every request (revocation support)
-  if (!isAuthorizedOid(user.unionId)) {
+  const permission = isAuthorizedOid(user.unionId)?"admin":await colleaguePermission(user.unionId);
+  if (!permission) {
     throw Errors.forbidden(
       "Access revoked. Your account is no longer authorized.",
     );
   }
 
-  return user;
+  return {...user, role:permission==="admin"?"admin" as const:"user" as const, commercialOnly:permission==="commercial"};
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -384,7 +386,8 @@ export function createMicrosoftCallbackHandler() {
 
       // ── Authorization: only allowed OIDs may access ──
       authPhase = "oid_authorization";
-      checkAllowedOid(claims.oid);
+      const permission=isAuthorizedOid(claims.oid)?"admin":await colleaguePermission(claims.oid);
+      if(!permission)checkAllowedOid(claims.oid);
 
       // Upsert user in database (authorized users are admin)
       authPhase = "database_user_upsert";
@@ -392,7 +395,7 @@ export function createMicrosoftCallbackHandler() {
         unionId: claims.oid,
         name: claims.name || claims.preferred_username || "Microsoft User",
         email: claims.email || claims.preferred_username || null,
-        role: "admin",
+        role: permission==="admin"?"admin":"user",
         lastSignInAt: new Date(),
       });
 
