@@ -1,3 +1,4 @@
+import {migrateStagingSales} from "./staging-sales-migration";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { HttpBindings } from "@hono/node-server";
@@ -49,6 +50,7 @@ app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
 export default app;
 
 if (env.isProduction) {
+  if(process.env.DDCOST_STAGING_MIGRATE_SALES==="1")await migrateStagingSales();
   if (process.env.DDCOST_STAGING_MIGRATE_SOFT_DELETE === "1") {
     await migrateStagingCycles();
   }
