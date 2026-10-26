@@ -10,7 +10,7 @@ function asNumber(v: unknown): number {
   return n;
 }
 
-function listinoProductIndex(doc: Data): number {
+export function listinoProductIndex(doc: Data): number {
   const rows = doc.prodotti as Data[];
   const reference = doc.listino;
   if (!reference) return -1;
