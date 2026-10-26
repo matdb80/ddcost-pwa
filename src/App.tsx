@@ -1,5 +1,7 @@
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
 import { useAuth } from "@/hooks/useAuth"
+import SalesInboxPage from './pages/SalesInboxPage'
+import ColleagueAccessPage from './pages/ColleagueAccessPage'
 import Home from './pages/Home'
 import Login from "./pages/Login"
 import NotFound from "./pages/NotFound"
@@ -31,12 +33,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to={`/login?redirect_to=${returnUrl}`} replace />;
   }
 
+  if(user.commercialOnly && !/^\/commerciale(?:\/\d+)?$/.test(window.location.pathname))return <Navigate to="/commerciale" replace/>;
+  if(window.location.pathname==="/commerciale/accessi" && user.role!=="admin")return <Navigate to="/commerciale" replace/>;
   return <>{children}</>;
 }
 
 // A data router allows robust navigation blocking for unsaved quote drafts,
 // including internal links and the browser Back/Forward buttons.
 const router = createBrowserRouter([
+  {path:"/commerciale",element:<ProtectedRoute><SalesInboxPage/></ProtectedRoute>},
+  {path:"/commerciale/accessi",element:<ProtectedRoute><ColleagueAccessPage/></ProtectedRoute>},
+  {path:"/commerciale/:id",element:<ProtectedRoute><SalesInboxPage/></ProtectedRoute>},
   {path:"/", element:<ProtectedRoute><Home /></ProtectedRoute>},
   {path:"/login", element:<Login />},
   {path:"/cicli", element:<ProtectedRoute><CicliPage /></ProtectedRoute>},
