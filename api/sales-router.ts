@@ -54,7 +54,11 @@ export const salesRouter=createRouter({
     if(!recipient?.enabled)throw new Error('Collega non abilitato');
     await getDb().insert(salesAssignments).values({kind:input.kind,sourceId:v.row.sourceId,recipientOid:recipient.oid,senderId:ctx.user.id})
       .onDuplicateKeyUpdate({set:{senderId:ctx.user.id,updatedAt:new Date()}});
-    return {ok:true};
+    const assigned=(await getDb().select({id:salesAssignments.id}).from(salesAssignments).where(and(
+      eq(salesAssignments.kind,input.kind),eq(salesAssignments.sourceId,v.row.sourceId),eq(salesAssignments.recipientOid,recipient.oid)
+    )).limit(1))[0];
+    if(!assigned)throw new Error('Condivisione non disponibile');
+    return {ok:true,id:assigned.id,email:recipient.email};
   }),
   list:signedInQuery.query(async({ctx})=>{
     enabled();const rows=await getDb().select().from(salesAssignments).where(ctx.user.role==='admin'?undefined:
