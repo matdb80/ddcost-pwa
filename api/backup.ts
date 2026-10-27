@@ -11,6 +11,8 @@ import { authenticateRequest } from "./ms-auth";
 
 const TABLES = [
   "users",
+  "colleague_access",
+  "sales_assignments",
   "cycles",
   "quotes",
   "cycle_simulations",

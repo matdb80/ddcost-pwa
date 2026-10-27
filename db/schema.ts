@@ -1,5 +1,6 @@
 import {
   mysqlTable,
+  uniqueIndex,
   mysqlEnum,
   serial,
   varchar,
@@ -218,3 +219,23 @@ export const feedbackSettings = mysqlTable("feedback_settings", {
 
 export type FeedbackSetting = typeof feedbackSettings.$inferSelect;
 export type InsertFeedbackSetting = typeof feedbackSettings.$inferInsert;
+
+// Dedicated Microsoft colleagues and per-document commercial assignments.
+export const colleagueAccess = mysqlTable("colleague_access", {
+  oid: varchar("oid", {length:36}).primaryKey(),
+  name: varchar("name", {length:255}).notNull(),
+  email: varchar("email", {length:320}).notNull(),
+  permission: mysqlEnum("permission", ["commercial", "editor"]).notNull(),
+  enabled: tinyint("enabled").notNull().default(1),
+});
+export const salesAssignments = mysqlTable("sales_assignments", {
+  id: serial("id").primaryKey(),
+  kind: mysqlEnum("kind", ["quote", "offer"]).notNull(),
+  sourceId: bigint("sourceId", {mode:"number",unsigned:true}).notNull(),
+  recipientOid: varchar("recipientOid", {length:36}).notNull(),
+  senderId: bigint("senderId", {mode:"number",unsigned:true}).notNull(),
+  seenHash: varchar("seenHash", {length:64}),
+  statusHash: varchar("statusHash", {length:64}),
+  status: mysqlEnum("status", ["ready","transferred","sent"]).notNull().default("ready"),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, t=>[uniqueIndex("assignment_unique").on(t.kind,t.sourceId,t.recipientOid)]);

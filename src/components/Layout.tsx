@@ -1,3 +1,4 @@
+import {trpc} from "@/providers/trpc";
 import { useState } from "react";
 import { Link, useLocation } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,6 +10,7 @@ import {
 import FloatingFeedbackButton from "@/components/feedback/FloatingFeedbackButton";
 
 const navItems = [
+  { path: "/commerciale", label: "Documenti condivisi", icon: Briefcase },
   { path: "/", label: "Home", icon: Home },
   { path: "/cicli", label: "Cicli Standard", icon: Factory },
   { path: "/bandelle-t", label: "Bandelle a T", icon: Wrench },
@@ -38,6 +40,9 @@ function initialSidebarCollapsed(): boolean {
 export default function Layout({ children, mobileWizard = false }: { children: React.ReactNode; mobileWizard?: boolean }) {
   const { user, logout } = useAuth({ redirectOnUnauthenticated: true });
   const location = useLocation();
+  const sharing=trpc.sales.available.useQuery();
+  const inbox=trpc.sales.list.useQuery(undefined,{enabled:sharing.data===true,refetchInterval:15000});
+  const unread=inbox.data?.filter(d=>d.unread).length??0;
   const [collapsed, setCollapsed] = useState(initialSidebarCollapsed);
 
   const toggleSidebar = () => {
@@ -100,7 +105,7 @@ export default function Layout({ children, mobileWizard = false }: { children: R
         </div>
 
         <nav className={`flex-1 space-y-1 overflow-x-hidden overflow-y-auto ${collapsed ? "p-2" : "p-4"}`}>
-          {navItems.map(navLink)}
+          {navItems.filter(n=>!user?.commercialOnly||n.path==="/commerciale").map(navLink)}
           {user?.role === "admin" && (
             <div className="pt-3 mt-3 border-t border-slate-700">
               {!collapsed && (
@@ -114,7 +119,7 @@ export default function Layout({ children, mobileWizard = false }: { children: R
         </nav>
 
         <div className={`border-t border-slate-700 ${collapsed ? "p-2" : "p-4"}`}>
-          <a
+          {!user?.commercialOnly && <a
             href="/api/backup/download"
             title="Scarica una copia completa dei dati DDCost"
             aria-label={collapsed ? "Esporta backup" : undefined}
@@ -122,7 +127,7 @@ export default function Layout({ children, mobileWizard = false }: { children: R
           >
             <Download className="w-4 h-4 shrink-0" />
             {!collapsed && <span>Esporta backup</span>}
-          </a>
+          </a>}
         </div>
 
         <div className={`border-t border-slate-700 ${collapsed ? "p-2" : "p-4"}`}>
@@ -161,12 +166,12 @@ export default function Layout({ children, mobileWizard = false }: { children: R
               (n.path !== "/" && location.pathname.startsWith(n.path + "/")))?.label ||
               adminNavItems.find(n => n.path === location.pathname)?.label || ""}
           </h2>
-          <div className="text-xs text-slate-400 shrink-0">v2.0 PWA</div>
+          <Link to="/commerciale" className="text-sm shrink-0 font-medium text-emerald-800">Notifiche {unread>0?`(${unread})`:""}</Link>
         </header>
         <div className={`min-w-0 flex-1 overflow-auto ${mobileWizard ? "p-3 md:p-5" : "p-3 md:p-6"}`}>{children}</div>
       </main>
 
-      {!mobileWizard && <FloatingFeedbackButton />}
+      {!mobileWizard && !user?.commercialOnly && <FloatingFeedbackButton />}
     </div>
   );
 }

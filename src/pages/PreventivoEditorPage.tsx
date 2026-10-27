@@ -1,3 +1,4 @@
+import SalesHandoffPanel from "@/components/SalesHandoffPanel";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
@@ -830,5 +831,6 @@ export default function PreventivoEditorPage() {
         </>
       )}
     </div>
-  </Layout>;
+  {!wizardMode && !isNew && !isSavedDraft && <SalesHandoffPanel kind="quote" sourceId={numericId} disabled={unsavedChanges}/>}
+</Layout>;
 }

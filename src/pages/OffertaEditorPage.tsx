@@ -1,3 +1,4 @@
+import SalesHandoffPanel from "@/components/SalesHandoffPanel";
 import { useEffect, useRef, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
@@ -806,5 +807,6 @@ export default function OffertaEditorPage() {
         </section>
       </div>}
     </div>
-  </Layout>;
+  {!isNew && <SalesHandoffPanel kind="offer" sourceId={numericId} disabled={unsavedChanges}/>}
+</Layout>;
 }
