@@ -19,5 +19,11 @@ export async function migrateStagingSales(){
       updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY assignment_unique(kind,sourceId,recipientOid), KEY recipient(recipientOid)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    const initial=JSON.parse(process.env.DDCOST_INITIAL_COLLEAGUES??'[]') as {oid:string;name:string;email:string}[];
+    for(const person of initial){
+      if(!/^[0-9a-f-]{36}$/i.test(person.oid)||!person.email.endsWith('@didieffe.com'))throw new Error('Invalid colleague configuration');
+      await db.execute("INSERT INTO colleague_access (oid,name,email,permission,enabled) VALUES (?,?,?,'commercial',1) ON DUPLICATE KEY UPDATE oid=VALUES(oid)",[person.oid,person.name,person.email]);
+    }
+    console.log('[DDCost] Collaboration tables ready; initial colleagues processed:',initial.length);
   }finally{await db.end();}
 }
