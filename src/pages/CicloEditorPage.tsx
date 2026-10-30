@@ -1,0 +1,1639 @@
+import { Fragment, useState, useEffect, useMemo, useRef } from "react";
+import { useBlocker, useNavigate, useParams, useLocation } from "react-router";
+import { trpc } from "@/providers/trpc";
+import Layout from "@/components/Layout";
+import CycleCostPie from "@/components/CycleCostPie";
+import CostReductionBreakdown from "@/components/CostReductionBreakdown";
+import FormulaTooltip from "@/components/FormulaTooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Plus,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  Save,
+  Calculator,
+  Pencil,
+  X,
+  EyeOff,
+  Eye,
+  GripVertical,
+  CornerDownRight,
+  RotateCcw,
+  Search,
+} from "lucide-react";
+import type { RigaCiclo, CicloEditorModel } from "@/types/cycle";
+import {
+  CATEGORIE_RIGA,
+  emptyRiga,
+  emptyCicloEditorModel,
+  parseCycleRow,
+  serializeCycleDataJson,
+} from "@/types/cycle";
+import { ricalcolaCiclo, calcolaCostoRiga, costoRigaGerarchico } from "@/lib/cycle-calculator";
+import { adjacentSibling, attachToAssembly, appendChildToAssembly, canAddChild, copyRowToEnd, detachFromAssembly, hierarchyNumberLabels, orderedHierarchy, removeLeaf, moveRowAmongSiblings, childrenOf } from "@/lib/cycle-hierarchy";
+import { calculateSaleMargins, explainSalePrice, parseMarketPrice } from "@/lib/cycle-price-margins";
+import { copyCycleAsNewDraft } from "@/lib/cycle-copy";
+import { CALCULATION_FORMULAS, cycleCategoryFormula } from "@/lib/calculation-formulas";
+
+/** Canonical snapshot of cost-related inputs; legacy JSON lotto is numeric, DB lot is text. */
+function economicSignature(m: CicloEditorModel): string {
+  return JSON.stringify({
+    righe: m.righe,
+    costo_lavoro_min: Number(m.costo_lavoro_min),
+    ricarico_spese: Number(m.ricarico_spese),
+    margine_minimo: Number(m.margine_minimo),
+    lotto: m.lotto === "" ? null : Number(m.lotto),
+    lotti: (m.lotti_personalizzati ?? m.simulazioni.map(s => s.lotto)).map(Number),
+  });
+}
+
+const LEVEL_BACKGROUNDS: Record<number,string> = {
+  1: "bg-sky-50/60",
+  2: "bg-emerald-50/70",
+  3: "bg-violet-50/60",
+  4: "bg-amber-50/60",
+};
+
+function formatMarginPercent(v:number) {
+  return v.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2}) + "%";
+}
+
+function formatMoney(v: number) {
+  return v.toLocaleString("it-IT", {
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4,
+  });
+}
+
+const EMPTY_CYCLE_DATA_JSON=JSON.stringify(serializeCycleDataJson(emptyCicloEditorModel()));
+
+export default function CicloEditorPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { id } = useParams<{ id: string }>();
+  const isNew = location.pathname === "/cicli/new";
+  const numericId = isNew ? undefined : Number(id);
+
+  const [model, setModel] = useState(emptyCicloEditorModel());
+  const [originalJson, setOriginalJson] = useState<string>("");
+  const [originalDbDataJson, setOriginalDbDataJson] = useState<string | null>(null);
+  const [hasRecalculated, setHasRecalculated] = useState(false);
+  const [lastRecalculatedSignature, setLastRecalculatedSignature] = useState<string | null>(null);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [rigaEdit, setRigaEdit] = useState<RigaCiclo | null>(null);
+  const [rigaIndex, setRigaIndex] = useState<number | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [overwriteStep, setOverwriteStep] = useState(false);
+  const [newChildParent, setNewChildParent] = useState<number | null>(null);
+  const [isReadOnly, setIsReadOnly] = useState(!isNew);
+  const [simulationExcluded, setSimulationExcluded] = useState<Set<number>>(new Set());
+  const [cycleLotForcedSimulationRows, setCycleLotForcedSimulationRows] = useState<Set<number>>(new Set());
+  const [draggingIndex, setDraggingIndex] = useState<number|null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number|null>(null);
+  // Pricing simulation is read-only and never enters a cycle revision or backup.
+  const [marketPriceInput, setMarketPriceInput] = useState("");
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importSearch, setImportSearch] = useState("");
+  const [importPage, setImportPage] = useState(1);
+  const [importingCycle, setImportingCycle] = useState(false);
+  const [importedCycleLabel, setImportedCycleLabel] = useState("");
+  const allowLeaveRef=useRef(false);
+  const utils = trpc.useUtils();
+
+  const getCycle = trpc.cycle.get.useQuery(
+    { id: numericId! },
+    { enabled: !isNew && !!numericId }
+  );
+
+  // A historical revision is read-only archive, not a safe base for editing.
+  // Automatically open the latest revision (including when opening the root URL).
+  const latestRevision = trpc.cycle.latestForSource.useQuery(
+    { id: numericId! },
+    { enabled: !isNew && !!numericId }
+  );
+
+  const importDirectory = trpc.cycle.listGrouped.useQuery(
+    { search: importSearch || undefined, page: importPage, pageSize: 25 },
+    { enabled: isNew && importDialogOpen }
+  );
+
+  const createCycle = trpc.cycle.create.useMutation({
+    onSuccess: () => { allowLeaveRef.current=true; navigate("/cicli"); },
+    onError: (err) => alert(`Errore creazione: ${err.message}`),
+  });
+
+  const overwriteLatest = trpc.cycle.overwriteLatest.useMutation({
+    onSuccess: async (result) => {
+      setSaveDialogOpen(false);
+      setOverwriteStep(false);
+      await getCycle.refetch();
+      alert("Revisione " + result.rev + " sovrascritta definitivamente. Nessuna nuova revisione creata.");
+    },
+    onError: (err) => alert("Sovrascrittura non eseguita: " + err.message),
+  });
+
+  const createRevision = trpc.cycle.createRevision.useMutation({
+    onSuccess: (result) => {
+      allowLeaveRef.current=true;
+      setHasChanges(false);
+      setSaveDialogOpen(false);
+      alert("Nuova revisione " + result.rev + " creata con successo. Ora stai visualizzando la versione aggiornata.");
+      navigate("/cicli/" + result.id, { replace: true });
+    },
+    onError: (err) => alert(`Errore revisione: ${err.message}`),
+  });
+
+  // Load cycle data
+  useEffect(() => {
+    if (getCycle.data) {
+      const m = parseCycleRow(getCycle.data);
+      setModel(m);
+      setOriginalJson(JSON.stringify(serializeCycleDataJson(m)));
+      setOriginalDbDataJson(getCycle.data.dataJson ?? null);
+      setHasRecalculated(false);
+      setLastRecalculatedSignature(null);
+      setHasChanges(false);
+      setIsReadOnly(true);
+      setSimulationExcluded(new Set());
+      setCycleLotForcedSimulationRows(new Set());
+      setDraggingIndex(null);
+      setDragOverIndex(null);
+      setMarketPriceInput("");
+    }
+  }, [getCycle.data]);
+
+  useEffect(() => {
+    const latest = latestRevision.data;
+    if (!isNew && latest && numericId && latest.id !== numericId && isReadOnly) {
+      navigate("/cicli/" + latest.id, { replace: true });
+    }
+  }, [latestRevision.data, numericId, isNew, isReadOnly, navigate]);
+
+  // Track changes by comparing serialized JSON
+  useEffect(() => {
+    const current=JSON.stringify(serializeCycleDataJson(model));
+    if (isNew) {
+      setHasChanges(current!==EMPTY_CYCLE_DATA_JSON);
+      return;
+    }
+    setHasChanges(current !== originalJson && originalJson !== "");
+  }, [model, originalJson, isNew]);
+
+  // An editor button must never create a revision from an untouched cycle.
+  // Compute synchronously from the loaded baseline, not from delayed state.
+  const currentCycleJson=JSON.stringify(serializeCycleDataJson(model));
+  const isModified = isNew || (originalJson.length > 0 && currentCycleJson !== originalJson);
+  const rowDialogDirty=dialogOpen&&rigaEdit!==null&&
+    JSON.stringify(rigaEdit)!==JSON.stringify(rigaIndex!==null?model.righe[rigaIndex]??emptyRiga():emptyRiga());
+  const unsavedChanges=isNew
+    ? currentCycleJson!==EMPTY_CYCLE_DATA_JSON||rowDialogDirty
+    : !isReadOnly&&(isModified||rowDialogDirty);
+  const blocker=useBlocker(({currentLocation,nextLocation})=>
+    unsavedChanges && !allowLeaveRef.current &&
+    (currentLocation.pathname!==nextLocation.pathname || currentLocation.search!==nextLocation.search)
+  );
+  useEffect(()=>{
+    if(!unsavedChanges || allowLeaveRef.current)return;
+    const handler=(event:BeforeUnloadEvent)=>{
+      event.preventDefault();
+      event.returnValue="";
+    };
+    window.addEventListener("beforeunload",handler);
+    return()=>window.removeEventListener("beforeunload",handler);
+  },[unsavedChanges]);
+  // Always calculate the visible preview from the cycle's source rows. This
+  // refreshes stale historical lot simulations without changing the archived
+  // model, its JSON snapshot, or revision history.
+  const simulatedModel = useMemo(() => {
+    return ricalcolaCiclo({
+      ...model,
+      righe:model.righe.map((r,i)=>simulationExcluded.has(i)?{...r,considera:false}:r),
+    }, "max", cycleLotForcedSimulationRows);
+  }, [model, simulationExcluded, cycleLotForcedSimulationRows]);
+
+  const cycleRowLotReferences = model.righe.flatMap((row, index) => {
+    const lottoVoce = Number(row.lotto_voce) || 0;
+    return row.categoria === "LAVORAZIONE INTERNA" && lottoVoce > 0
+      ? [{ index, lottoVoce, descrizione: row.descrizione.trim(), hasSetup: row.attrezzaggio_min > 0 }]
+      : [];
+  });
+  const hasSetupRowsWithReferenceLot = cycleRowLotReferences.some((row) => row.hasSetup);
+
+  const treeOrder = useMemo(() => orderedHierarchy(model.righe), [model.righe]);
+  const treeNumbers = useMemo(() => hierarchyNumberLabels(model.righe), [model.righe]);
+  const marketPrice = parseMarketPrice(marketPriceInput);
+  const marketMargins = marketPrice === null ? null : calculateSaleMargins(marketPrice,simulatedModel.costo_standard,simulatedModel.full_cost);
+  const marketExplanation = marketPrice === null ? null : explainSalePrice(marketPrice,simulatedModel.costo_standard,simulatedModel.full_cost);
+  const minimumMargins = calculateSaleMargins(simulatedModel.prezzo_minimo,simulatedModel.costo_standard,simulatedModel.full_cost);
+  const minimumExplanation = explainSalePrice(simulatedModel.prezzo_minimo,simulatedModel.costo_standard,simulatedModel.full_cost);
+
+  const toggleSimulation = (i:number) => {
+    const r=model.righe[i];
+    // Legacy detail-only rows have never affected top-level cost; exclusion
+    // must not misleadingly claim it changes a saved assembly's price.
+    if (r.parent_idx!=null && !model.righe[r.parent_idx]?.assembly_auto) return;
+    setSimulationExcluded(old=>{
+      const next=new Set(old);
+      if(next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  };
+
+  const handleDropAssemble = (source:number,target:number) => {
+    setDraggingIndex(null);
+    setDragOverIndex(null);
+    if(isReadOnly && !isNew) return;
+    try {
+      const parent=model.righe[target];
+      if (parent && !parent.assembly_auto && Number(parent.costo_unitario)>0) {
+        if(!window.confirm("Creando l'assieme, il prezzo manuale della riga di destinazione resterà memorizzato ma NON sarà sommato ai componenti. Confermare?")) return;
+      }
+      const changedRows=attachToAssembly(model.righe,source,target);
+      setModel(prev=>({...prev,righe:changedRows}));
+      setHasRecalculated(false);
+      setLastRecalculatedSignature(null);
+      setSimulationExcluded(new Set());
+    } catch(err) {
+      window.alert(err instanceof Error?err.message:"Trascinamento non consentito");
+    }
+  };
+
+  const detachRiga = (i:number) => {
+    const next=detachFromAssembly(model.righe,i);
+    if(next===model.righe)return;
+    setModel(prev=>({...prev,righe:next}));
+    setHasRecalculated(false);
+    setLastRecalculatedSignature(null);
+    setSimulationExcluded(new Set());
+  };
+
+
+  const handleChange = <K extends keyof typeof model>(
+    field: K,
+    value: (typeof model)[K]
+  ) => {
+    setModel((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleRigaChange = <K extends keyof RigaCiclo>(
+    field: K,
+    value: RigaCiclo[K]
+  ) => {
+    if (!rigaEdit) return;
+    setRigaEdit({ ...rigaEdit, [field]: value });
+  };
+
+  const openRigaDialog = (index?: number, childParent?: number) => {
+    if (isReadOnly && !isNew) return;
+    if (childParent !== undefined) {
+      if (!canAddChild(model.righe,childParent)) {
+        alert("Non puoi aggiungere componenti: solo assiemi compatibili e massimo quattro livelli.");
+        return;
+      }
+      const parent = model.righe[childParent];
+      if(!parent.assembly_auto && Number(parent.costo_unitario)>0 &&
+         !window.confirm("La riga diventerà un assieme automatico: il costo manuale della riga principale sarà conservato, ma escluso dal totale. Proseguire?")) return;
+      setNewChildParent(childParent);
+      setRigaEdit(emptyRiga());
+      setRigaIndex(null);
+    } else {
+      setNewChildParent(null);
+      if (index !== undefined) {
+        setRigaEdit({ ...model.righe[index] });
+        setRigaIndex(index);
+      } else {
+        setRigaEdit(emptyRiga());
+        setRigaIndex(null);
+      }
+    }
+    setDialogOpen(true);
+  };
+
+  const saveRiga = () => {
+    if (!rigaEdit) return;
+    if (rigaEdit.categoria === "LAVORAZIONE INTERNA" && rigaEdit.confezionamento === true) {
+      const piecesPerPackage = Number(rigaEdit.quantita_per_conf);
+      const minutesPerPackage = Number(rigaEdit.tempo_confezionamento_min);
+      if (!Number.isInteger(piecesPerPackage) || piecesPerPackage <= 0) {
+        alert("La quantità per confezione deve essere un numero intero maggiore di zero.");
+        return;
+      }
+      if (!Number.isFinite(minutesPerPackage) || minutesPerPackage <= 0) {
+        alert("Inserire un tempo di confezionamento maggiore di zero.");
+        return;
+      }
+    }
+    if(rigaIndex!=null && model.righe[rigaIndex]?.assembly_auto &&
+       rigaEdit.categoria!=="COMPONENTE/ASSIEME") {
+      alert("Per un assieme calcolato dai componenti la categoria deve rimanere COMPONENTE/ASSIEME. Sgancia prima i componenti.");
+      return;
+    }
+    if (newChildParent !== null) {
+      try {
+        const righe=appendChildToAssembly(model.righe,newChildParent,rigaEdit);
+        setModel(prev=>({...prev,righe}));
+      } catch (err) {
+        alert(err instanceof Error?err.message:"Errore inserimento componente");
+        return;
+      }
+    } else {
+      setModel((prev) => {
+        const righe = [...prev.righe];
+        if (rigaIndex !== null) {
+          righe[rigaIndex] = rigaEdit;
+        } else {
+          righe.push(rigaEdit);
+        }
+        return { ...prev, righe };
+      });
+    }
+    setHasRecalculated(false);
+    setLastRecalculatedSignature(null);
+    setSimulationExcluded(new Set());
+    setNewChildParent(null);
+    setDialogOpen(false);
+  };
+
+  const deleteRiga = (index: number) => {
+    if (isReadOnly && !isNew) return;
+    if (childrenOf(model.righe,index).length) {
+      alert("Questa riga contiene componenti. Sgancia i componenti prima di eliminarla.");
+      return;
+    }
+    if (!confirm("Eliminare questa riga?")) return;
+    setModel(prev=>({...prev,righe:removeLeaf(prev.righe,index)}));
+    setSimulationExcluded(new Set());
+    setHasRecalculated(false);
+    setLastRecalculatedSignature(null);
+  };
+
+  const moveRiga = (index: number, direction: -1 | 1) => {
+    if (isReadOnly && !isNew) return;
+    try {
+      const moved=moveRowAmongSiblings(model.righe,index,direction);
+      if(moved===model.righe)return;
+      setModel(prev=>({...prev,righe:moved}));
+      setSimulationExcluded(new Set());
+      setHasRecalculated(false);
+      setLastRecalculatedSignature(null);
+    } catch(err) {alert(err instanceof Error?err.message:"Impossibile spostare la riga");}
+  };
+
+  const copyRiga = (index:number) => {
+    if(isReadOnly && !isNew)return;
+    try {
+      const righe=copyRowToEnd(model.righe,index);
+      setModel(prev=>({...prev,righe}));
+      setSimulationExcluded(new Set());
+      setHasRecalculated(false);
+      setLastRecalculatedSignature(null);
+    } catch(err) {
+      alert(err instanceof Error?err.message:"Impossibile copiare la riga");
+    }
+  };
+
+  const handleRicalcola = () => {
+    setSimulationExcluded(new Set());
+    setLastRecalculatedSignature(economicSignature(model));
+    setModel((prev) => ricalcolaCiclo(prev));
+    setHasRecalculated(true);
+  };
+
+  const handleSave = () => {
+    if (isNew) {
+      // Direct create for new cycles
+      const dataJson = JSON.stringify(serializeCycleDataJson(ricalcolaCiclo(model)));
+      const m = ricalcolaCiclo(model);
+      createCycle.mutate({
+        code: m.codice,
+        description: m.descrizione,
+        client: m.cliente,
+        lot: m.lotto,
+        standardCost: String(m.costo_standard),
+        minimumPrice: String(m.prezzo_minimo),
+        dataJson,
+      });
+    } else {
+      if (!isModified) {
+        alert("Nessuna modifica rilevata: revisione non creata.");
+        return;
+      }
+      setOverwriteStep(false);
+      setSaveDialogOpen(true);
+    }
+  };
+
+  const importCycleAsDraft = async (cycleId: number) => {
+    if (importingCycle) return;
+    const blank = emptyCicloEditorModel();
+    const hasDraftContent = JSON.stringify(serializeCycleDataJson(model)) !==
+      JSON.stringify(serializeCycleDataJson(blank));
+    if (hasDraftContent && !window.confirm("L'importazione sostituirà i dati già inseriti in questo nuovo ciclo. Continuare?")) return;
+
+    setImportingCycle(true);
+    try {
+      const source = await utils.cycle.get.fetch({ id: cycleId });
+      if (!source || source.deleted === 1) throw new Error("Il ciclo selezionato non è più disponibile.");
+      const draft = copyCycleAsNewDraft(source);
+      setModel(draft);
+      setOriginalJson("");
+      setOriginalDbDataJson(null);
+      setHasRecalculated(false);
+      setLastRecalculatedSignature(null);
+      setHasChanges(true);
+      setIsReadOnly(false);
+      setSimulationExcluded(new Set());
+      setCycleLotForcedSimulationRows(new Set());
+      setMarketPriceInput("");
+      setImportedCycleLabel(`${source.code || "(senza codice)"} · ${source.description || "senza descrizione"} · rev. ${source.rev ?? 1}`);
+      setImportDialogOpen(false);
+      setImportSearch("");
+      setImportPage(1);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Impossibile importare il ciclo selezionato.");
+    } finally {
+      setImportingCycle(false);
+    }
+  };
+
+  const confirmSaveRevision = (mode: "revision" | "overwrite") => {
+    if (!numericId || !getCycle.data || createRevision.isPending || overwriteLatest.isPending) return;
+    if (!isModified) {
+      setSaveDialogOpen(false);
+      alert("Nessuna modifica rilevata: revisione non creata.");
+      return;
+    }
+
+    // Block save if economic changes exist but user hasn't recalculated
+    const economicChangedNow = !!getCycle.data &&
+      economicSignature(model) !== economicSignature(parseCycleRow(getCycle.data));
+    if ((economicChangedNow && !hasRecalculated) ||
+        (hasRecalculated && lastRecalculatedSignature !== economicSignature(model))) {
+      alert(
+        "Hai modificato parametri economici (lavorazioni, costi, lotti) ma non hai eseguito il ricalcolo.\n\n" +
+        "Il motore di calcolo non è ancora verificato su tutti i cicli storici.\n" +
+        "Per evitare di introdurre costi errati, premi 'Ricalcola' prima di salvare, oppure annulla le modifiche economiche."
+      );
+      setSaveDialogOpen(false);
+      return;
+    }
+
+    let dataJson: string;
+    let standardCost: string;
+    let minimumPrice: string;
+
+    if (hasRecalculated) {
+      // User explicitly recalculated: use new values
+      const m = ricalcolaCiclo(model);
+      dataJson = JSON.stringify(serializeCycleDataJson(m));
+      standardCost = String(m.costo_standard);
+      minimumPrice = String(m.prezzo_minimo);
+    } else {
+      // Preserve original economic values; update only anagrafic fields
+      if (originalDbDataJson) {
+        const base = JSON.parse(originalDbDataJson);
+        base.codice = model.codice;
+        base.descrizione = model.descrizione;
+        base.cliente = model.cliente;
+        base.lotto = model.lotto;
+        dataJson = JSON.stringify(base);
+      } else {
+        dataJson = JSON.stringify(serializeCycleDataJson(model));
+      }
+      standardCost = String(getCycle.data?.standardCost ?? model.costo_standard);
+      minimumPrice = String(getCycle.data?.minimumPrice ?? model.prezzo_minimo);
+    }
+
+    const common = {
+      sourceId: numericId,
+      rootId: model.rootId ?? numericId,
+      code: model.codice,
+      description: model.descrizione,
+      client: model.cliente,
+      lot: model.lotto,
+      standardCost,
+      minimumPrice,
+      dataJson,
+    };
+    if (mode === "overwrite") {
+      if (!overwriteStep) return;
+      overwriteLatest.mutate({
+        ...common,
+        expectedDataJson: originalDbDataJson,
+        confirmation: "SOVRASCRIVI DEFINITIVAMENTE",
+      });
+    } else {
+      createRevision.mutate(common);
+    }
+  };
+
+  const enableEdit = () => {
+    setIsReadOnly(false);
+  };
+
+  if (!isNew && getCycle.isLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout>
+      <div className="w-full max-w-screen-2xl mx-auto space-y-6">
+        {blocker.state==="blocked" && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4">
+            <div role="dialog" aria-modal="true" aria-labelledby="cycle-leave-title"
+              className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl space-y-4">
+              <h2 id="cycle-leave-title" className="text-lg font-semibold text-slate-900">
+                Ci sono modifiche al ciclo non salvate
+              </h2>
+              <p className="text-sm text-slate-700">
+                Se esci adesso, i dati inseriti in questo ciclo andranno persi. Puoi restare e salvarli oppure uscire senza salvare.
+              </p>
+              <div className="flex flex-col-reverse sm:flex-row sm:flex-wrap justify-end gap-2">
+                <button type="button" onClick={()=>blocker.proceed()}
+                  className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700">
+                  Esci senza salvare
+                </button>
+                <button type="button" onClick={()=>blocker.reset()}
+                  className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">
+                  Continua a compilare
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Unrecalculated warning */}
+        {!isNew && !isReadOnly && !hasRecalculated && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800 flex items-center justify-between">
+            <span>
+              <strong>Attenzione:</strong> i costi non sono stati ricalcolati dopo le ultime modifiche.
+              Salvando ora, i valori economici originali verranno preservati.
+            </span>
+            <button
+              onClick={handleRicalcola}
+              className="ml-4 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 rounded-md text-xs font-medium whitespace-nowrap"
+            >
+              Ricalcola ora
+            </button>
+          </div>
+        )}
+
+        {!isReadOnly && model.righe.some(r=>r.assembly_auto) && !hasRecalculated && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">
+            I costi degli assiemi sono aggiornati in anteprima. Per memorizzare una nuova revisione,
+            verifica il risultato e premi <strong>Ricalcola</strong> prima di <strong>Salva</strong>.
+          </div>
+        )}
+
+        {/* Header */}
+        <div className="sticky top-0 z-30 -mx-2 px-3 py-3 rounded-xl border border-slate-200 bg-white/95 shadow-sm backdrop-blur flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate("/cicli")}
+              className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <h1 className="text-2xl font-bold text-slate-800">
+              {isNew ? "Nuovo Ciclo Standard" : `Ciclo: ${model.codice}`}
+            </h1>
+            {!isNew && model.rev != null && (
+              <span className="text-xs rounded bg-slate-100 text-slate-600 px-2 py-1">
+                Rev. {model.rev}
+              </span>
+            )}
+            {(hasChanges||rowDialogDirty) && (
+              <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                Modificato
+              </span>
+            )}
+            {!isNew && isReadOnly && (
+              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                Sola lettura
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {isNew && (
+              <button
+                type="button"
+                onClick={() => { setImportSearch(""); setImportPage(1); setImportDialogOpen(true); }}
+                className="flex items-center gap-2 px-4 py-2 border border-emerald-700 text-emerald-800 rounded-lg text-sm font-medium hover:bg-emerald-50"
+              >
+                <Copy className="h-4 w-4" />
+                Importa ciclo esistente
+              </button>
+            )}
+            {!isNew && isReadOnly && (
+              <button
+                onClick={enableEdit}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
+              >
+                <Pencil className="h-4 w-4" />
+                Modifica
+              </button>
+            )}
+            {(!isReadOnly || isNew) && (
+              <>
+                <button
+                  onClick={handleRicalcola}
+                  className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg text-sm hover:bg-slate-50"
+                >
+                  <Calculator className="h-4 w-4" />
+                  Ricalcola
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={!isNew && (!isModified || createRevision.isPending || overwriteLatest.isPending)}
+                  title={!isNew && !isModified ? "Nessuna modifica da salvare" : "Salva"}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Save className="h-4 w-4" />
+                  Salva
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {isNew && importedCycleLabel && (
+          <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+            <span>
+              Base importata da <strong>{importedCycleLabel}</strong>. È stato creato un nuovo ciclo indipendente; il codice è vuoto per assegnarne uno nuovo. Verifica anagrafica e costi prima di salvare.
+            </span>
+            <button type="button" aria-label="Chiudi avviso importazione" onClick={() => setImportedCycleLabel("")} className="rounded p-1 hover:bg-sky-100">
+              <X size={16}/>
+            </button>
+          </div>
+        )}
+
+        {/* Anagrafica */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <h2 className="text-sm font-semibold text-slate-700 mb-4">Dati Anagrafici</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Codice</label>
+              <input
+                type="text"
+                value={model.codice}
+                onChange={(e) => handleChange("codice", e.target.value)}
+                disabled={isReadOnly && !isNew}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-50"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium text-slate-500 mb-1">Descrizione</label>
+              <input
+                type="text"
+                value={model.descrizione}
+                onChange={(e) => handleChange("descrizione", e.target.value)}
+                disabled={isReadOnly && !isNew}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Cliente</label>
+              <input
+                type="text"
+                value={model.cliente}
+                onChange={(e) => handleChange("cliente", e.target.value)}
+                disabled={isReadOnly && !isNew}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Lotto default</label>
+              <input
+                type="text"
+                value={model.lotto}
+                onChange={(e) => handleChange("lotto", e.target.value)}
+                disabled={isReadOnly && !isNew}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">
+                Ricarico Spese (es. 0,75 = 75%)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={model.ricarico_spese}
+                onChange={(e) => handleChange("ricarico_spese", parseFloat(e.target.value) || 0)}
+                disabled={isReadOnly && !isNew}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">
+                Margine Minimo (es. 0,20 = 20%)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={model.margine_minimo}
+                onChange={(e) => handleChange("margine_minimo", parseFloat(e.target.value) || 0)}
+                disabled={isReadOnly && !isNew}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">
+                Costo Lavoro €/min
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={model.costo_lavoro_min}
+                onChange={(e) => handleChange("costo_lavoro_min", parseFloat(e.target.value) || 0)}
+                disabled={isReadOnly && !isNew}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-50"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Righe */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
+            <h2 className="text-sm font-semibold text-slate-700">Righe di Lavorazione ({model.righe.length})</h2>
+          </div>
+          <p className="mb-3 text-xs text-slate-500">Aggiungi una riga alla volta, senza limite a 10. Il contatore include anche i componenti degli assiemi. Per salvare le modifiche economiche premi Ricalcola.</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <p className="text-xs text-slate-600">
+              {isReadOnly && !isNew
+                ? "Usa l'icona occhio per simulare l'esclusione di una riga senza creare una revisione."
+                : "Per creare un assieme, trascina una riga sull'altra (destinazione: COMPONENTE o COMPONENTE/ASSIEME). Massimo 4 livelli."}
+            </p>
+            {simulationExcluded.size > 0 && (
+              <button type="button" onClick={() => setSimulationExcluded(new Set())}
+                className="flex items-center gap-1.5 rounded-md bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-200">
+                <RotateCcw className="h-3.5 w-3.5" />
+                Ripristina tutte le righe ({simulationExcluded.size})
+              </button>
+            )}
+          </div>
+          {simulationExcluded.size > 0 && (
+            <div role="status" className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <strong>Simulazione veloce attiva.</strong> I costi e le simulazioni qui visualizzati sono provvisori.
+              Nessuna esclusione né costo simulato verrà salvato; disattivando le icone si ripristinano i dati originali.
+              Per i cicli storici, il ricalcolo simulato può differire dai valori memorizzati.
+            </div>
+          )}
+          {(!isReadOnly || isNew) && (
+            <p className="mb-3 text-xs text-slate-500">Le frecce spostano una riga tra le righe dello stesso gruppo e livello, senza modificarne i collegamenti. Per cambiare assieme usa il trascinamento o il comando Sgancia.</p>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium text-slate-600"># / Livello</th>
+                  <th className="text-left px-3 py-2 font-medium text-slate-600">Categoria</th>
+                  <th className="text-left px-3 py-2 font-medium text-slate-600">Codice</th>
+                  <th className="text-left px-3 py-2 font-medium text-slate-600">Descrizione</th>
+                  <th className="text-right px-3 py-2 font-medium text-slate-600">Nr</th>
+                  <th className="text-right px-3 py-2 font-medium text-slate-600">Costo riga<FormulaTooltip label="Costo della riga ciclo" formula="Il costo è calcolato in base alla categoria della riga, alle quantità e ai costi unitari inseriti. Il dettaglio mostra la formula specifica per categoria."/></th>
+                  <th className="text-center px-3 py-2 font-medium text-slate-600">Simula / Azioni</th>
+                </tr>
+              </thead>
+              <tbody>
+                {model.righe.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-6 text-center text-slate-400">
+                      Nessuna riga. Clicca "Aggiungi Riga".
+                    </td>
+                  </tr>
+                )}
+                {treeOrder.map(({index:i,depth}) => {
+                  const r = model.righe[i];
+                  const displayed=simulatedModel.righe;
+                  const parentIndex=r.parent_idx;
+                  const inAssembly = r.assembly_auto || (parentIndex!=null && model.righe[parentIndex]?.assembly_auto===true);
+                  // If a parent is temporarily disabled, the entire subtree is ignored.
+                  let disabledAncestor = false;
+                  let ancestor = parentIndex;
+                  const checked = new Set<number>();
+                  while(ancestor!=null && !checked.has(ancestor)) {
+                    checked.add(ancestor);
+                    if(simulationExcluded.has(ancestor)) disabledAncestor = true;
+                    ancestor=model.righe[ancestor]?.parent_idx;
+                  }
+                  const cost = (simulationExcluded.has(i) || disabledAncestor)
+                    ? 0
+                    : inAssembly
+                      ? costoRigaGerarchico(displayed,i,simulatedModel.costo_lavoro_min,simulatedModel.lotto)
+                      : calcolaCostoRiga(displayed[i],simulatedModel.costo_lavoro_min,simulatedModel.lotto);
+                  const canSimulate = (parentIndex==null || model.righe[parentIndex]?.assembly_auto === true) && r.considera !== false && (r.categoria !== "SPESA ATTREZZATURA DEDICATA" || r.considera === true);
+                  const canEdit = !isReadOnly || isNew;
+                  const rowHasChildren=childrenOf(model.righe,i).length>0;
+                  return (
+                    <tr
+                      key={i}
+                      draggable={canEdit}
+                      onDragStart={(e)=>{
+                        if(!canEdit)return;
+                        e.dataTransfer.effectAllowed="move";
+                        e.dataTransfer.setData("text/plain",String(i));
+                        setDraggingIndex(i);
+                      }}
+                      onDragOver={(e)=>{if(canEdit && draggingIndex!==null && draggingIndex!==i){
+                        e.preventDefault();e.dataTransfer.dropEffect="move";setDragOverIndex(i);
+                      }}}
+                      onDrop={(e)=>{
+                        e.preventDefault();e.stopPropagation();
+                        const src=Number(e.dataTransfer.getData("text/plain"));
+                        if(!Number.isInteger(src) || src<0 || src>=model.righe.length)return;
+                        handleDropAssemble(src,i);
+                      }}
+                      onDragEnd={()=>{setDraggingIndex(null);setDragOverIndex(null);}}
+                      className={"border-b border-slate-100 transition-colors hover:brightness-[0.98] "+(simulationExcluded.has(i)?"bg-amber-100/60 opacity-70 ":dragOverIndex===i?"bg-emerald-100 ":LEVEL_BACKGROUNDS[depth]??"bg-slate-50/50 ")+(canEdit?"cursor-grab ":"")}
+                      onClick={()=>{if(canEdit && draggingIndex===null)openRigaDialog(i);}}
+                    >
+                      <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1" style={{paddingLeft:Math.max(0,depth-1)*15}}>
+                          {canEdit && <GripVertical className="w-3 h-3 text-slate-400" aria-hidden="true"/>}
+                          {depth>1&&<CornerDownRight className="w-3 h-3 text-emerald-600" aria-hidden="true"/>}
+                          {treeNumbers.get(i)??(i+1)} {depth>0&&<span className="text-xs">L{depth}</span>}
+                          {canEdit && canAddChild(model.righe,i) && (
+                            <button type="button" draggable={false}
+                              aria-label={"Aggiungi componente o lavorazione al livello " + (depth+1)}
+                              title={"Aggiungi direttamente al livello " + (depth+1) + " dell'assieme"}
+                              onPointerDown={e=>e.stopPropagation()}
+                              onDragStart={e=>e.preventDefault()}
+                              onClick={e=>{e.stopPropagation();openRigaDialog(undefined,i);}}
+                              className="ml-1 inline-flex rounded-full bg-emerald-100 text-emerald-800 hover:bg-emerald-200 p-1 border border-emerald-300"
+                            ><Plus className="h-3.5 w-3.5"/></button>
+                          )}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {r.categoria}{r.assembly_auto&&<span className="block font-semibold text-emerald-700">Assieme automatico</span>}
+                      </td>
+                      <td className="px-3 py-2 text-xs">{r.codice_articolo}</td>
+                      <td className="px-3 py-2 text-xs max-w-xs">
+                        <span className="block truncate">{r.descrizione}</span>
+                        {r.categoria === "LAVORAZIONE INTERNA" && r.confezionamento === true && <span className="block text-[10px] text-slate-500">
+                          Confezionamento: {r.tempo_confezionamento_min} min/scatola · {r.quantita_per_conf} pz/scatola
+                        </span>}
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs">{r.categoria==="LAVORAZIONE INTERNA"&&r.confezionamento===true?"—":r.nr_componenti}</td>
+                      <td className={"px-3 py-2 text-right text-xs font-mono "+(cost===0&&simulationExcluded.size?"text-amber-700":"")}>
+                        <span className="inline-flex items-center justify-end">{formatMoney(cost)}<FormulaTooltip label={`Costo riga ${r.categoria}`} formula={cycleCategoryFormula(r.categoria)}/></span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-center gap-1">
+                          <button type="button"
+                            onClick={e=>{e.stopPropagation();toggleSimulation(i);}}
+                            disabled={!canSimulate}
+                            aria-label={simulationExcluded.has(i)?"Riattiva riga nel calcolo":"Escludi riga costo dal calcolo"}
+                            title={!canSimulate?"Riga già esclusa o dettaglio storico non conteggiato separatamente":simulationExcluded.has(i)?"Riattiva il costo della riga":"Escludi riga costo dal calcolo (solo simulazione)"}
+                            className={"p-1.5 rounded disabled:opacity-30 "+(simulationExcluded.has(i)?"bg-amber-200 text-amber-900":"text-slate-500 hover:bg-amber-100")}>
+                            {simulationExcluded.has(i)?<EyeOff className="h-4 w-4"/>:<Eye className="h-4 w-4"/>}
+                          </button>
+                          {canEdit && <>
+                            <button type="button" draggable={false}
+                              onPointerDown={e=>e.stopPropagation()}
+                              onDragStart={e=>e.preventDefault()}
+                              onClick={e=>{e.stopPropagation();copyRiga(i);}}
+                              aria-label={`Copia riga ${treeNumbers.get(i)??i+1} in fondo al ciclo`}
+                              title={rowHasChildren?"Copia l'assieme e tutti i componenti collegati in fondo al ciclo":"Copia questa riga in fondo al ciclo come nuova riga di livello 1"}
+                              className="p-1.5 text-blue-700 hover:bg-blue-50 rounded">
+                              <Copy className="h-4 w-4"/>
+                            </button>
+                            {parentIndex!=null &&
+                              <button type="button" title="Sgancia dal gruppo e porta al livello 1"
+                                onClick={e=>{e.stopPropagation();detachRiga(i);}}
+                                className="p-1.5 text-blue-700 hover:bg-blue-50 rounded">
+                                <CornerDownRight className="h-4 w-4 rotate-180"/>
+                              </button>}
+                            <button type="button" disabled={adjacentSibling(model.righe,i,-1) === null}
+                              aria-label="Sposta riga su nello stesso gruppo" title="Sposta sopra la riga precedente dello stesso livello e assieme"
+                              onClick={e=>{e.stopPropagation();moveRiga(i,-1);}}
+                              className="p-1 hover:bg-white/60 rounded disabled:opacity-25 disabled:cursor-not-allowed"><ArrowUp className="h-3 w-3"/></button>
+                            <button type="button" disabled={adjacentSibling(model.righe,i,1) === null}
+                              aria-label="Sposta riga giù nello stesso gruppo" title="Sposta sotto la riga successiva dello stesso livello e assieme"
+                              onClick={e=>{e.stopPropagation();moveRiga(i,1);}}
+                              className="p-1 hover:bg-white/60 rounded disabled:opacity-25 disabled:cursor-not-allowed"><ArrowDown className="h-3 w-3"/></button>
+                            <button type="button" title="Elimina riga"
+                              onClick={e=>{e.stopPropagation();deleteRiga(i);}}
+                              className="p-1 hover:bg-red-50 text-red-500 rounded"><Trash2 className="h-3 w-3"/></button>
+                          </>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Breakdown & Costi */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl border border-slate-200 p-6">
+            <h2 className="text-sm font-semibold text-slate-700 mb-4">Breakdown Costi</h2>
+            <CostReductionBreakdown cycle={simulatedModel} marketPrice={marketPrice}/>
+            <CycleCostPie cycle={simulatedModel}/>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-6">
+            <h2 className="text-sm font-semibold text-slate-700 mb-4">Prezzi</h2>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Costo industriale standard</span>
+                <span className="font-mono">{formatMoney(simulatedModel.costo_standard)}<FormulaTooltip label="Costo industriale standard" formula={CALCULATION_FORMULAS.cycle.standardCost}/></span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Full Cost</span>
+                <span className="font-mono">{formatMoney(simulatedModel.full_cost)}<FormulaTooltip label="Full cost" formula={CALCULATION_FORMULAS.cycle.fullCost}/></span>
+              </div>
+              <div className="flex justify-between items-center gap-2 font-semibold text-slate-800">
+                <span>Prezzo Minimo</span>
+                <div className="relative group">
+                  <button type="button" className="font-mono tabular-nums underline decoration-dotted underline-offset-4 cursor-help rounded focus-visible:outline focus-visible:outline-emerald-600"
+                    aria-label="Prezzo minimo: mostra il calcolo del margine netto"
+                    aria-describedby="minimum-margin-formula"
+                    title="Passa sopra o seleziona per vedere la formula del margine netto">
+                    {formatMoney(simulatedModel.prezzo_minimo)}<FormulaTooltip label="Prezzo minimo" formula={CALCULATION_FORMULAS.cycle.minimumPrice}/>
+                  </button>
+                  <div id="minimum-margin-formula" role="tooltip"
+                    className="pointer-events-none invisible group-hover:visible group-focus-within:visible absolute right-0 bottom-full mb-2 z-20 w-72 max-w-[calc(100vw-3rem)] rounded-lg bg-slate-900 text-white shadow-lg p-3 text-xs font-normal leading-relaxed">
+                    <strong>Calcolo margine netto sul prezzo minimo</strong>
+                    {minimumMargins ? <>
+                      <div className="mt-2">Prezzo minimo: € {formatMoney(simulatedModel.prezzo_minimo)}</div>
+                      <div>Full cost (con spese generali): € {formatMoney(simulatedModel.full_cost)}</div>
+                      <div>Differenza: € {formatMoney(minimumMargins.netEuro)}<FormulaTooltip label="Margine sul prezzo minimo in euro" formula={CALCULATION_FORMULAS.cycle.minimumMarginEuro}/></div>
+                      <div className="mt-1 font-semibold">Margine netto: {formatMarginPercent(minimumMargins.netPercent)}<FormulaTooltip label="Margine netto sul prezzo minimo" formula={CALCULATION_FORMULAS.cycle.minimumMarginPercent}/></div>
+                      {minimumExplanation && (
+                        <p className="mt-2 border-t border-slate-600 pt-2 text-white">
+                          {minimumExplanation.message}
+                        </p>
+                      )}
+                      <div className="mt-2 border-t border-slate-600 pt-2 text-slate-300">
+                        Formula: (prezzo minimo − full cost) / prezzo minimo × 100
+                      </div>
+                    </> : <p>Prezzo minimo non positivo: margine non calcolabile.</p>}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 pt-4 border-t border-slate-200">
+              <label htmlFor="market-price" className="block text-sm font-semibold text-slate-800">
+                Prezzo imposto dal mercato (€ / pezzo)
+              </label>
+              <p className="mt-1 mb-2 text-xs text-slate-500">Inserisci un prezzo ipotetico. Il confronto non modifica il ciclo né i suoi costi.</p>
+              <input id="market-price" type="text" inputMode="decimal" placeholder="Es. 12,50"
+                value={marketPriceInput} onChange={e=>setMarketPriceInput(e.target.value)}
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
+              {marketPriceInput.trim() && !marketMargins && (
+                <p role="alert" className="mt-2 text-xs text-amber-800">Inserisci un prezzo positivo, ad esempio 12,50 (massimo quattro decimali).</p>
+              )}
+              {marketMargins && (
+                <div className="mt-3 space-y-3" aria-live="polite">
+                  <div className="rounded-lg bg-emerald-50/70 border border-emerald-100 p-3">
+                    <div className="flex justify-between items-baseline gap-2">
+                      <span className="font-medium text-sm">Margine lordo</span>
+                      <strong className={marketMargins.grossPercent<0?"text-red-700":"text-emerald-800"}>{formatMarginPercent(marketMargins.grossPercent)}<FormulaTooltip label="Margine lordo percentuale" formula={CALCULATION_FORMULAS.cycle.marketGrossPercent}/></strong>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-600">€ {formatMoney(marketMargins.grossEuro)}<FormulaTooltip label="Margine lordo in euro" formula={CALCULATION_FORMULAS.cycle.marketGrossEuro}/> · prima delle spese generali</div>
+                  </div>
+                  <div className="rounded-lg bg-sky-50/70 border border-sky-100 p-3">
+                    <div className="flex justify-between items-baseline gap-2">
+                      <span className="font-medium text-sm">Margine netto</span>
+                      <strong className={marketMargins.netPercent<0?"text-red-700":"text-sky-800"}>{formatMarginPercent(marketMargins.netPercent)}<FormulaTooltip label="Margine netto industriale percentuale" formula={CALCULATION_FORMULAS.cycle.marketNetPercent}/></strong>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-600">€ {formatMoney(marketMargins.netEuro)}<FormulaTooltip label="Margine netto industriale in euro" formula={CALCULATION_FORMULAS.cycle.marketNetEuro}/> · dopo spese generali</div>
+                  </div>
+                  {marketExplanation && (
+                    <div role="status" className={
+                      "rounded-lg border px-4 py-3 text-sm "+
+                      (marketExplanation.scenario === "below-direct" || marketExplanation.scenario === "inconsistent"
+                        ? "bg-red-50 border-red-200 text-red-950"
+                        : marketExplanation.scenario === "partial-overhead" || marketExplanation.scenario === "direct-only"
+                          ? "bg-amber-50 border-amber-200 text-amber-950"
+                          : marketExplanation.scenario === "breakeven"
+                            ? "bg-slate-50 border-slate-200 text-slate-800"
+                            : "bg-emerald-50 border-emerald-200 text-emerald-950")
+                    }>
+                      <p className="font-semibold">In parole semplici: {marketExplanation.title}</p>
+                      <p className="mt-1 leading-relaxed">{marketExplanation.message}<FormulaTooltip label="Calcolo del confronto con il prezzo di mercato" formula={CALCULATION_FORMULAS.cycle.marketExplanation}/></p>
+                    </div>
+                  )}
+                  <p className="text-xs text-slate-500">
+                    Spese generali incluse nel full cost: € {formatMoney(marketMargins.overheadEuro)}<FormulaTooltip label="Spese generali per pezzo" formula={CALCULATION_FORMULAS.cycle.overheadEuro}/>.
+                    Margine netto industriale prima di imposte e oneri finanziari.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Lotti personalizzabili */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <h2 className="text-sm font-semibold text-slate-700 mb-4">Lotti Simulazione</h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            {(model.lotti_personalizzati ?? [25, 50, 100, 250, 500, 1000]).map((lotto, idx) => (
+              <div key={idx} className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={lotto}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 0;
+                    const nuovi = [...(model.lotti_personalizzati ?? [25, 50, 100, 250, 500, 1000])];
+                    nuovi[idx] = val;
+                    setModel((prev) => ({ ...prev, lotti_personalizzati: nuovi }));
+                  }}
+                  disabled={isReadOnly && !isNew}
+                  className="w-20 px-2 py-1 border border-slate-200 rounded text-sm text-center disabled:bg-slate-50"
+                />
+                {(!isReadOnly || isNew) && (model.lotti_personalizzati ?? []).length > 1 && (
+                  <button
+                    onClick={() => {
+                      const nuovi = (model.lotti_personalizzati ?? []).filter((_, i) => i !== idx);
+                      setModel((prev) => ({ ...prev, lotti_personalizzati: nuovi }));
+                      setCycleLotForcedSimulationRows((current) => new Set(
+                        [...current].flatMap((simulationIndex) =>
+                          simulationIndex < idx ? [simulationIndex]
+                            : simulationIndex > idx ? [simulationIndex - 1] : []
+                        ),
+                      ));
+                    }}
+                    className="text-red-500 hover:text-red-700"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+            {(!isReadOnly || isNew) && (
+              <button
+                onClick={() =>
+                  setModel((prev) => ({
+                    ...prev,
+                    lotti_personalizzati: [...(prev.lotti_personalizzati ?? [25, 50, 100, 250, 500, 1000]), 100],
+                  }))
+                }
+                className="px-3 py-1 border border-slate-200 rounded text-sm hover:bg-slate-50"
+              >
+                + Lotto
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Simulazioni */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <h2 className="text-sm font-semibold text-slate-700 mb-4">Simulazioni per Lotto</h2>
+          <p className="text-xs text-slate-500 mb-3">
+            Per ogni lotto puoi scegliere separatamente: di norma la quota di attrezzaggio è divisa per il maggiore tra Lotto Voce e lotto simulato; con il pulsante si usa Lotto Voce solo per quella simulazione. Se Lotto Voce manca o vale zero, si usa il lotto simulato. Attrezzaggio vuoto o zero: nessun costo. Questa anteprima non modifica i dati archiviati.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium text-slate-600">Lotto</th>
+                  <th className="text-right px-3 py-2 font-medium text-slate-600">Costo industriale standard</th>
+                  <th className="text-right px-3 py-2 font-medium text-slate-600">Full Cost</th>
+                  <th className="text-right px-3 py-2 font-medium text-slate-600">Prezzo Min</th>
+                  <th className="text-right px-3 py-2 font-medium text-slate-600">Attrezz. pz</th>
+                </tr>
+              </thead>
+              <tbody>
+                {simulatedModel.simulazioni.map((s, i) => (
+                  <Fragment key={i}>
+                    <tr className="border-b border-slate-100">
+                      <td className="px-3 py-2">{s.lotto}</td>
+                      <td className="px-3 py-2 text-right font-mono">{formatMoney(s.costo_standard)}<FormulaTooltip label={`Costo industriale standard per lotto ${s.lotto}`} formula={CALCULATION_FORMULAS.cycle.standardCost}/></td>
+                      <td className="px-3 py-2 text-right font-mono">{formatMoney(s.full_cost)}<FormulaTooltip label={`Full cost per lotto ${s.lotto}`} formula={CALCULATION_FORMULAS.cycle.fullCost}/></td>
+                      <td className="px-3 py-2 text-right font-mono">{formatMoney(s.prezzo_minimo)}<FormulaTooltip label={`Prezzo minimo per lotto ${s.lotto}`} formula={CALCULATION_FORMULAS.cycle.minimumPrice}/></td>
+                      <td className="px-3 py-2 text-right font-mono">
+                        <div className="flex flex-col items-end gap-1">
+                          <span>{formatMoney(s.attrezzaggio_pz)}<FormulaTooltip label={`Quota attrezzaggio per pezzo al lotto ${s.lotto}`} formula={CALCULATION_FORMULAS.cycle.setupPerPiece}/></span>
+                          {hasSetupRowsWithReferenceLot && (
+                            <button
+                              type="button"
+                              aria-pressed={cycleLotForcedSimulationRows.has(i)}
+                              onClick={() => setCycleLotForcedSimulationRows((current) => {
+                                const next = new Set(current);
+                                if (next.has(i)) next.delete(i);
+                                else next.add(i);
+                                return next;
+                              })}
+                              className="whitespace-nowrap rounded border border-sky-200 px-2 py-1 text-xs font-sans text-sky-800 hover:bg-sky-50"
+                            >
+                              {cycleLotForcedSimulationRows.has(i)
+                                ? "Ripristina lotto simulato"
+                                : "Usa lotto voce del ciclo"}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {cycleRowLotReferences.length > 0 && (
+                      <tr className="border-b border-amber-100 bg-amber-50/70">
+                        <td colSpan={5} className="px-3 py-2 text-xs text-amber-900">
+                          <div className="flex flex-wrap gap-x-4 gap-y-1">
+                            {cycleRowLotReferences.map((reference) => (
+                              <span key={reference.index}>
+                                Lotto di riga ciclo {reference.lottoVoce.toLocaleString("it-IT")}
+                                {reference.descrizione ? ` — ${reference.descrizione}` : ""}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Note */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <h2 className="text-sm font-semibold text-slate-700 mb-4">Note Generali</h2>
+          <textarea
+            value={model.note_generali}
+            onChange={(e) => handleChange("note_generali", e.target.value)}
+            disabled={isReadOnly && !isNew}
+            rows={4}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-50"
+          />
+        </div>
+
+        {/* Dialog Riga */}
+        {dialogOpen && rigaEdit && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">
+                  {newChildParent !== null
+                    ? "Nuovo componente/lavorazione — livello " + ((treeOrder.find(v=>v.index===newChildParent)?.depth ?? 1) + 1)
+                    : rigaIndex !== null ? "Modifica Riga" : "Nuova Riga"}
+                </h3>
+                <button onClick={() => {setDialogOpen(false);setNewChildParent(null);}}>
+                  <X className="h-5 w-5 text-slate-400" />
+                </button>
+              </div>
+              {newChildParent !== null && (
+                <p className="mb-3 text-sm bg-emerald-50 border border-emerald-200 rounded p-3">
+                  La nuova riga sarà collegata a <strong>{model.righe[newChildParent]?.descrizione || model.righe[newChildParent]?.codice_articolo || "Assieme " + (newChildParent+1)}</strong>.
+                  Puoi scegliere una categoria componente o lavorazione; sarà conteggiata all'interno dell'assieme.
+                </p>
+              )}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="col-span-2 md:col-span-3">
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Categoria</label>
+                  <select
+                    value={rigaEdit.categoria}
+                    onChange={(e) =>
+                      handleRigaChange("categoria", e.target.value as RigaCiclo["categoria"])
+                    }
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  >
+                    {CATEGORIE_RIGA.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Codice Articolo
+                  </label>
+                  <input
+                    type="text"
+                    value={rigaEdit.codice_articolo}
+                    onChange={(e) => handleRigaChange("codice_articolo", e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Descrizione
+                  </label>
+                  <input
+                    type="text"
+                    value={rigaEdit.descrizione}
+                    onChange={(e) => handleRigaChange("descrizione", e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                {(["COMPONENTE", "COMPONENTE/ASSIEME", "LAVORAZIONE A PESO", "LAVORAZIONE A PEZZO", "LAVORAZIONE TERZISTA A PESO", "LAVORAZIONE TERZISTA A PEZZO"].includes(rigaEdit.categoria)) && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Fornitore</label>
+                  <input
+                    type="text"
+                    value={rigaEdit.fornitore}
+                    onChange={(e) => handleRigaChange("fornitore", e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Tipo Materiale
+                  </label>
+                  <input
+                    type="text"
+                    value={rigaEdit.tipo_materiale}
+                    onChange={(e) => handleRigaChange("tipo_materiale", e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Tipo Materia Prima
+                  </label>
+                  <input
+                    type="text"
+                    value={rigaEdit.tipo_materia_prima}
+                    onChange={(e) => handleRigaChange("tipo_materia_prima", e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Lunghezza</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={rigaEdit.lunghezza}
+                    onChange={(e) => handleRigaChange("lunghezza", parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Larghezza</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={rigaEdit.larghezza}
+                    onChange={(e) => handleRigaChange("larghezza", parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Spessore</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={rigaEdit.spessore}
+                    onChange={(e) => handleRigaChange("spessore", parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Diametro</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={rigaEdit.diametro}
+                    onChange={(e) => handleRigaChange("diametro", parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {(["MATERIA PRIMA DA TRASFORMARE", "LAVORAZIONE A PESO", "LAVORAZIONE TERZISTA A PESO"].includes(rigaEdit.categoria)) && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Peso Kg</label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    value={rigaEdit.peso_kg}
+                    onChange={(e) => handleRigaChange("peso_kg", parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {!(rigaEdit.categoria === "LAVORAZIONE INTERNA" && rigaEdit.confezionamento === true) && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Nr Componenti
+                  </label>
+                  <input
+                    type="number"
+                    value={rigaEdit.nr_componenti}
+                    onChange={(e) =>
+                      handleRigaChange("nr_componenti", parseFloat(e.target.value) || 0)
+                    }
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {(rigaEdit.categoria === "LAVORAZIONE INTERNA") && (
+                <label className="col-span-2 md:col-span-3 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={rigaEdit.confezionamento === true}
+                    onChange={(e) => handleRigaChange("confezionamento", e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  <span>Confezionamento?</span>
+                </label>
+                )}
+                {(rigaEdit.categoria === "LAVORAZIONE INTERNA" && rigaEdit.confezionamento !== true) && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Colpi/min (pezzi/min)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={rigaEdit.colpi_min}
+                    onChange={(e) => handleRigaChange("colpi_min", parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {(rigaEdit.categoria === "LAVORAZIONE INTERNA" && rigaEdit.confezionamento === true) && (
+                <>
+                  <div>
+                    <label htmlFor="cycle-package-quantity" className="block text-xs font-medium text-slate-500 mb-1">Qtà per conf. *</label>
+                    <input
+                      id="cycle-package-quantity"
+                      type="number"
+                      min="1"
+                      step="1"
+                      required
+                      aria-required="true"
+                      value={rigaEdit.quantita_per_conf ?? 0}
+                      onChange={(e) => handleRigaChange("quantita_per_conf", parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">Obbligatoria: il tempo per pezzo si calcola dividendo i minuti per scatola per questa quantità.</p>
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center gap-1">
+                      <label htmlFor="cycle-package-time" className="text-xs font-medium text-slate-500">Tempo confezionamento (min/scatola)</label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button type="button" aria-label="Informazioni sul tempo di confezionamento" onClick={(event) => event.stopPropagation()} className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-400 text-[10px] font-bold text-slate-600 hover:bg-slate-100">?</button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" sideOffset={6} className="max-w-80 whitespace-normal text-left leading-relaxed">
+                          Il tempo indicato è quello necessario per confezionare una scatola. Tempo per pezzo = tempo confezionamento ÷ quantità per confezione.
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <input
+                      id="cycle-package-time"
+                      type="number"
+                      min="0.01"
+                      step="0.1"
+                      value={rigaEdit.tempo_confezionamento_min ?? 0}
+                      onChange={(e) => handleRigaChange("tempo_confezionamento_min", parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                    />
+                  </div>
+                </>
+                )}
+                {(rigaEdit.categoria === "LAVORAZIONE INTERNA") && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Lotto Voce</label>
+                  <input
+                    type="number"
+                    value={rigaEdit.lotto_voce}
+                    onChange={(e) =>
+                      handleRigaChange("lotto_voce", parseFloat(e.target.value) || 0)
+                    }
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {(rigaEdit.categoria === "LAVORAZIONE INTERNA") && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Attrezzaggio min
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={rigaEdit.attrezzaggio_min}
+                    onChange={(e) =>
+                      handleRigaChange("attrezzaggio_min", parseFloat(e.target.value) || 0)
+                    }
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {(rigaEdit.categoria !== "LAVORAZIONE INTERNA" && !rigaEdit.assembly_auto) && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Costo Unitario €
+                  </label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={rigaEdit.costo_unitario}
+                    onChange={(e) =>
+                      handleRigaChange("costo_unitario", parseFloat(e.target.value) || 0)
+                    }
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {rigaEdit.assembly_auto && (
+                  <div className="col-span-2 md:col-span-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                    Costo assieme calcolato automaticamente dalla somma dei componenti (fino a 4 livelli).
+                    Il costo unitario manuale precedente viene mantenuto nello storico ma non sommato.
+                  </div>
+                )}
+                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Sfrido %</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={rigaEdit.sfrido}
+                    onChange={(e) => handleRigaChange("sfrido", parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+                )}
+                {rigaEdit.categoria === "SPESA ATTREZZATURA DEDICATA" && (
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" checked={rigaEdit.considera === true}
+                      onChange={(e) => handleRigaChange("considera", e.target.checked)} />
+                    Includi costo attrezzatura nel ciclo
+                  </label>
+                )}
+                <div className="col-span-2 md:col-span-3">
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Note</label>
+                  <textarea
+                    value={rigaEdit.note}
+                    onChange={(e) => handleRigaChange("note", e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <button
+                  onClick={() => {setDialogOpen(false);setNewChildParent(null);}}
+                  className="px-4 py-2 border border-slate-200 rounded-lg text-sm hover:bg-slate-50"
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={saveRiga}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
+                >
+                  Salva Riga
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {importDialogOpen && isNew && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-3 sm:p-6"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !importingCycle) setImportDialogOpen(false);
+            }}
+          >
+            <section role="dialog" aria-modal="true" aria-labelledby="cycle-import-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+              <header className="flex items-start justify-between gap-3 border-b p-4 sm:p-5">
+                <div>
+                  <h2 id="cycle-import-title" className="text-lg font-semibold">Importa un ciclo come base</h2>
+                  <p className="mt-1 text-sm text-slate-600">Viene proposta la revisione più recente di ogni ciclo. L’importazione crea una copia modificabile e indipendente.</p>
+                </div>
+                <button type="button" aria-label="Chiudi importazione ciclo" disabled={importingCycle} onClick={() => setImportDialogOpen(false)} className="rounded p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40">
+                  <X size={18}/>
+                </button>
+              </header>
+              <div className="border-b p-4">
+                <label className="relative block">
+                  <span className="sr-only">Cerca il ciclo da importare</span>
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                  <input autoFocus type="search" value={importSearch} onChange={(event) => { setImportSearch(event.target.value); setImportPage(1); }} placeholder="Cerca per codice, descrizione o cliente..." className="w-full rounded border py-2 pl-9 pr-3 text-sm"/>
+                </label>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {importDirectory.isLoading && <p className="p-6 text-center text-sm text-slate-500">Caricamento cicli...</p>}
+                {importDirectory.isError && <p role="alert" className="p-6 text-sm text-red-700">Impossibile caricare i cicli: {importDirectory.error.message}</p>}
+                {!importDirectory.isLoading && !importDirectory.isError && importDirectory.data?.groups.length === 0 && <p className="p-6 text-center text-sm text-slate-500">Nessun ciclo trovato.</p>}
+                <ul className="divide-y">
+                  {importDirectory.data?.groups.map((group) => {
+                    const cycle = group.latest;
+                    return (
+                      <li key={group.key} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900">{cycle.code || "(senza codice)"} <span className="font-normal text-slate-500">· rev. {cycle.rev ?? 1}</span></p>
+                          <p className="break-words text-sm text-slate-700">{cycle.description || "Descrizione non presente"}</p>
+                          <p className="mt-1 text-xs text-slate-500">{cycle.client || "Cliente non indicato"} · Lotto: {cycle.lot || "—"} · Costo industriale: € {formatMoney(Number(cycle.standardCost) || 0)}</p>
+                        </div>
+                        <button type="button" disabled={importingCycle} onClick={() => void importCycleAsDraft(cycle.id)} className="shrink-0 rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+                          {importingCycle ? "Importazione..." : "Usa come base"}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+              <footer className="flex items-center justify-between gap-3 border-t p-3 sm:px-4">
+                <span className="text-xs text-slate-500">{importDirectory.data ? `${importDirectory.data.total} cicli` : ""}</span>
+                <div className="flex items-center gap-2">
+                  <button type="button" disabled={importPage <= 1 || importDirectory.isFetching} onClick={() => setImportPage((page) => Math.max(1, page - 1))} className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm disabled:opacity-40"><ChevronLeft size={16}/>Precedente</button>
+                  <span className="text-xs tabular-nums text-slate-600">{importDirectory.data?.page ?? importPage} / {Math.max(1, Math.ceil((importDirectory.data?.total ?? 0) / 25))}</span>
+                  <button type="button" disabled={!importDirectory.data || importPage >= Math.ceil(importDirectory.data.total / 25) || importDirectory.isFetching} onClick={() => setImportPage((page) => page + 1)} className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm disabled:opacity-40">Successiva<ChevronRight size={16}/></button>
+                </div>
+              </footer>
+            </section>
+          </div>
+        )}
+
+        {/* Choose a revision or use the second, destructive confirmation. */}
+        {saveDialogOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div role="dialog" aria-modal="true" aria-labelledby="cycle-save-choice"
+              className="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl">
+              <div className="flex items-center gap-2 mb-4">
+                <Save className={"h-5 w-5 " + (overwriteStep?"text-red-700":"text-emerald-700")}/>
+                <h3 id="cycle-save-choice" className="text-lg font-semibold">
+                  {overwriteStep?"Conferma sovrascrittura definitiva":"Vuoi creare una nuova revisione?"}
+                </h3>
+              </div>
+              {overwriteStep ? (
+                <>
+                  <p className="text-sm text-red-900 bg-red-50 border border-red-200 rounded p-3 mb-4">
+                    <strong>Attenzione: operazione definitiva.</strong> Stai per sovrascrivere
+                    la revisione <strong>{model.rev}</strong> del ciclo <strong>{model.codice}</strong>.
+                    I dati precedenti di questa revisione saranno sostituiti, senza
+                    crearne una nuova. L'operazione non può essere annullata nell'applicazione.
+                  </p>
+                  <p className="text-sm text-slate-600 mb-5">Confermi la sovrascrittura della revisione attuale?</p>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button type="button" onClick={()=>setOverwriteStep(false)}
+                      className="px-4 py-2 border rounded-lg text-sm hover:bg-slate-50">Indietro</button>
+                    <button type="button" onClick={()=>{setSaveDialogOpen(false);setOverwriteStep(false);}}
+                      className="px-4 py-2 border rounded-lg text-sm">Annulla</button>
+                    <button type="button" onClick={()=>confirmSaveRevision("overwrite")}
+                      disabled={!isModified || overwriteLatest.isPending || createRevision.isPending}
+                      className="px-4 py-2 bg-red-700 text-white rounded-lg text-sm font-semibold hover:bg-red-800 disabled:opacity-40">
+                      Confermo: sovrascrivi definitivamente
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-600 mb-5">
+                    <strong>Sì:</strong> crea una nuova revisione e conserva la rev. {model.rev}.
+                    <strong> No:</strong> passa a una seconda conferma per sovrascrivere
+                    definitivamente la revisione attuale, senza crearne un'altra.
+                  </p>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button type="button" onClick={()=>setSaveDialogOpen(false)}
+                      className="px-4 py-2 border rounded-lg text-sm hover:bg-slate-50">Annulla</button>
+                    <button type="button" onClick={()=>setOverwriteStep(true)}
+                      className="px-4 py-2 border border-red-300 text-red-800 rounded-lg text-sm hover:bg-red-50">
+                      No, sovrascrivi
+                    </button>
+                    <button type="button" onClick={()=>confirmSaveRevision("revision")}
+                      disabled={!isModified || createRevision.isPending || overwriteLatest.isPending}
+                      className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-40">
+                      Sì, nuova revisione
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+        {(!isReadOnly || isNew) && (
+          <button type="button" onClick={()=>openRigaDialog()}
+            aria-label="Aggiungi riga al ciclo"
+            className="fixed right-24 z-40 inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-3 text-sm font-semibold text-white shadow-xl transition hover:bg-emerald-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+            style={{bottom:"calc(env(safe-area-inset-bottom, 0px) + 1rem)"}}>
+            <Plus className="h-5 w-5"/>Aggiungi riga
+          </button>
+        )}
+      </div>
+    </Layout>
+  );
+}

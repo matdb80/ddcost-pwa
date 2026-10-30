@@ -1,3 +1,4 @@
+import {migrateStagingSales} from "./staging-sales-migration";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { HttpBindings } from "@hono/node-server";
@@ -10,6 +11,13 @@ import {
   createMicrosoftCallbackHandler,
 } from "./ms-auth";
 import { runDbDiagnostics } from "./db-check";
+import { migrateStagingCycles } from "./staging-cycle-migration";
+import { migrateStagingFeedback } from "./staging-feedback-migration";
+import { migrateStagingFeedbackExports } from "./staging-feedback-export-migration";
+import { migrateStagingProductGroups } from "./staging-product-group-migration";
+import { migrateStagingCycleCapacity } from "./staging-cycle-capacity-migration";
+import { migrateStagingBandellePrices } from "./staging-bandelle-price-migration";
+import { migrateStagingBandelleTPrices } from "./staging-bandelle-t-price-migration";
 import { downloadBackup } from "./backup";
 import { previewLegacyImport, commitLegacyImport } from "./legacy-import";
 
@@ -42,6 +50,35 @@ app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
 export default app;
 
 if (env.isProduction) {
+  if(process.env.DDCOST_STAGING_MIGRATE_SALES==="1")await migrateStagingSales();
+  if (process.env.DDCOST_STAGING_MIGRATE_SOFT_DELETE === "1") {
+    await migrateStagingCycles();
+  }
+
+  if (process.env.DDCOST_STAGING_MIGRATE_FEEDBACK === "1") {
+    await migrateStagingFeedback();
+  }
+
+  if (process.env.DDCOST_STAGING_MIGRATE_FEEDBACK_EXPORTS === "1") {
+    await migrateStagingFeedbackExports();
+  }
+
+  if (process.env.DDCOST_STAGING_MIGRATE_PRODUCT_GROUPS === "1") {
+    await migrateStagingProductGroups();
+  }
+
+  if (process.env.DDCOST_STAGING_MIGRATE_CYCLE_CAPACITY === "1") {
+    await migrateStagingCycleCapacity();
+  }
+
+  if (process.env.DDCOST_STAGING_MIGRATE_BANDELLE_PRICES === "1") {
+    await migrateStagingBandellePrices();
+  }
+
+  if (process.env.DDCOST_STAGING_MIGRATE_BANDELLE_T_PRICES === "1") {
+    await migrateStagingBandelleTPrices();
+  }
+
   if (process.env.DB_DIAGNOSTICS === "1") {
     try {
       await runDbDiagnostics();

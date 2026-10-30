@@ -9,7 +9,12 @@ let instance: ReturnType<typeof drizzle<typeof fullSchema>>;
 
 export function getDb() {
   if (!instance) {
-    instance = drizzle(env.databaseUrl, {
+    instance = drizzle({
+      connection: {
+        uri: env.databaseUrl,
+        // TiDB Cloud Starter public endpoints require TLS.
+        ssl: { rejectUnauthorized: true },
+      },
       mode: "planetscale",
       schema: fullSchema,
     });
