@@ -3,6 +3,13 @@ import {calculateMaterialByWeight,MATERIAL_DENSITY_G_CM3,MODIFICATION_OBJECTS,to
 import {blankProduct,blankQuote,calculateQuote} from "./quote-calculation";
 
 describe("TKT-20261015-16060008: oggetto della modifica",()=>{
+  it("preserves custom modification objects through calculation and serialization",()=>{
+    const q=blankQuote();
+    q.prodotti=[{...blankProduct(),oggetto_modifica:["Foratura aggiuntiva","occhio"]}];
+    const saved=JSON.parse(JSON.stringify(calculateQuote(q)));
+    expect(saved.prodotti[0].oggetto_modifica).toEqual(["Foratura aggiuntiva","occhio"]);
+    expect(toggleModificationObject(saved.prodotti[0].oggetto_modifica,"Foratura aggiuntiva")).toEqual(["occhio"]);
+  });
   it("toggles multiple modification objects independently and tolerates old empty values",()=>{
     expect(MODIFICATION_OBJECTS).toEqual([
       "occhio","collo","zanca","lunghezza","spessore",
