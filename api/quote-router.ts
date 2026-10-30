@@ -49,12 +49,12 @@ export const quoteRouter = createRouter({
       const search = input.search?.trim();
 
       if (search) {
-        const pattern = `%${search}%`;
+        const pattern = `%${search.toLocaleLowerCase("it-IT")}%`;
         return db
           .select()
           .from(quotes)
           .where(
-            sql`${quotes.client} LIKE ${pattern} OR ${quotes.reference} LIKE ${pattern}`
+            sql`LOWER(${quotes.client}) LIKE ${pattern} OR LOWER(${quotes.reference}) LIKE ${pattern}`
           )
           .orderBy(desc(quotes.createdAt))
           .limit(input.limit);
