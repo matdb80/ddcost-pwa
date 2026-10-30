@@ -51,6 +51,7 @@ export async function downloadBackup(c: Context): Promise<Response> {
   try {
     connection = await mysql.createConnection({
       uri: env.databaseUrl,
+      ssl: { rejectUnauthorized: true },
       connectTimeout: 10000,
       supportBigNumbers: true,
       bigNumberStrings: true,
@@ -95,7 +96,7 @@ export async function downloadBackup(c: Context): Promise<Response> {
       tableDefinitions[table] = ddl;
 
       const [rows] = await connection.query<RowDataPacket[]>(
-        "SELECT * FROM " + table + " ORDER BY id",
+        "SELECT * FROM " + table + " ORDER BY " + (table === "colleague_access" ? "oid" : "id"),
       );
       records[table] = rows;
       rowCounts[table] = rows.length;
