@@ -6,20 +6,15 @@ export function italianOfferYear(at = new Date()): number {
   }).format(at));
 }
 
-export function formatOfferNumber(progressive: number, year = italianOfferYear()): string {
-  if (!Number.isInteger(progressive) || progressive <= 0) {
-    throw new Error("Il progressivo dell'offerta deve essere un intero positivo");
-  }
-  if (!Number.isInteger(year) || year < 2000) {
-    throw new Error("L'anno dell'offerta non è valido");
-  }
-  return `DDC${progressive}/${year}`;
+export function formatOfferNumber(progressive: number): string {
+  if (!Number.isInteger(progressive) || progressive < 1 || progressive > 9999)
+    throw new Error("Progressivi offerta esauriti o non validi (0001–9999)");
+  return `DDC${String(progressive).padStart(4,"0")}`;
 }
 
-/** Preview only: create() replaces this with the database-assigned sequence. */
-export function nextOfferNumberPreview(maxExistingId: number, at = new Date()): string {
-  const maxId = Number.isInteger(maxExistingId) && maxExistingId > 0 ? maxExistingId : 0;
-  return formatOfferNumber(maxId + 1, italianOfferYear(at));
+/** Preview only; the server reserves the number transactionally on save. */
+export function nextOfferNumberPreview(lastNumber: number): string {
+  return formatOfferNumber(lastNumber + 1);
 }
 
 /** Keep the JSON snapshot and the searchable database column aligned. */
