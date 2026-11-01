@@ -17,6 +17,7 @@ const TABLES = [
   "quotes",
   "cycle_simulations",
   "commercial_offers",
+  "offer_number_sequence",
   "legacy_source_archives",
   "feedback_tickets",
   "feedback_attachments",
