@@ -56,6 +56,7 @@ type OfferRow = CommercialOfferRow & {
   data?: unknown;
 };
 type OfferDocument = {
+  associato_progetto?: boolean;
   nome?: string;
   cliente?: string;
   riferimento?: string;
@@ -505,6 +506,12 @@ export default function OffertaEditorPage() {
 
       <section className="bg-white border rounded-xl p-5 space-y-3">
         <h2 className="flex items-center gap-2 text-lg font-semibold"><UserRound size={18} aria-hidden="true"/>Testata</h2>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={offer.associato_progetto === true}
+            onChange={(event) => edit("associato_progetto", event.target.checked)}
+            disabled={locked} className="h-4 w-4 accent-emerald-600" />
+          Associata a un progetto
+        </label>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {([["nome", "Rif. offerta"], ["cliente", "Cliente"], ["riferimento", "Riferimento"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
             <span>{label}</span><input disabled={locked || key === "nome"} value={String(offer[key] ?? "")} onChange={(event) => { if (key === "nome" && isNew) setOfferNumberEdited(true); edit(key, event.target.value); }} className="p-2 border rounded disabled:bg-slate-100"/>
