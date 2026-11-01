@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyStandardCycleToOfferRow } from "./commercial-offer-cycle";
+import { nextTemporaryCode, applyStandardCycleToOfferRow } from "./commercial-offer-cycle";
 
 describe("applyStandardCycleToOfferRow", () => {
   it("copies a standard cycle snapshot and preserves commercial terms", () => {
@@ -79,6 +79,15 @@ describe("applyStandardCycleToOfferRow", () => {
       description: "Prodotto senza codice",
       dataJson: JSON.stringify({ codice: "", descrizione: "Prodotto senza codice", righe: [] }),
     });
-    expect(result.codice).toBe("TMP731");
+    expect(result.codice).toMatch(/^TMP\d{4}$/);
   });
+});
+
+it("uses a random four-digit start, then consecutive codes without altering legacy codes",()=>{
+ expect(nextTemporaryCode([],()=>0.26)).toBe("TMP2341");
+ expect(nextTemporaryCode([{codice:"TMP2341"}])).toBe("TMP2342");
+ const cycle={id:123456,code:"",dataJson:JSON.stringify({codice:"",righe:[]})};
+ expect(applyStandardCycleToOfferRow({codice:"TMP123456"},cycle).codice).toBe("TMP123456");
+ expect(applyStandardCycleToOfferRow({},cycle,[],false).codice).toBe("TMP123456");
+ expect(()=>nextTemporaryCode([{codice:"TMP9999"}])).toThrow();
 });
