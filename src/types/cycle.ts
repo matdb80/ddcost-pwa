@@ -100,6 +100,7 @@ export interface CicloDataJson {
   full_cost?: number;
   prezzo_minimo?: number;
   simulazioni?: SimulazioneLotto[];
+  associato_progetto?: boolean;
   note_generali?: string;
   origine_import_excel?: boolean;
   foglio_importato?: string;
@@ -129,6 +130,7 @@ export interface CicloEditorModel {
   full_cost: number;
   prezzo_minimo: number;
   simulazioni: SimulazioneLotto[];
+  associato_progetto?: boolean;
   note_generali: string;
   lotti_personalizzati?: number[];
   // Preserve unknown fields for round-trip
@@ -236,6 +238,7 @@ export function parseCycleRow(row: {
         "full_cost",
         "prezzo_minimo",
         "simulazioni",
+        "associato_progetto",
         "note_generali",
         "rev",
         "lotti_personalizzati",
@@ -272,6 +275,7 @@ export function parseCycleRow(row: {
           ? row.minimumPrice
           : parsed.prezzo_minimo ?? 0,
     simulazioni: parsed.simulazioni ?? [],
+    associato_progetto: parsed.associato_progetto === true,
     note_generali: parsed.note_generali ?? "",
     lotti_personalizzati:
       parsed.lotti_personalizzati ??
@@ -299,6 +303,7 @@ export function serializeCycleDataJson(model: CicloEditorModel): CicloDataJson {
     full_cost: model.full_cost,
     prezzo_minimo: model.prezzo_minimo,
     simulazioni: model.simulazioni,
+    associato_progetto: model.associato_progetto === true,
     note_generali: model.note_generali,
     lotti_personalizzati: model.lotti_personalizzati,
     ...model._extra,
