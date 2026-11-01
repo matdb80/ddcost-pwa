@@ -3,15 +3,14 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { commercialOffers } from "@db/schema";
-import { formatOfferNumber, italianOfferYear, nextOfferNumberPreview, withOfferNumberInJson } from "../src/lib/commercial-offer-number";
+import { formatOfferNumber, nextOfferNumberPreview, withOfferNumberInJson } from "../src/lib/commercial-offer-number";
 
 export const offerRouter = createRouter({
   nextNumber: authedQuery.query(async () => {
     const db = getDb();
-    const rows = await db
-      .select({ maxId: sql<number>`COALESCE(MAX(${commercialOffers.id}), 0)` })
-      .from(commercialOffers);
-    return { number: nextOfferNumberPreview(Number(rows[0]?.maxId ?? 0)) };
+    const result = await db.execute(sql`SELECT lastNumber FROM offer_number_sequence WHERE id=1`);
+    const rows = result[0] as unknown as {lastNumber:number}[];
+    return { number: nextOfferNumberPreview(Number(rows[0]?.lastNumber ?? 0)) };
   }),
 
   list: authedQuery
@@ -71,17 +70,23 @@ export const offerRouter = createRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
-      const { numberEdited, ...offer } = input;
-      const year = italianOfferYear();
+      const { numberEdited: _numberEdited, ...offer } = input;
+
       return db.transaction(async (tx) => {
+        const resultSequence = await tx.execute(sql`SELECT lastNumber FROM offer_number_sequence WHERE id=1 FOR UPDATE`);
+        const sequence = (resultSequence[0] as unknown as {lastNumber:number}[])[0];
+        if(!sequence)throw new Error("Numerazione offerte non configurata");
+        const next = Number(sequence.lastNumber)+1;
+        const name = formatOfferNumber(next);
+        await tx.execute(sql`UPDATE offer_number_sequence SET lastNumber=${next} WHERE id=1`);
         const result = await tx.insert(commercialOffers).values({
           userId: ctx.user.id,
           ...offer,
           // The auto-increment id is a concurrency-safe, never-reused sequence.
-          name: numberEdited === false ? null : offer.name,
+          name,
         });
         const id = Number(result[0].insertId);
-        const name = numberEdited === false ? formatOfferNumber(id, year) : String(offer.name ?? "");
+
         const dataJson = withOfferNumberInJson(offer.dataJson, name);
         await tx.update(commercialOffers).set({
           name,
