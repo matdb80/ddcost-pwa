@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { serializeCycleDataJson } from "@/types/cycle";
+import { parseCycleRow, serializeCycleDataJson } from "@/types/cycle";
 import { copyCycleAsNamedDraft, copyCycleAsNewDraft } from "./cycle-copy";
 
 describe("copy cycle as a new draft", () => {
@@ -72,5 +72,21 @@ describe("copy cycle as a new draft", () => {
     expect(serialized).not.toHaveProperty("rootId");
     expect(serialized).not.toHaveProperty("rev");
     expect(()=>copyCycleAsNamedDraft(source," ","Duplicato")).toThrow(/codice e una nuova descrizione/);
+  });
+});
+
+
+describe("project marker persistence", () => {
+  it("round-trips the marker and allows clearing it without changing legacy identity", () => {
+    const source = { code: "TMP123456", dataJson: JSON.stringify({ associato_progetto: true, custom_field: "preserve" }) };
+    const model = parseCycleRow(source);
+    expect(model.associato_progetto).toBe(true);
+    const restored = parseCycleRow({ dataJson: JSON.stringify(serializeCycleDataJson(model)) });
+    expect(restored.associato_progetto).toBe(true);
+    const cleared = serializeCycleDataJson({ ...restored, associato_progetto: false });
+    expect(cleared.associato_progetto).toBe(false);
+    expect(cleared.codice).toBe("TMP123456");
+    expect(cleared.custom_field).toBe("preserve");
+    expect(parseCycleRow({ dataJson: "{}" }).associato_progetto).toBe(false);
   });
 });
