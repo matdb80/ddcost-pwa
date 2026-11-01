@@ -133,6 +133,7 @@ export default function CicliPage(){
               <th className="text-left p-3">Codice / revisioni</th>
               <th className="text-left p-3">Descrizione</th>
               <th className="text-left p-3">Cliente</th>
+              <th className="text-center p-3">Progetto</th>
               <th className="text-left p-3">Lotto</th>
               <th className="text-left p-3">Rev.</th>
               <th className="text-right p-3">Costo industriale standard</th>
@@ -141,9 +142,9 @@ export default function CicliPage(){
             </tr>
           </thead>
           <tbody>
-            {query.isLoading&&<tr><td colSpan={8} className="py-8 text-center text-slate-500">Caricamento cicli...</td></tr>}
-            {query.isError&&<tr><td colSpan={8} className="p-5 text-red-700">Impossibile caricare i cicli. {query.error.message}</td></tr>}
-            {!query.isLoading&&!query.isError&&groups.length===0&&<tr><td colSpan={8} className="p-6 text-center text-slate-500">Nessun ciclo trovato.</td></tr>}
+            {query.isLoading&&<tr><td colSpan={9} className="py-8 text-center text-slate-500">Caricamento cicli...</td></tr>}
+            {query.isError&&<tr><td colSpan={9} className="p-5 text-red-700">Impossibile caricare i cicli. {query.error.message}</td></tr>}
+            {!query.isLoading&&!query.isError&&groups.length===0&&<tr><td colSpan={9} className="p-6 text-center text-slate-500">Nessun ciclo trovato.</td></tr>}
             {groups.map(g=>{
               const last=g.latest!;
               const open=expanded.has(g.key);
@@ -163,6 +164,7 @@ export default function CicliPage(){
                   </td>
                   <td className="p-3 text-slate-600">{last.description}</td>
                   <td className="p-3 text-slate-600">{last.client}</td>
+                  <td className="p-3 text-center text-emerald-700"><span aria-label={last.associatedWithProject ? "Associato a un progetto" : "Non associato a un progetto"}>{last.associatedWithProject ? "✓" : "—"}</span></td>
                   <td className="p-3">{last.lot}</td>
                   <td className="p-3 font-semibold">{last.rev}</td>
                   <td className="p-3 text-right tabular-nums">{last.standardCost!=null?<>€ {fmt(last.standardCost)}<FormulaTooltip label="Costo industriale standard del ciclo" formula={CALCULATION_FORMULAS.cycle.standardCost}/></>:"—"}</td>
@@ -182,6 +184,7 @@ export default function CicliPage(){
                   </td>
                   <td className="p-2 text-slate-600">{c.description}</td>
                   <td className="p-2 text-slate-600">{c.client}</td>
+                  <td className="p-2 text-center text-emerald-700"><span aria-label={c.associatedWithProject ? "Associato a un progetto" : "Non associato a un progetto"}>{c.associatedWithProject ? "✓" : "—"}</span></td>
                   <td className="p-2">{c.lot}</td>
                   <td className="p-2">{c.rev}</td>
                   <td className="p-2 text-right tabular-nums">{c.standardCost!=null?<>€ {fmt(c.standardCost)}<FormulaTooltip label="Costo industriale standard del ciclo" formula={CALCULATION_FORMULAS.cycle.standardCost}/></>:"—"}</td>
