@@ -36,7 +36,7 @@ export default function OffertePage() {
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-slate-600">ID</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Nome</th>
+                <th className="text-left px-4 py-3 font-medium text-slate-600">Rif. offerta</th>
                 <th className="text-left px-4 py-3 font-medium text-slate-600">Cliente</th>
                 <th className="text-left px-4 py-3 font-medium text-slate-600">Riferimento</th>
                 <th className="text-right px-4 py-3 font-medium text-slate-600">Righe</th>
