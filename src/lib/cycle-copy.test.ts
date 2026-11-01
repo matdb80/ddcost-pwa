@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCycleRow, serializeCycleDataJson } from "@/types/cycle";
+import { hasProjectAssociation, parseCycleRow, serializeCycleDataJson } from "@/types/cycle";
 import { copyCycleAsNamedDraft, copyCycleAsNewDraft } from "./cycle-copy";
 
 describe("copy cycle as a new draft", () => {
@@ -88,5 +88,15 @@ describe("project marker persistence", () => {
     expect(cleared.codice).toBe("TMP123456");
     expect(cleared.custom_field).toBe("preserve");
     expect(parseCycleRow({ dataJson: "{}" }).associato_progetto).toBe(false);
+  });
+});
+
+
+describe("project marker in directories", () => {
+  it("requires an explicit saved marker and tolerates absent or malformed legacy data", () => {
+    expect(hasProjectAssociation('{"associato_progetto":true}')).toBe(true);
+    for (const value of [null, undefined, "", "broken", "null", "{}", '{"associato_progetto":false}', '{"associato_progetto":"false"}']) {
+      expect(hasProjectAssociation(value)).toBe(false);
+    }
   });
 });
