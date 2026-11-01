@@ -681,6 +681,12 @@ export default function CicloEditorPage() {
         {/* Anagrafica */}
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h2 className="text-sm font-semibold text-slate-700 mb-4">Dati Anagrafici</h2>
+          <label className="flex items-center gap-2 text-sm mb-4">
+            <input type="checkbox" checked={model.associato_progetto === true}
+              onChange={(event) => handleChange("associato_progetto", event.target.checked)}
+              disabled={isReadOnly && !isNew} className="h-4 w-4 accent-emerald-600" />
+            Associato a un progetto
+          </label>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">Codice</label>
