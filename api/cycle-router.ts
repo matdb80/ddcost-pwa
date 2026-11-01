@@ -1,3 +1,4 @@
+import { hasProjectAssociation } from "../src/types/cycle";
 import { z } from "zod";
 import { eq, desc, sql, count, and } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
@@ -139,10 +140,13 @@ export const cycleRouter = createRouter({
         client:cycles.client,lot:cycles.lot,rev:cycles.rev,
         updatedAt:cycles.updatedAt,deleted:cycles.deleted,
         standardCost:cycles.standardCost,minimumPrice:cycles.minimumPrice,
+        dataJson:cycles.dataJson,
       }).from(cycles)
         .where(input.includeDeleted?undefined:eq(cycles.deleted,0))
         .orderBy(desc(cycles.updatedAt),desc(cycles.id));
-      return groupCycleDirectory(rows,input.search??"",input.page,input.pageSize);
+      return groupCycleDirectory(rows.map(({dataJson, ...row}) => ({
+        ...row, associatedWithProject: hasProjectAssociation(dataJson),
+      })),input.search??"",input.page,input.pageSize);
     }),
 
   get: authedQuery
