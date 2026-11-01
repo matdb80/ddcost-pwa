@@ -19,6 +19,12 @@ export async function migrateStagingSales(){
       updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY assignment_unique(kind,sourceId,recipientOid), KEY recipient(recipientOid)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    await db.query(`CREATE TABLE IF NOT EXISTS offer_number_sequence (
+      id int PRIMARY KEY, lastNumber int NOT NULL
+    ) ENGINE=InnoDB`);
+    await db.query(`INSERT IGNORE INTO offer_number_sequence (id,lastNumber)
+      SELECT 1, COALESCE(MAX(CAST(SUBSTRING(name,4) AS UNSIGNED)),0)
+      FROM commercial_offers WHERE name REGEXP '^DDC[0-9]{4}$'`);
     const initial=JSON.parse(process.env.DDCOST_INITIAL_COLLEAGUES??'[]') as {oid:string;name:string;email:string}[];
     for(const person of initial){
       if(!/^[0-9a-f-]{36}$/i.test(person.oid)||!person.email.endsWith('@didieffe.com'))throw new Error('Invalid colleague configuration');
