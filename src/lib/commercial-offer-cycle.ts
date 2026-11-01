@@ -17,13 +17,22 @@ export type StandardCycleRecord = {
 
 export type CommercialOfferRow = Record<string, unknown>;
 
+export function nextTemporaryCode(rows: CommercialOfferRow[], random = Math.random): string {
+  const numbers=rows.map(row=>String(row.codice??"")).filter(code=>/^TMP\d{4}$/.test(code)).map(code=>Number(code.slice(3)));
+  const next=numbers.length?Math.max(...numbers)+1:1+Math.floor(random()*9000);
+  if(next>9999)throw new Error("Codici TMP a quattro cifre esauriti in questa offerta");
+  return `TMP${String(next).padStart(4,"0")}`;
+}
+
 /** Copy a cycle snapshot into an offer row without changing its sales terms. */
 export function applyStandardCycleToOfferRow(
   row: CommercialOfferRow,
   cycle: StandardCycleRecord,
+  offerRows: CommercialOfferRow[] = [row],
+  useShortCodes = true,
 ): CommercialOfferRow {
   const product = parseCycleRow(cycle);
-  const articleCode = product.codice.trim() || `TMP${product.id ?? cycle.id}`;
+  const articleCode = product.codice.trim() || (/^TMP\d+$/.test(String(row.codice??"")) ? String(row.codice) : useShortCodes ? nextTemporaryCode(offerRows) : `TMP${product.id ?? cycle.id}`);
   const simulations = calcolaSimulazioni({ ...product, lotti_personalizzati: cycleSimulationLots(product) });
   const configuredLots = simulations.map((simulation) => simulation.lotto).filter((lot) => lot > 0);
   const cycleLot = Number(product.lotto);
