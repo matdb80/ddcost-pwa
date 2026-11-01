@@ -309,3 +309,12 @@ export function serializeCycleDataJson(model: CicloEditorModel): CicloDataJson {
     ...model._extra,
   };
 }
+
+/** Read the shared project marker from a saved cycle or offer, including legacy JSON. */
+export function hasProjectAssociation(dataJson: string | null | undefined): boolean {
+  try {
+    return JSON.parse(dataJson ?? "null")?.associato_progetto === true;
+  } catch {
+    return false;
+  }
+}
