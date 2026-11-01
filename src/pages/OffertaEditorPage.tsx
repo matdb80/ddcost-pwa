@@ -513,7 +513,7 @@ export default function OffertaEditorPage() {
           Associata a un progetto
         </label>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {([["nome", "Rif. offerta"], ["cliente", "Cliente"], ["riferimento", "Riferimento"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
+          {([["nome", "Rif. offerta"], ["cliente", "Cliente"], ["riferimento", "Riferimento / Progetto"]] as const).map(([key, label]) => <label key={key} className="flex flex-col text-sm gap-1">
             <span>{label}</span><input disabled={locked || key === "nome"} value={String(offer[key] ?? "")} onChange={(event) => { if (key === "nome" && isNew) setOfferNumberEdited(true); edit(key, event.target.value); }} className="p-2 border rounded disabled:bg-slate-100"/>
           </label>)}
         </div>
