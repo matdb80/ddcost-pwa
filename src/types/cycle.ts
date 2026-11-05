@@ -39,6 +39,16 @@ export interface RigaCiclo {
   spessore: number;
   diametro: number;
   peso_kg: number;
+  /** Explicit opt-in: archived rows retain their original costing rules. */
+  materia_prima_versione?: 2;
+  materiale_id?: "acciaio" | "inox304" | "inox316" | "alluminio" | "ottone";
+  geometria_materia_prima?: "tubo" | "tondino" | "piatto" | "nastro";
+  densita_kg_m3?: number;
+  diametro_interno?: number;
+  unita_costo_materiale?: "kg" | "m";
+  peso_modalita?: "automatico" | "manuale";
+  /** A legacy effective weight includes the former scrap allowance, exactly once. */
+  peso_storico_preservato?: boolean;
   nr_componenti: number;
   colpi_min: number;
   /** When true, internal work time is captured per package instead of pieces/min. */

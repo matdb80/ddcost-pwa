@@ -230,24 +230,25 @@ function costMatrix(
 type SimulationsItem = ReturnType<typeof simulationsForOfferRow>[number];
 
 function sourceCycleLines(lines: CicloRow[]): string {
+  const showLegacyScrap = lines.some(line => line.materia_prima_versione !== 2 && Number(line.sfrido) !== 0 && Number.isFinite(Number(line.sfrido)));
   if (!lines.length) return `<p class="muted">Il ciclo non contiene righe tecniche.</p>`;
   const materialRows = lines.map((line) => `<tr>
     <td>${escapeHtml(String(line.categoria ?? ""))}</td><td>${escapeHtml(String(line.codice_articolo ?? ""))}</td>
     <td>${escapeHtml(String(line.descrizione ?? ""))}</td><td>${escapeHtml([line.tipo_materiale, line.tipo_materia_prima].filter(Boolean).join(" / "))}</td>
     <td>${escapeHtml(dimensions(line))}</td><td class="num">${formatNumber(line.nr_componenti)}</td>
-    <td class="num">${formatNumber(line.peso_kg)}</td><td class="num">${formatNumber(line.sfrido)}%</td>
+    <td class="num">${Number(line.peso_kg || 0).toLocaleString("it-IT", { maximumFractionDigits: 6 })}</td>${showLegacyScrap ? `<td class="num">${line.materia_prima_versione === 2 ? "—" : `${formatNumber(line.sfrido)}%`}</td>` : ""}
     <td>${escapeHtml(String(line.fornitore ?? ""))}</td><td>${escapeHtml(String(line.note ?? ""))}</td>
     <td>${line.considera === false ? "Esclusa" : "Inclusa"}</td>
   </tr>`).join("");
   const costRows = lines.map((line) => `<tr>
     <td>${escapeHtml(String(line.categoria ?? ""))}</td><td>${escapeHtml(String(line.codice_articolo ?? ""))}</td>
     <td>${escapeHtml(String(line.descrizione ?? ""))}</td><td class="num">${formatNumber(line.nr_componenti)}</td>
-    <td class="num">€ ${money(line.costo_unitario)}</td><td class="num">€ ${money(line.costo_min)}</td>
+    <td class="num">€ ${money(line.costo_unitario)}${line.categoria === "MATERIA PRIMA DA TRASFORMARE" ? line.unita_costo_materiale === "m" ? "/m" : "/kg" : ""}</td><td class="num">€ ${money(line.costo_min)}</td>
     <td>${operationRate(line)}</td><td class="num">${formatNumber(line.attrezzaggio_min)}</td>
     <td class="num">${formatNumber(line.lotto_voce)}</td><td>${escapeHtml(String(line.fornitore ?? ""))}
     <td>${line.considera === false ? "Esclusa" : "Inclusa"}</td>
   </tr>`).join("");
-  return `<h4>Articoli, materiali e riferimenti tecnici</h4><table class="source-lines"><thead><tr><th>Categoria</th><th>Codice</th><th>Descrizione</th><th>Materiale / materia prima</th><th>Dimensioni mm (L×W×S / Ø)</th><th class="num">Qtà</th><th class="num">Peso kg</th><th class="num">Sfrido</th><th>Fornitore</th><th>Note riga</th><th>Nel costo</th></tr></thead><tbody>${materialRows}</tbody></table>
+  return `<h4>Articoli, materiali e riferimenti tecnici</h4><table class="source-lines"><thead><tr><th>Categoria</th><th>Codice</th><th>Descrizione</th><th>Materiale / materia prima</th><th>Dimensioni mm (L×W×S / Ø)</th><th class="num">Qtà</th><th class="num">Peso kg</th>${showLegacyScrap ? '<th class="num">Sfrido storico</th>' : ""}<th>Fornitore</th><th>Note riga</th><th>Nel costo</th></tr></thead><tbody>${materialRows}</tbody></table>
   <h4>Costi unitari, lavorazioni e attrezzaggi</h4><table class="source-lines"><thead><tr><th>Categoria</th><th>Codice</th><th>Descrizione</th><th class="num">Qtà</th><th class="num">Costo unit. €</th><th class="num">Costo min. €</th><th class="num">Velocità / conf.</th><th class="num">Setup min</th><th class="num">Lotto voce</th><th>Fornitore</th><th>Nel costo</th></tr></thead><tbody>${costRows}</tbody></table>`;
 }
 
@@ -399,6 +400,7 @@ type CicloRow = {
   categoria?: string; codice_articolo?: string; descrizione?: string;
   tipo_materiale?: string; tipo_materia_prima?: string;
   lunghezza?: number; larghezza?: number; spessore?: number; diametro?: number;
+  materia_prima_versione?: number; diametro_interno?: number; unita_costo_materiale?: string; geometria_materia_prima?: string;
   nr_componenti?: number; costo_unitario?: number; costo_min?: number; peso_kg?: number; sfrido?: number;
   colpi_min?: number; confezionamento?: boolean; quantita_per_conf?: number; tempo_confezionamento_min?: number;
   attrezzaggio_min?: number; lotto_voce?: number;
@@ -422,6 +424,8 @@ function customerTerms(payment: unknown, transport: unknown): string {
 }
 
 function dimensions(line: CicloRow): string {
+  if (line.materia_prima_versione === 2 && line.geometria_materia_prima === "tubo") return `L ${formatNumber(line.lunghezza)} · Ø est. ${formatNumber(line.diametro)} · Ø int. ${formatNumber(line.diametro_interno)}`;
+  if (line.materia_prima_versione === 2 && line.geometria_materia_prima === "tondino") return `L ${formatNumber(line.lunghezza)} · Ø ${formatNumber(line.diametro)}`;
   const values = [line.lunghezza, line.larghezza, line.spessore].map((value) => Number(value) || 0);
   const dims = values.some(Boolean) ? values.join(" × ") : "";
   const diameter = Number(line.diametro) > 0 ? `Ø ${formatNumber(line.diametro)}` : "";

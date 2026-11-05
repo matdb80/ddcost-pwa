@@ -9,6 +9,7 @@ import {copyCycleAsNamedDraft} from "@/lib/cycle-copy";
 import {ricalcolaCiclo} from "@/lib/cycle-calculator";
 import {serializeCycleDataJson} from "@/types/cycle";
 import {Dialog,DialogContent,DialogDescription,DialogFooter,DialogHeader,DialogTitle} from "@/components/ui/dialog";
+import type {LinkedCycleOffer} from "@/lib/cycle-offer-links";
 
 const PAGE_SIZE=25;
 const fmt=(value:string|number|null|undefined)=>{
@@ -26,6 +27,7 @@ export default function CicliPage(){
   const [duplicateDescription,setDuplicateDescription]=useState("");
   const [duplicatePreparationError,setDuplicatePreparationError]=useState("");
   const [duplicateLoading,setDuplicateLoading]=useState(false);
+  const [offerSelection,setOfferSelection]=useState<{label:string;offers:LinkedCycleOffer[]}|null>(null);
   const utils=trpc.useUtils();
   const query=trpc.cycle.listGrouped.useQuery({
     search:search||undefined,page,pageSize:PAGE_SIZE,includeDeleted:showDeleted,
@@ -44,6 +46,13 @@ export default function CicliPage(){
   const toggle=(key:string)=>setExpanded(prev=>{
     const next=new Set(prev);if(next.has(key))next.delete(key);else next.add(key);return next;
   });
+  const offerBadge=(label:string,offers:LinkedCycleOffer[])=><button type="button"
+    disabled={offers.length===0} onClick={()=>setOfferSelection({label,offers})}
+    title={offers.length ? "Mostra le offerte che includono questo ciclo" : "Nessuna offerta collegata"}
+    aria-label={`${offers.length} offerte collegate a ${label}`}
+    className="inline-flex min-w-8 items-center justify-center rounded-full bg-sky-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-sky-700 disabled:bg-slate-100 disabled:text-slate-400">
+    {offers.length}
+  </button>;
   const openDuplicate=(c:(typeof groups)[number]["revisions"][number])=>{
     if(c.deleted===1)return;
     duplicateCycle.reset();
@@ -134,6 +143,7 @@ export default function CicliPage(){
               <th className="text-left p-3">Descrizione</th>
               <th className="text-left p-3">Cliente</th>
               <th className="text-center p-3">Progetto</th>
+              <th className="text-center p-3">Offerte</th>
               <th className="text-left p-3">Lotto</th>
               <th className="text-left p-3">Rev.</th>
               <th className="text-right p-3">Costo industriale standard</th>
@@ -142,9 +152,9 @@ export default function CicliPage(){
             </tr>
           </thead>
           <tbody>
-            {query.isLoading&&<tr><td colSpan={9} className="py-8 text-center text-slate-500">Caricamento cicli...</td></tr>}
-            {query.isError&&<tr><td colSpan={9} className="p-5 text-red-700">Impossibile caricare i cicli. {query.error.message}</td></tr>}
-            {!query.isLoading&&!query.isError&&groups.length===0&&<tr><td colSpan={9} className="p-6 text-center text-slate-500">Nessun ciclo trovato.</td></tr>}
+            {query.isLoading&&<tr><td colSpan={10} className="py-8 text-center text-slate-500">Caricamento cicli...</td></tr>}
+            {query.isError&&<tr><td colSpan={10} className="p-5 text-red-700">Impossibile caricare i cicli. {query.error.message}</td></tr>}
+            {!query.isLoading&&!query.isError&&groups.length===0&&<tr><td colSpan={10} className="p-6 text-center text-slate-500">Nessun ciclo trovato.</td></tr>}
             {groups.map(g=>{
               const last=g.latest!;
               const open=expanded.has(g.key);
@@ -165,6 +175,7 @@ export default function CicliPage(){
                   <td className="p-3 text-slate-600">{last.description}</td>
                   <td className="p-3 text-slate-600">{last.client}</td>
                   <td className="p-3 text-center text-emerald-700"><span aria-label={last.associatedWithProject ? "Associato a un progetto" : "Non associato a un progetto"}>{last.associatedWithProject ? "✓" : "—"}</span></td>
+                  <td className="p-3 text-center">{offerBadge(last.code||`Ciclo ${last.id}`,g.linkedOffers)}</td>
                   <td className="p-3">{last.lot}</td>
                   <td className="p-3 font-semibold">{last.rev}</td>
                   <td className="p-3 text-right tabular-nums">{last.standardCost!=null?<>€ {fmt(last.standardCost)}<FormulaTooltip label="Costo industriale standard del ciclo" formula={CALCULATION_FORMULAS.cycle.standardCost}/></>:"—"}</td>
@@ -185,6 +196,7 @@ export default function CicliPage(){
                   <td className="p-2 text-slate-600">{c.description}</td>
                   <td className="p-2 text-slate-600">{c.client}</td>
                   <td className="p-2 text-center text-emerald-700"><span aria-label={c.associatedWithProject ? "Associato a un progetto" : "Non associato a un progetto"}>{c.associatedWithProject ? "✓" : "—"}</span></td>
+                  <td className="p-2 text-center">{offerBadge(`${c.code||`Ciclo ${c.id}`} · rev. ${c.rev??1}`,c.linkedOffers)}</td>
                   <td className="p-2">{c.lot}</td>
                   <td className="p-2">{c.rev}</td>
                   <td className="p-2 text-right tabular-nums">{c.standardCost!=null?<>€ {fmt(c.standardCost)}<FormulaTooltip label="Costo industriale standard del ciclo" formula={CALCULATION_FORMULAS.cycle.standardCost}/></>:"—"}</td>
@@ -205,6 +217,24 @@ export default function CicliPage(){
         </div>
       </div>
     </div>
+    <Dialog open={offerSelection!==null} onOpenChange={open=>{if(!open)setOfferSelection(null);}}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Offerte collegate · {offerSelection?.label}</DialogTitle>
+          <DialogDescription>Ogni offerta è contata una sola volta. Premi sul numero per aprirla.</DialogDescription>
+        </DialogHeader>
+        <ul className="max-h-[60vh] space-y-2 overflow-y-auto">
+          {offerSelection?.offers.map(offer=><li key={offer.id} className="rounded-lg border border-slate-200">
+            <Link to={`/offerte/${offer.id}`} className="block rounded-lg p-3 hover:bg-sky-50" onClick={()=>setOfferSelection(null)}>
+              <span className="font-semibold text-sky-700">{offer.name}</span>
+              <span className="mt-1 block text-sm text-slate-700">{offer.client||"Cliente non indicato"}</span>
+              {offer.reference&&<span className="block text-xs text-slate-500">{offer.reference}</span>}
+              {offer.revisions.length>0&&<span className="mt-1 block text-xs text-slate-500">Revisioni del ciclo: {offer.revisions.join(", ")}</span>}
+            </Link>
+          </li>)}
+        </ul>
+      </DialogContent>
+    </Dialog>
     <Dialog open={duplicateSource!==null} onOpenChange={open=>{
       if(!open && !duplicateLoading && !duplicateCycle.isPending)setDuplicateSource(null);
     }}>

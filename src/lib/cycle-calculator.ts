@@ -16,6 +16,7 @@
  */
 
 import { emptyBreakdown, type CicloEditorModel, type RigaCiclo, type Breakdown, type SimulazioneLotto } from "@/types/cycle";
+import { rawMaterialCalculation } from "./cycle-raw-material";
 
 export const BREAKDOWN_KEYS = [
   "COMPONENTE/ASSIEME",
@@ -92,6 +93,7 @@ export function calcolaCostoRiga(
       return nr * cu;
 
     case "MATERIA PRIMA DA TRASFORMARE": {
+      if (r.materia_prima_versione === 2) return rawMaterialCalculation(r).cost ?? 0;
       const peso = r.peso_kg > 0 ? r.peso_kg : stimaPesoDaDimensioni(r);
       const sfrido = r.sfrido || 0;
       return peso * nr * cu * (1 + sfrido / 100);
@@ -366,9 +368,7 @@ export function calcolaSimulazioni(
           break;
         }
         case "MATERIA PRIMA DA TRASFORMARE": {
-          const peso = r.peso_kg > 0 ? r.peso_kg : stimaPesoDaDimensioni(r);
-          const sfrido = r.sfrido || 0;
-          const costo = peso * nr * cu * (1 + sfrido / 100);
+          const costo = calcolaCostoRiga(r, clm, lotto, rowSetupLotMode);
           bd["MATERIA PRIMA DA TRASFORMARE"] += costo;
           break;
         }

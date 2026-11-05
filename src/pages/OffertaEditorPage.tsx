@@ -376,6 +376,7 @@ export default function OffertaEditorPage() {
         navigate("/offerte");
       }
       void utils.offer.list.invalidate().catch(() => {});
+      void utils.cycle.listGrouped.invalidate().catch(() => {});
     } catch (caught) {
       setError(errorMessage(caught, "Salvataggio non riuscito"));
     }

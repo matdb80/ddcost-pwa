@@ -3,9 +3,11 @@ import { z } from "zod";
 import { eq, desc, sql, count, and } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { cycles } from "@db/schema";
+import { cycles, commercialOffers } from "@db/schema";
 import { requireCurrentRevision } from "./cycle-version-guard";
 import {groupCycleDirectory} from "../src/lib/cycle-directory-groups";
+import {linkOffersToCycleGroups} from "../src/lib/cycle-offer-links";
+import {cycleMaterialDataJson} from "./cycle-material-input";
 
 /**
  * No-op guard at the API boundary. Compare the selected original revision
@@ -136,7 +138,7 @@ export const cycleRouter = createRouter({
     .query(async({input})=>{
       const db=getDb();
       const rows=await db.select({
-        id:cycles.id,code:cycles.code,description:cycles.description,
+        id:cycles.id,rootId:cycles.rootId,code:cycles.code,description:cycles.description,
         client:cycles.client,lot:cycles.lot,rev:cycles.rev,
         updatedAt:cycles.updatedAt,deleted:cycles.deleted,
         standardCost:cycles.standardCost,minimumPrice:cycles.minimumPrice,
@@ -144,9 +146,15 @@ export const cycleRouter = createRouter({
       }).from(cycles)
         .where(input.includeDeleted?undefined:eq(cycles.deleted,0))
         .orderBy(desc(cycles.updatedAt),desc(cycles.id));
-      return groupCycleDirectory(rows.map(({dataJson, ...row}) => ({
+      const directory = groupCycleDirectory(rows.map(({dataJson, ...row}) => ({
         ...row, associatedWithProject: hasProjectAssociation(dataJson),
       })),input.search??"",input.page,input.pageSize);
+      // Same editor-only visibility as offer.list/get; do not return offer snapshots or costs.
+      const offers = directory.groups.length ? await db.select({
+        id:commercialOffers.id,name:commercialOffers.name,client:commercialOffers.client,
+        reference:commercialOffers.reference,dataJson:commercialOffers.dataJson,
+      }).from(commercialOffers).orderBy(desc(commercialOffers.createdAt)) : [];
+      return { ...directory, groups: linkOffersToCycleGroups(directory.groups, offers) };
     }),
 
   get: authedQuery
@@ -195,7 +203,7 @@ export const cycleRouter = createRouter({
         lot: z.string().optional(),
         standardCost: z.string().optional(),
         minimumPrice: z.string().optional(),
-        dataJson: z.string().optional(),
+        dataJson: cycleMaterialDataJson.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -236,7 +244,7 @@ export const cycleRouter = createRouter({
         lot: z.string().optional(),
         standardCost: z.string().optional(),
         minimumPrice: z.string().optional(),
-        dataJson: z.string().optional(),
+        dataJson: cycleMaterialDataJson.optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -266,7 +274,7 @@ export const cycleRouter = createRouter({
       lot:z.string().optional(),
       standardCost:z.string().optional(),
       minimumPrice:z.string().optional(),
-      dataJson:z.string(),
+      dataJson:cycleMaterialDataJson,
     }))
     .mutation(async ({ ctx,input }) => {
       let parsed: unknown;
@@ -371,7 +379,7 @@ export const cycleRouter = createRouter({
         lot: z.string().optional(),
         standardCost: z.string().optional(),
         minimumPrice: z.string().optional(),
-        dataJson: z.string().optional(),
+        dataJson: cycleMaterialDataJson.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

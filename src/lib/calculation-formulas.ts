@@ -132,12 +132,13 @@ export const CALCULATION_FORMULAS = {
   },
 } as const;
 
-export function cycleCategoryFormula(category: string): string {
+export function cycleCategoryFormula(category: string, rawMaterialVersion?: number): string {
   switch (category) {
     case "COMPONENTE":
     case "COMPONENTE/ASSIEME":
       return "Costo riga €/pz = numero componenti × costo unitario. Gli assiemi automatici sommano ricorsivamente i costi dei componenti figli moltiplicati per la quantità dell'assieme.";
     case "MATERIA PRIMA DA TRASFORMARE":
+      if (rawMaterialVersion === 2) return "Costo riga €/pz = peso per componente in kg × componenti × €/kg, oppure lunghezza in mm ÷ 1.000 × componenti × €/metro. Il peso manuale prevale; altrimenti peso = volume in mm³ × densità in kg/m³ ÷ 1.000.000.000. Piatto/nastro: L×larghezza×spessore; tondino: π×Ø²/4×L; tubo: π×(Ø esterno²−Ø interno²)/4×L. La lunghezza include tutto il materiale necessario, senza aggiungere sfrido percentuale.";
       return "Costo riga €/pz = peso kg × numero componenti × costo €/kg × (1 + sfrido % ÷ 100). Se il peso manca, è stimato dalle dimensioni come L × larghezza × spessore × 7,85×10⁻⁶ kg/mm³.";
     case "LAVORAZIONE INTERNA":
       return "Costo riga €/pz: lavorazione standard = (costo lavoro €/min ÷ pezzi/min) × numero componenti; confezionamento = (tempo confezionamento min/scatola ÷ pezzi/scatola) × costo lavoro €/min. In entrambi i casi si aggiunge l'attrezzaggio: attrezzaggio min × costo lavoro €/min ÷ lotto applicato. Lotto applicato = maggiore tra Lotto voce e lotto simulato; l'override usa Lotto voce per quella simulazione.";

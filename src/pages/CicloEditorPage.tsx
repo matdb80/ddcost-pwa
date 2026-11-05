@@ -3,6 +3,8 @@ import { useBlocker, useNavigate, useParams, useLocation } from "react-router";
 import { trpc } from "@/providers/trpc";
 import Layout from "@/components/Layout";
 import CycleCostPie from "@/components/CycleCostPie";
+import CycleRawMaterialFields from "@/components/CycleRawMaterialFields";
+import { prepareRawMaterialEditor, finalizeRawMaterialRow } from "@/lib/cycle-raw-material";
 import CostReductionBreakdown from "@/components/CostReductionBreakdown";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -286,7 +288,9 @@ export default function CicloEditorPage() {
     value: RigaCiclo[K]
   ) => {
     if (!rigaEdit) return;
-    setRigaEdit({ ...rigaEdit, [field]: value });
+    const next = { ...rigaEdit, [field]: value };
+    setRigaEdit(field === "categoria" && value === "MATERIA PRIMA DA TRASFORMARE"
+      ? prepareRawMaterialEditor(next, false) : next);
   };
 
   const openRigaDialog = (index?: number, childParent?: number) => {
@@ -305,7 +309,8 @@ export default function CicloEditorPage() {
     } else {
       setNewChildParent(null);
       if (index !== undefined) {
-        setRigaEdit({ ...model.righe[index] });
+        const source = model.righe[index];
+        setRigaEdit(source.categoria === "MATERIA PRIMA DA TRASFORMARE" ? prepareRawMaterialEditor(source) : { ...source });
         setRigaIndex(index);
       } else {
         setRigaEdit(emptyRiga());
@@ -317,6 +322,11 @@ export default function CicloEditorPage() {
 
   const saveRiga = () => {
     if (!rigaEdit) return;
+    let rowToSave = rigaEdit;
+    if (rowToSave.categoria === "MATERIA PRIMA DA TRASFORMARE") {
+      try { rowToSave = finalizeRawMaterialRow(rowToSave); }
+      catch (error) { alert(error instanceof Error ? error.message : "Verifica i dati della materia prima."); return; }
+    }
     if (rigaEdit.categoria === "LAVORAZIONE INTERNA" && rigaEdit.confezionamento === true) {
       const piecesPerPackage = Number(rigaEdit.quantita_per_conf);
       const minutesPerPackage = Number(rigaEdit.tempo_confezionamento_min);
@@ -336,7 +346,7 @@ export default function CicloEditorPage() {
     }
     if (newChildParent !== null) {
       try {
-        const righe=appendChildToAssembly(model.righe,newChildParent,rigaEdit);
+        const righe=appendChildToAssembly(model.righe,newChildParent,rowToSave);
         setModel(prev=>({...prev,righe}));
       } catch (err) {
         alert(err instanceof Error?err.message:"Errore inserimento componente");
@@ -346,9 +356,9 @@ export default function CicloEditorPage() {
       setModel((prev) => {
         const righe = [...prev.righe];
         if (rigaIndex !== null) {
-          righe[rigaIndex] = rigaEdit;
+          righe[rigaIndex] = rowToSave;
         } else {
-          righe.push(rigaEdit);
+          righe.push(rowToSave);
         }
         return { ...prev, righe };
       });
@@ -895,7 +905,7 @@ export default function CicloEditorPage() {
                       </td>
                       <td className="px-3 py-2 text-right text-xs">{r.categoria==="LAVORAZIONE INTERNA"&&r.confezionamento===true?"—":r.nr_componenti}</td>
                       <td className={"px-3 py-2 text-right text-xs font-mono "+(cost===0&&simulationExcluded.size?"text-amber-700":"")}>
-                        <span className="inline-flex items-center justify-end">{formatMoney(cost)}<FormulaTooltip label={`Costo riga ${r.categoria}`} formula={cycleCategoryFormula(r.categoria)}/></span>
+                        <span className="inline-flex items-center justify-end">{formatMoney(cost)}<FormulaTooltip label={`Costo riga ${r.categoria}`} formula={cycleCategoryFormula(r.categoria, r.materia_prima_versione)}/></span>
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-center gap-1">
@@ -1250,81 +1260,8 @@ export default function CicloEditorPage() {
                   />
                 </div>
                 )}
-                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">
-                    Tipo Materiale
-                  </label>
-                  <input
-                    type="text"
-                    value={rigaEdit.tipo_materiale}
-                    onChange={(e) => handleRigaChange("tipo_materiale", e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                  />
-                </div>
-                )}
-                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">
-                    Tipo Materia Prima
-                  </label>
-                  <input
-                    type="text"
-                    value={rigaEdit.tipo_materia_prima}
-                    onChange={(e) => handleRigaChange("tipo_materia_prima", e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                  />
-                </div>
-                )}
-                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Lunghezza</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={rigaEdit.lunghezza}
-                    onChange={(e) => handleRigaChange("lunghezza", parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                  />
-                </div>
-                )}
-                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Larghezza</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={rigaEdit.larghezza}
-                    onChange={(e) => handleRigaChange("larghezza", parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                  />
-                </div>
-                )}
-                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Spessore</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={rigaEdit.spessore}
-                    onChange={(e) => handleRigaChange("spessore", parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                  />
-                </div>
-                )}
-                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Diametro</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={rigaEdit.diametro}
-                    onChange={(e) => handleRigaChange("diametro", parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                  />
-                </div>
-                )}
-                {(["MATERIA PRIMA DA TRASFORMARE", "LAVORAZIONE A PESO", "LAVORAZIONE TERZISTA A PESO"].includes(rigaEdit.categoria)) && (
+                {rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE" && <CycleRawMaterialFields row={rigaEdit} onChange={setRigaEdit}/>}
+                {(["LAVORAZIONE A PESO", "LAVORAZIONE TERZISTA A PESO"].includes(rigaEdit.categoria)) && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">Peso Kg</label>
                   <input
@@ -1449,7 +1386,7 @@ export default function CicloEditorPage() {
                 {(rigaEdit.categoria !== "LAVORAZIONE INTERNA" && !rigaEdit.assembly_auto) && (
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
-                    Costo Unitario €
+                    {rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE" ? `Costo unitario ${rigaEdit.unita_costo_materiale === "m" ? "€/metro" : "€/kg"}` : "Costo Unitario €"}
                   </label>
                   <input
                     type="number"
@@ -1467,18 +1404,6 @@ export default function CicloEditorPage() {
                     Costo assieme calcolato automaticamente dalla somma dei componenti (fino a 4 livelli).
                     Il costo unitario manuale precedente viene mantenuto nello storico ma non sommato.
                   </div>
-                )}
-                {(rigaEdit.categoria === "MATERIA PRIMA DA TRASFORMARE") && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Sfrido %</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={rigaEdit.sfrido}
-                    onChange={(e) => handleRigaChange("sfrido", parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                  />
-                </div>
                 )}
                 {rigaEdit.categoria === "SPESA ATTREZZATURA DEDICATA" && (
                   <label className="flex items-center gap-2 text-sm text-slate-700">
