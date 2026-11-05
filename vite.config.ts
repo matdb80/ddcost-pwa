@@ -7,6 +7,9 @@ import { inspectAttr } from 'kimi-plugin-inspect-react'
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    "import.meta.env.VITE_GIT_COMMIT": JSON.stringify(process.env.RENDER_GIT_COMMIT || "dev-build"),
+  },
   plugins: [
     devServer({ entry: "api/boot.ts", exclude: [/^\/(?!api\/).*$/] }),
     inspectAttr(), react()],
