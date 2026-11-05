@@ -3,14 +3,13 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { commercialOffers } from "@db/schema";
-import { formatOfferNumber, nextOfferNumberPreview, withOfferNumberInJson } from "../src/lib/commercial-offer-number";
+import { withOfferNumberInJson } from "../src/lib/commercial-offer-number";
+import { previewCommercialDocumentNumber, reserveCommercialDocumentNumber } from "./commercial-document-number";
 
 export const offerRouter = createRouter({
   nextNumber: authedQuery.query(async () => {
     const db = getDb();
-    const result = await db.execute(sql`SELECT lastNumber FROM offer_number_sequence WHERE id=1`);
-    const rows = result[0] as unknown as {lastNumber:number}[];
-    return { number: nextOfferNumberPreview(Number(rows[0]?.lastNumber ?? 0)) };
+    return { number: await previewCommercialDocumentNumber(db) };
   }),
 
   list: authedQuery
@@ -73,16 +72,11 @@ export const offerRouter = createRouter({
       const { numberEdited: _numberEdited, ...offer } = input;
 
       return db.transaction(async (tx) => {
-        const resultSequence = await tx.execute(sql`SELECT lastNumber FROM offer_number_sequence WHERE id=1 FOR UPDATE`);
-        const sequence = (resultSequence[0] as unknown as {lastNumber:number}[])[0];
-        if(!sequence)throw new Error("Numerazione offerte non configurata");
-        const next = Number(sequence.lastNumber)+1;
-        const name = formatOfferNumber(next);
-        await tx.execute(sql`UPDATE offer_number_sequence SET lastNumber=${next} WHERE id=1`);
+        const name = await reserveCommercialDocumentNumber(tx);
         const result = await tx.insert(commercialOffers).values({
           userId: ctx.user.id,
           ...offer,
-          // The auto-increment id is a concurrency-safe, never-reused sequence.
+          // The locked shared counter assigns the document number independently of the row ID.
           name,
         });
         const id = Number(result[0].insertId);

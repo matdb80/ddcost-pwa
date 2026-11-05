@@ -1,4 +1,5 @@
 import SalesHandoffPanel from "./SalesHandoffPanel";
+import { quoteDocumentNumber } from "@/lib/commercial-offer-number";
 import {useEffect, useMemo, useRef, useState} from "react";
 import {Link} from "react-router";
 import {
@@ -49,6 +50,7 @@ type Props={
   onPriceProductIndex:(value:number)=>void;
   onListinoDiscount:(value:string)=>void;
   onSave:()=>void;
+  onSaveOverwrite:()=>void;
   onSaveDraft:()=>void;
   onCopy:()=>void;
   onExportPdf:()=>void;
@@ -62,7 +64,7 @@ export default function QuoteMobileWizard(props:Props){
     copyMessage,busy,unsavedChanges,onUnsavedLocalChange,priceProductIndex,onUpdate,onUpdateProduct,
     onAddProduct,onCopyProductAndScaleLot,onRemoveProduct,onCreateGroup,onPriceProductIndex,onListinoDiscount,
     hideDocumentTotalInPdf,onHideDocumentTotalInPdfChange,
-    onSave,onSaveDraft,onCopy,onExportPdf,onEdit,onUpgrade,onDesktop,
+    onSave,onSaveOverwrite,onSaveDraft,onCopy,onExportPdf,onEdit,onUpgrade,onDesktop,
   }=props;
   const [advanced,setAdvanced]=useState(false);
   const [stepId,setStepId]=useState("cliente");
@@ -91,10 +93,10 @@ export default function QuoteMobileWizard(props:Props){
   const previous=()=>{
     if(activeIndex>0)goto(steps[activeIndex-1].id);
   };
-  const submit=()=>{
+  const submit=(overwrite=false)=>{
     const invalid=steps.find(s=>quoteWizardStepError(s,doc));
     if(invalid){goto(invalid.id);setLocalError("Completa questo campo prima di salvare il preventivo.");return;}
-    onSave();
+    if(overwrite)onSaveOverwrite();else onSave();
   };
   const productIndex=current.index;
   const product=productIndex===undefined?null:(doc.prodotti?.[productIndex] as Product|undefined);
@@ -143,7 +145,7 @@ export default function QuoteMobileWizard(props:Props){
         </Link>
         <div className="min-w-0 flex-1 text-center">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-300">DDCost · Preventivo Una Tantum</p>
-          <p className="truncate text-sm font-medium">{isNew?"Nuovo preventivo":`Preventivo #${numericId}`}</p>
+          <p className="truncate text-sm font-medium">{isNew?"Nuovo preventivo":`Preventivo ${quoteDocumentNumber(doc)??"#"+numericId}`}</p>
         </div>
         <button type="button" onClick={onDesktop} className="min-h-11 rounded-lg bg-slate-800 px-3 text-xs font-semibold"
           title="Disattiva visualizzazione cellulare e apri editor completo">
@@ -162,7 +164,9 @@ export default function QuoteMobileWizard(props:Props){
 
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-emerald-700">{current.section}</p>
+        <p className={productIndex===undefined
+          ? "min-w-0 text-xs font-semibold uppercase tracking-wide text-emerald-700"
+          : "min-w-0 flex-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-bold text-slate-950"}>{current.section}</p>
         <span className="shrink-0 text-xs tabular-nums text-slate-500">Passo {activeIndex+1} di {steps.length}</span>
       </div>
       <div className="h-1.5 w-full rounded-full bg-slate-100" role="progressbar" aria-label="Completamento preventivo"
@@ -236,15 +240,19 @@ export default function QuoteMobileWizard(props:Props){
               </div>)}
             </div>
             {costVersion<3 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-              Questo preventivo usa il modello storico della progettazione. La conversione è facoltativa e crea una nuova revisione.
+              Questo preventivo usa il modello storico della progettazione. La conversione è facoltativa; poi scegli come salvare le modifiche.
               {!locked && <button type="button" onClick={onUpgrade} className="mt-2 block font-semibold underline">Converti al modello attuale</button>}
             </div>}
             {locked
               ? <button type="button" onClick={onEdit} className={actionClass+" w-full bg-emerald-600 text-white"}>Modifica preventivo</button>
               : <>
-                <button type="button" onClick={submit} disabled={busy}
+                {!isNew && !isSavedDraft && <button type="button" onClick={()=>submit(true)} disabled={busy||!unsavedChanges}
+                  className={actionClass+" w-full bg-sky-700 text-white disabled:opacity-50"}>
+                  <Save size={19}/> Salva e sovrascrivi versione attuale
+                </button>}
+                <button type="button" onClick={()=>submit()} disabled={busy}
                   className={actionClass+" w-full bg-emerald-600 text-white disabled:opacity-50"}>
-                  <Check size={19}/>{isSavedDraft?"Completa preventivo":isNew?"Salva preventivo":"Salva nuova revisione"}
+                  <Check size={19}/>{isSavedDraft?"Completa preventivo":isNew?"Salva preventivo":"Salva nuova versione"}
                 </button>
                 <button type="button" onClick={onSaveDraft} disabled={busy||!unsavedChanges}
                   className={actionClass+" w-full border border-emerald-700 text-emerald-800 disabled:opacity-40"}>
@@ -389,7 +397,7 @@ export default function QuoteMobileWizard(props:Props){
           <ChevronLeft size={18}/> Indietro
         </button>
         {current.id==="riepilogo"
-          ? <button type="button" onClick={locked?onEdit:submit} disabled={busy}
+          ? <button type="button" onClick={locked?onEdit:()=>submit()} disabled={busy}
               className={actionClass+" min-w-0 flex-1 px-2 text-xs bg-emerald-600 text-white disabled:opacity-40"}>
               <Check size={18}/>{locked?"Modifica":"Completa"}
             </button>

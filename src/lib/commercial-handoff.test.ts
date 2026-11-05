@@ -23,3 +23,9 @@ describe('Commercial handoff projection',()=>{
   expect(d.rows[0].discount).toBe('40+15+10%');expect(d.rows[0].netPrice).toBe('4,40');
  });
 });
+
+it('keeps the shared quote number in customer copy separately from the project reference',()=>{
+  const d=salesDocument('quote',JSON.stringify({numero_preventivo:'DDC00042/2026',riferimento_preventivo:'Progetto alfa',prodotti:[{codice:'A',descrizione:'Bandella',quantita:1,prezzo_netto_unitario_finale:2}]}));
+  expect(d.number).toBe('DDC00042/2026');expect(d.reference).toBe('Progetto alfa');
+  expect(salesText(d)).toContain('Numero: DDC00042/2026');
+});

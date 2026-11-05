@@ -1,7 +1,8 @@
 import {calculateOfferLotPrice,cycleForOfferRow,offerLotTerms,selectedOfferLots,type CommercialOfferRow} from './commercial-offer-pricing';
+import {quoteDocumentNumber} from './commercial-offer-number';
 import {listinoProductIndex} from './quote-copy';
 export type SalesRow={code:string;description:string;quantity:string;listPrice:string;discount:string;netPrice:string};
-export type SalesDocument={client:string;reference:string;notes:string;payment:string;transport:string;rows:SalesRow[]};
+export type SalesDocument={number?:string;client:string;reference:string;notes:string;payment:string;transport:string;rows:SalesRow[]};
 export function copyNumber(value:unknown):string {
   if(value==null||value==='')return '';
   const n=Number(value);
@@ -34,11 +35,12 @@ export function salesDocument(kind:'quote'|'offer',raw:string):SalesDocument{
         discount,netPrice:copyNumber(net)};
     });
   });
-  return {client:String(d.cliente??''),reference:String(d.riferimento_preventivo??d.riferimento??d.nome??''),
+  const number=kind==='quote'?quoteDocumentNumber(d):(String(d.nome??'').trim()||undefined);
+  return {...(number?{number}:{}),client:String(d.cliente??''),reference:String(d.riferimento_preventivo??d.riferimento??d.nome??''),
     notes:String(d.note_cliente??''),payment:String(d.pagamento??''),transport:String(d.trasporto??''),rows};
 }
 export function salesText(d:SalesDocument):string{
-  return ['Cliente: '+d.client,'Riferimento: '+d.reference,...d.rows.map(r=>[
+  return [...(d.number?['Numero: '+d.number]:[]),'Cliente: '+d.client,'Riferimento: '+d.reference,...d.rows.map(r=>[
     'Codice: '+r.code,'Descrizione: '+r.description,'Quantità: '+r.quantity,
     ...(r.listPrice?['Listino: '+r.listPrice+' €']:[]),...(r.discount?['Sconti: '+r.discount]:[]),'Netto: '+r.netPrice+' €'].join('\n')),
     ...(d.payment?['Pagamento: '+d.payment]:[]),...(d.transport?['Trasporto: '+d.transport]:[]),d.notes].filter(Boolean).join('\n\n');

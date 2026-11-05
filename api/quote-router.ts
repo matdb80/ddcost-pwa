@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import { reserveCommercialDocumentNumber } from "./commercial-document-number";
+import { preserveQuoteNumber, quoteWriteToken } from "./quote-write-guard";
 import { eq, and, desc, sql, inArray, or } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
@@ -54,7 +57,8 @@ export const quoteRouter = createRouter({
           .select()
           .from(quotes)
           .where(
-            sql`LOWER(${quotes.client}) LIKE ${pattern} OR LOWER(${quotes.reference}) LIKE ${pattern}`
+            sql`LOWER(${quotes.client}) LIKE ${pattern} OR LOWER(${quotes.reference}) LIKE ${pattern}
+              OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(${quotes.dataJson}),${quotes.dataJson},'{}'),'$.numero_preventivo'))) LIKE ${pattern}`
           )
           .orderBy(desc(quotes.createdAt))
           .limit(input.limit);
@@ -124,7 +128,7 @@ export const quoteRouter = createRouter({
         .from(quotes)
         .where(eq(quotes.id, input.id))
         .limit(1);
-      return rows[0] ?? null;
+      return rows[0] ? { ...rows[0], editToken: quoteWriteToken(rows[0]) } : null;
     }),
 
   create: authedQuery
@@ -146,18 +150,17 @@ export const quoteRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       await validateQuoteClassifications(input.dataJson);
       const db = getDb();
-      const result = await db.insert(quotes).values({
-        userId: ctx.user.id,
-        ...input,
-        rootId: undefined,
-        rev: 1,
+      return db.transaction(async tx => {
+        const number = await reserveCommercialDocumentNumber(tx);
+        const document = { ...JSON.parse(input.dataJson!), numero_preventivo: number, rev: 1, stato_preventivo: "completo" };
+        const result = await tx.insert(quotes).values({
+          userId: ctx.user.id, ...input, dataJson: JSON.stringify(document), rootId: null, rev: 1,
+        });
+        const id = Number(result[0].insertId);
+        await tx.update(quotes).set({ rootId: id, dataJson: JSON.stringify({ ...document, root_id: id }) })
+          .where(eq(quotes.id, id));
+        return { id, number };
       });
-      const id = Number(result[0].insertId);
-      await db
-        .update(quotes)
-        .set({ rootId: id })
-        .where(eq(quotes.id, id));
-      return { id };
     }),
 
   /**
@@ -191,8 +194,11 @@ export const quoteRouter = createRouter({
         const revision=currentDraft
           ? Number(source?.rev??1)
           : source ? Math.max(Number(latest?.rev??1),Number(source.rev??1))+1 : 1;
+        const numberedDocument = source
+          ? preserveQuoteNumber(document, source.dataJson)
+          : { ...document, numero_preventivo: await reserveCommercialDocumentNumber(tx) };
         const json=JSON.stringify({
-          ...document,stato_preventivo:"bozza",
+          ...numberedDocument,stato_preventivo:"bozza",
           ...(rootId ? {root_id:rootId} : {}),
           rev:revision,
         });
@@ -222,7 +228,7 @@ export const quoteRouter = createRouter({
         const id=Number(result[0].insertId);
         if(!rootId){
           await tx.update(quotes).set({rootId:id,dataJson:JSON.stringify({
-            ...document,stato_preventivo:"bozza",root_id:id,rev:revision,
+            ...numberedDocument,stato_preventivo:"bozza",root_id:id,rev:revision,
           })}).where(eq(quotes.id,id));
         }
         return {id,rev:revision,rootId:rootId??id,isDraft:true};
@@ -272,7 +278,7 @@ export const quoteRouter = createRouter({
         const {draftId,...changes}=input;
         await tx.update(quotes).set({
           ...changes,
-          dataJson:JSON.stringify({...doc,stato_preventivo:"completo",
+          dataJson:JSON.stringify({...preserveQuoteNumber(doc, source.dataJson),stato_preventivo:"completo",
             esito_commerciale:lastFinal?.outcome??readQuoteOutcome(source.dataJson),
             root_id:rootId,rev:source.rev??1}),
         }).where(and(eq(quotes.id,draftId),eq(quotes.userId,ctx.user.id)));
@@ -280,31 +286,42 @@ export const quoteRouter = createRouter({
       });
     }),
 
+  /** Explicit overwrite of the displayed revision: other revisions remain untouched. */
   update: authedQuery
-    .input(
-      z.object({
-        id: z.number(),
-        client: z.string().optional(),
-        reference: z.string().optional(),
-        targetTotal: z.string().optional(),
-        totalBeforeRebalance: z.string().optional(),
-        totalFinal: z.string().optional(),
-        numProducts: z.number().optional(),
-        generalNotes: z.string().optional(),
-        clientNotes: z.string().optional(),
-        supplierNotes: z.string().optional(),
-        summary: z.string().optional(),
-        dataJson: z.string().optional(),
-      })
-    )
+    .input(z.object({
+      id: z.number().int().positive(),
+      expectedToken: z.string().regex(/^[a-f0-9]{64}$/),
+      client: z.string().min(1).max(255),
+      reference: z.string().max(255).optional(),
+      targetTotal: z.string().nullable().optional(),
+      totalBeforeRebalance: z.string().optional(),
+      totalFinal: z.string().optional(),
+      numProducts: z.number().int().positive().optional(),
+      generalNotes: z.string().optional(), clientNotes: z.string().optional(),
+      supplierNotes: z.string().optional(), summary: z.string().optional(),
+      dataJson: z.string().min(2).max(62000),
+    }))
     .mutation(async ({ ctx, input }) => {
-      const db = getDb();
-      const { id, ...data } = input;
-      await db
-        .update(quotes)
-        .set(data)
-        .where(and(eq(quotes.id, id), eq(quotes.userId, ctx.user.id)));
-      return { ok: true };
+      await validateQuoteClassifications(input.dataJson);
+      return getDb().transaction(async tx => {
+        const source = (await tx.select().from(quotes).where(and(
+          eq(quotes.id, input.id), eq(quotes.userId, ctx.user.id)
+        )).limit(1).for("update"))[0];
+        if (!source) throw new TRPCError({code:"NOT_FOUND", message:"Preventivo non trovato o non autorizzato"});
+        if (quoteIsDraft(source.dataJson)) throw new Error("Per una bozza usare Completa preventivo");
+        if (quoteWriteToken(source) !== input.expectedToken)
+          throw new TRPCError({code:"CONFLICT", message:"Il preventivo è stato modificato nel frattempo. Riaprilo prima di sovrascriverlo."});
+        const { id, expectedToken: _token, ...changes } = input;
+        const document = preserveQuoteNumber(JSON.parse(input.dataJson), source.dataJson);
+        const dataJson = JSON.stringify({ ...document, stato_preventivo:"completo",
+          root_id:source.rootId??source.id, rev:source.rev??1,
+          esito_commerciale:readQuoteOutcome(source.dataJson),
+        });
+        await tx.update(quotes).set({...changes, dataJson}).where(and(
+          eq(quotes.id,id),eq(quotes.userId,ctx.user.id)
+        ));
+        return {id,rootId:source.rootId??source.id,rev:source.rev??1,dataJson};
+      });
     }),
 
   /**
@@ -374,7 +391,7 @@ export const quoteRouter = createRouter({
           ...q,totalFinal:q.totalFinal===null?null:String(q.totalFinal),
         })))[0];
         const currentOutcome=lastFinal?.outcome??"in_attesa";
-        const patchedJson = JSON.stringify({ ...json, esito_commerciale:currentOutcome, root_id: rootId, rev: nextRev });
+        const patchedJson = JSON.stringify({ ...preserveQuoteNumber(json, source.dataJson), esito_commerciale:currentOutcome, root_id: rootId, rev: nextRev });
         const result = await tx.insert(quotes).values({
           userId: ctx.user.id,
           rootId, rev: nextRev,

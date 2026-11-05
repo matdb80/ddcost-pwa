@@ -1,4 +1,5 @@
 import SalesHandoffPanel from "@/components/SalesHandoffPanel";
+import { quoteDocumentNumber } from "@/lib/commercial-offer-number";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
@@ -140,8 +141,10 @@ export default function PreventivoEditorPage() {
   const groupsQuery = trpc.productGroup.list.useQuery();
   const createGroup = trpc.productGroup.create.useMutation();
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.quote.get.useQuery({ id:numericId }, { enabled: !isNew && numericId > 0 });
+  const { data, isLoading } = trpc.quote.get.useQuery({ id:numericId }, { enabled: !isNew && numericId > 0, refetchOnWindowFocus: false });
   const create = trpc.quote.create.useMutation();
+  const overwrite = trpc.quote.update.useMutation();
+  const savingRef = useRef(false);
   const revise = trpc.quote.saveRevision.useMutation();
   const saveDraftMutation=trpc.quote.saveDraft.useMutation();
   const finalizeDraftMutation=trpc.quote.finalizeDraft.useMutation();
@@ -203,7 +206,7 @@ export default function PreventivoEditorPage() {
   // A draft is stored in MySQL even with missing client, product group or
   // commercial values. Server-side validations still apply to final quotes.
   async function persistDraft():Promise<number>{
-    if(draftSaving || saveDraftMutation.isPending)
+    if(savingRef.current || draftSaving || saveDraftMutation.isPending)
       throw new Error("Salvataggio già in corso");
     setDraftSaving(true);
     setError("");
@@ -314,7 +317,7 @@ export default function PreventivoEditorPage() {
       setError(err instanceof Error ? err.message : "Impossibile esportare il PDF cliente");
     }
   };
-  async function save() {
+  async function save(mode: "revision" | "overwrite" = "revision") {
     setError("");
     if(hasPendingLocalInput)return setError("Completa o annulla il nuovo gruppo prima di salvare il preventivo.");
     if (!doc.cliente?.trim()) return setError("Indicare il cliente");
@@ -327,7 +330,8 @@ export default function PreventivoEditorPage() {
         return setError("Indicare ferro, ottone o inox per il prodotto " + (i+1));
     }
     if (!isNew && !changed && !isSavedDraft) return setError("Nessuna modifica rilevata");
-    if (create.isPending || revise.isPending || finalizeDraftMutation.isPending || draftSaving) return;
+    if (savingRef.current || create.isPending || revise.isPending || overwrite.isPending || finalizeDraftMutation.isPending || draftSaving) return;
+    savingRef.current = true;
     try {
       const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
       if (listinoModified) computed.listino = buildListino(computed.listino ?? {}, computed, priceProductIndex);
@@ -370,13 +374,30 @@ export default function PreventivoEditorPage() {
         const result=await create.mutateAsync({...payload,targetTotal:payload.targetTotal??undefined});
         allowLeaveRef.current=true;
         navigate("/preventivi/"+result.id);
+      }else if(mode === "overwrite"){
+        if(!data?.editToken) throw new Error("Riapri il preventivo prima di sovrascriverlo");
+        const result=await overwrite.mutateAsync({id:numericId,expectedToken:data.editToken,...payload});
+        const persisted=JSON.parse(result.dataJson) as QuoteDocument;
+        setDoc(persisted);
+        setBaseline(JSON.stringify(persisted));
+        setOriginalJson(result.dataJson);
+        setDirtyCalculation(false);
+        setListinoModified(false);
+        setReadOnly(true);
+        setDraftMessage("Versione attuale sovrascritta. Numero e revisione restano invariati.");
+        void utils.quote.get.invalidate({id:numericId}).catch(()=>{});
       }else{
         const result=await revise.mutateAsync({sourceId:numericId,...payload});
         allowLeaveRef.current=true;
         navigate("/preventivi/"+result.id);
       }
+      void utils.quote.list.invalidate().catch(()=>{});
+      void utils.quote.outcomeSummary.invalidate().catch(()=>{});
+      void utils.offer.nextNumber.invalidate().catch(()=>{});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Salvataggio fallito");
+    } finally {
+      savingRef.current=false;
     }
   }
   if (!isNew && isLoading) return <Layout><p>Caricamento preventivo...</p></Layout>;
@@ -393,7 +414,7 @@ export default function PreventivoEditorPage() {
       "Convertire questo preventivo alla progettazione per ore × tariffa oraria? " +
       "Il costo storico totale rimarrà identico: inizialmente verrà indicata 1 ora " +
       "con tariffa pari all'importo storico. Sostituisci questi valori provvisori con le ore e la tariffa effettive. " +
-      "L'originale resta invariato; il risultato si salva soltanto in una nuova revisione."
+      "Le modifiche saranno memorizzate soltanto quando scegli uno dei comandi di salvataggio."
     )) return;
     try {
       setDoc(migrateQuoteToEngineeringHours(doc));
@@ -442,7 +463,7 @@ export default function PreventivoEditorPage() {
           numericId={numericId} isSavedDraft={isSavedDraft}
           groups={groupsQuery.data??[]} loadingGroups={groupsQuery.isLoading}
           error={error} draftMessage={draftMessage} copyMessage={copyMessage}
-          busy={draftSaving||create.isPending||revise.isPending||finalizeDraftMutation.isPending}
+          busy={draftSaving||create.isPending||revise.isPending||overwrite.isPending||finalizeDraftMutation.isPending}
           unsavedChanges={unsavedChanges}
           onUnsavedLocalChange={setWizardLocalDirty}
           hideDocumentTotalInPdf={hideDocumentTotalInPdf}
@@ -470,7 +491,7 @@ export default function PreventivoEditorPage() {
             update("listino",{...(doc.listino??{}),sconto_riferimento:value});
             setListinoModified(Boolean(value.trim()));
           }}
-          onSave={()=>void save()} onSaveDraft={()=>void saveDraftOnly()}
+          onSave={()=>void save()} onSaveOverwrite={()=>void save("overwrite")} onSaveDraft={()=>void saveDraftOnly()}
           onCopy={()=>void copyQuote()} onExportPdf={exportCustomerPdf} onEdit={()=>setReadOnly(false)}
           onUpgrade={upgradeCosts} onDesktop={()=>chooseMobileView(false)}
         />
@@ -488,7 +509,7 @@ export default function PreventivoEditorPage() {
       <div className="flex flex-wrap justify-between gap-3 items-center">
         <div className="flex items-center gap-2">
           <Link to="/preventivi" className="p-2 border rounded"><ArrowLeft size={16}/></Link>
-          <h1 className="text-2xl font-bold">{isNew ? "Nuovo preventivo una tantum" : "Preventivo #" + numericId + " — rev. " + (data?.rev ?? 1)}</h1>
+          <h1 className="text-2xl font-bold">{isNew ? "Nuovo preventivo una tantum" : "Preventivo " + (quoteDocumentNumber(doc) ?? "#" + numericId) + " — rev. " + (data?.rev ?? 1)}</h1>
         </div>
         <div className="flex gap-2 flex-wrap">
           {!locked && <button type="button" onClick={()=>update("prodotti",[...doc.prodotti,blankProduct()],true)}
@@ -519,13 +540,19 @@ export default function PreventivoEditorPage() {
           {locked ? <button className="bg-emerald-600 text-white px-4 py-2 rounded flex gap-2" onClick={() => setReadOnly(false)}><Pencil size={16}/> Modifica</button>
           : <>
               <button type="button" className="border px-4 py-2 rounded flex gap-2" onClick={() => { try { setDoc(calculateQuote(doc)); setDirtyCalculation(false); setError(""); } catch(e) { setError(e instanceof Error ? e.message : "Errore ricalcolo"); } }}><Calculator size={16}/> Ricalcola</button>
-              <button type="button" disabled={draftSaving || !unsavedChanges} onClick={()=>void saveDraftOnly()}
+              <button type="button" disabled={draftSaving || overwrite.isPending || revise.isPending || !unsavedChanges} onClick={()=>void saveDraftOnly()}
                 className="rounded border border-emerald-600 px-4 py-2 font-medium text-emerald-700 disabled:opacity-40">
                 {draftSaving?"Salvataggio...":"Salva bozza"}
               </button>
-              <button type="button" disabled={create.isPending || revise.isPending || finalizeDraftMutation.isPending || draftSaving || (!isNew && !changed && !isSavedDraft)}
+              {!isNew && !isSavedDraft && <button type="button"
+                disabled={overwrite.isPending || revise.isPending || draftSaving || !changed}
+                className="bg-sky-700 disabled:opacity-40 text-white px-4 py-2 rounded flex gap-2 items-center"
+                onClick={()=>void save("overwrite")}>
+                <Save size={16}/> Salva e sovrascrivi versione attuale
+              </button>}
+              <button type="button" disabled={create.isPending || revise.isPending || overwrite.isPending || finalizeDraftMutation.isPending || draftSaving || (!isNew && !changed && !isSavedDraft)}
                 className="bg-emerald-600 disabled:opacity-40 text-white px-4 py-2 rounded flex gap-2" onClick={()=>void save()}>
-                <Save size={16}/> {isSavedDraft?"Completa preventivo":isNew?"Salva preventivo":"Salva nuova revisione"}
+                <Save size={16}/> {isSavedDraft?"Completa preventivo":isNew?"Salva preventivo":"Salva nuova versione"}
               </button>
             </>}
         </div>
@@ -551,7 +578,7 @@ export default function PreventivoEditorPage() {
       {!isNew && <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 p-3 rounded">
         {isSavedDraft
           ? "BOZZA: puoi completare i campi mancanti oppure salvarla ancora. Solo «Completa preventivo» applica le verifiche obbligatorie e rende il documento definitivo."
-          : "Ogni modifica salva una nuova revisione; la versione originale non viene sovrascritta. I calcoli storici sono preservati finché non modifichi i dati economici."}
+          : "Puoi salvare una nuova versione oppure sovrascrivere quella visualizzata. La sovrascrittura mantiene numero e revisione. I calcoli storici sono preservati finché non modifichi i dati economici."}
       </div>}
       {legacyCostModel ? (
         <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
@@ -704,9 +731,9 @@ export default function PreventivoEditorPage() {
       </div>
       {(doc.prodotti as Product[]).map((p,index)=>
         <section key={index} className="bg-white border rounded-xl p-3 md:p-4 space-y-2.5">
-          <div className="flex justify-between items-center">
-            <h3 className="font-semibold">Prodotto {index+1}</h3>
-            {!locked && doc.prodotti.length > 1 && <button title="Rimuovi prodotto" className="text-red-600" onClick={()=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}><Trash2 size={17}/></button>}
+          <div className="-mx-3 -mt-3 md:-mx-4 md:-mt-4 flex justify-between items-center gap-3 rounded-t-xl bg-sky-500 px-3 py-3 md:px-4 text-slate-950">
+            <h3 className="text-base font-bold">Prodotto {index+1}</h3>
+            {!locked && doc.prodotti.length > 1 && <button title="Rimuovi prodotto" className="rounded p-1 text-red-950 hover:bg-white/30" onClick={()=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}><Trash2 size={17}/></button>}
           </div>
           {!legacyCostModel && sharedTreatmentMode === "ore_lavoro" &&
             <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
@@ -826,7 +853,7 @@ export default function PreventivoEditorPage() {
         </label>)}
         {Array.isArray(doc.attachments)&&doc.attachments.length>0&&<p className="text-sm text-amber-700">{doc.attachments.length} allegati storici presenti: i riferimenti vengono mantenuti nelle revisioni, ma i file originali Windows non sono ospitati sul server.</p>}
         <div className="border-t pt-3 text-right text-lg font-bold">Totale preventivo: € {euro(preview?.totale_finale)}<FormulaTooltip label="Totale preventivo" formula={CALCULATION_FORMULAS.quote.quoteTotal}/></div>
-        {dirtyCalculation && <p className="text-amber-700 text-sm">Anteprima del ricalcolo; salvando i nuovi valori saranno memorizzati in una nuova revisione.</p>}
+        {dirtyCalculation && <p className="text-amber-700 text-sm">Anteprima del ricalcolo; scegli se salvare una nuova versione o sovrascrivere quella attuale.</p>}
       </section>
         </>
       )}

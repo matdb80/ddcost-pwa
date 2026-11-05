@@ -1,4 +1,5 @@
 import type {Product, QuoteDocument} from "./quote-calculation";
+import {quoteDocumentNumber} from "./commercial-offer-number";
 
 const COMPANY = {
   name: "DIDIEFFE GROUP srl",
@@ -69,7 +70,7 @@ export function buildOneTimeQuotePrintHtml(
 <header><img src="${escapeAttribute(logoUrl)}" alt="DDF Didieffe Group"><div class="company"><strong>${COMPANY.name}</strong>${companyDetails}</div></header>
 <h1>${title}</h1>
 <section class="meta">
-  <div><b>Numero preventivo</b>${quoteId ? String(quoteId) : "—"}</div>
+  <div><b>Numero preventivo</b>${escapeHtml(quoteDocumentNumber(quote) ?? (quoteId ? String(quoteId) : "—"))}</div>
   <div><b>Data</b>${new Date().toLocaleDateString("it-IT")}</div>
   <div><b>Cliente</b>${client || "—"}</div>
   <div><b>Riferimento</b>${reference || "—"}</div>

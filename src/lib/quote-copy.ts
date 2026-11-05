@@ -1,3 +1,5 @@
+import {quoteDocumentNumber} from "./commercial-offer-number";
+
 /** Pure customer-facing text; never contains internal costing or supplier notes. */
 type Data = Record<string, any>;
 const money = (value: number): string => value.toLocaleString("it-IT", {
@@ -34,6 +36,8 @@ export function formatQuoteForCopy(doc: Data): string {
     throw new Error("Nessun prodotto da copiare");
   const listinoIndex = listinoProductIndex(doc);
   const lines: string[] = ["PREVENTIVO UNA TANTUM"];
+  const number=quoteDocumentNumber(doc);
+  if(number)lines.push("Numero: " + number);
   if (asText(doc.cliente)) lines.push("Cliente: " + asText(doc.cliente));
   if (asText(doc.riferimento_preventivo)) lines.push("Riferimento: " + asText(doc.riferimento_preventivo));
   lines.push("");

@@ -2,6 +2,11 @@ import {describe, expect, it} from "vitest";
 import {buildOneTimeQuotePrintHtml} from "./quote-pdf";
 
 describe("customer PDF for one-time quotes",()=>{
+  it("shows the saved shared document number while retaining the legacy ID fallback",()=>{
+    const document={numero_preventivo:"DDC00042/2026",prodotti:[]};
+    expect(buildOneTimeQuotePrintHtml(document,991)).toContain("<b>Numero preventivo</b>DDC00042/2026");
+    expect(buildOneTimeQuotePrintHtml({prodotti:[]},991)).toContain("<b>Numero preventivo</b>991");
+  });
   it("prints customer prices and customer notes while excluding internal data",()=>{
     const html=buildOneTimeQuotePrintHtml({
       titolo_preventivo:"Offerta cliente",

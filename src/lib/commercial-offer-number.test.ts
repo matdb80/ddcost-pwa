@@ -3,14 +3,15 @@ import { formatOfferNumber, italianOfferYear, nextOfferNumberPreview, withOfferN
 
 describe("commercial offer numbering", () => {
   it("formats the DDC progressive and uses the Italian calendar year", () => {
-    expect(formatOfferNumber(42)).toBe("DDC0042");
-    expect(nextOfferNumberPreview(41)).toBe("DDC0042");
+    expect(formatOfferNumber(42, 2026)).toBe("DDC00042/2026");
+    expect(nextOfferNumberPreview(41, 2026)).toBe("DDC00042/2026");
     // At this instant it is already New Year's Day in Italy.
     expect(italianOfferYear(new Date("2026-12-31T23:30:00.000Z"))).toBe(2027);
     expect(() => formatOfferNumber(0)).toThrow();
-    expect(formatOfferNumber(1)).toBe("DDC0001");
-    expect(formatOfferNumber(9999)).toBe("DDC9999");
-    expect(() => formatOfferNumber(10000)).toThrow();
+    expect(formatOfferNumber(1, 2026)).toBe("DDC00001/2026");
+    expect(formatOfferNumber(10000, 2027)).toBe("DDC10000/2027");
+    expect(formatOfferNumber(99999, 2027)).toBe("DDC99999/2027");
+    expect(() => formatOfferNumber(100000)).toThrow();
   });
 
   it("updates the JSON snapshot without discarding other saved fields", () => {
