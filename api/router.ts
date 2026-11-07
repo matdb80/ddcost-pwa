@@ -1,6 +1,9 @@
 import {salesRouter} from "./sales-router";
 import { authRouter } from "./auth-router";
 import { cycleRouter } from "./cycle-router";
+import { cycleImportTemplateRouter } from "./cycle-import-template-router";
+import { cycleImportCapabilityRouter } from "./cycle-import-capability-router";
+import { cycleImportRestoreRouter } from "./cycle-import-restore-router";
 import { quoteRouter } from "./quote-router";
 import { simulationRouter } from "./simulation-router";
 import { offerRouter } from "./offer-router";
@@ -15,6 +18,9 @@ export const appRouter = createRouter({
   auth: authRouter,
   sales: salesRouter,
   cycle: cycleRouter,
+  cycleImportTemplate: cycleImportTemplateRouter,
+  cycleImportCapability: cycleImportCapabilityRouter,
+  cycleImportRestore: cycleImportRestoreRouter,
   quote: quoteRouter,
   simulation: simulationRouter,
   offer: offerRouter,

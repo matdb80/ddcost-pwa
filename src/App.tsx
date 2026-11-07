@@ -7,6 +7,7 @@ import Login from "./pages/Login"
 import NotFound from "./pages/NotFound"
 import CicliPage from "./pages/CicliPage"
 import CicloEditorPage from "./pages/CicloEditorPage"
+import CycleExcelImportWizardPage from "./pages/CycleExcelImportWizardPage"
 import BandelleTPage from "./pages/BandelleTPage"
 import BandelleVenetaPage from "./pages/BandelleVenetaPage"
 import BandellePriceListsPage from "./pages/BandellePriceListsPage"
@@ -47,6 +48,7 @@ const router = createBrowserRouter([
   {path:"/", element:<ProtectedRoute><Home /></ProtectedRoute>},
   {path:"/login", element:<Login />},
   {path:"/cicli", element:<ProtectedRoute><CicliPage /></ProtectedRoute>},
+  {path:"/cicli/import-excel", element:<ProtectedRoute><CycleExcelImportWizardPage /></ProtectedRoute>},
   {path:"/cicli/new", element:<ProtectedRoute><CicloEditorPage /></ProtectedRoute>},
   {path:"/cicli/:id", element:<ProtectedRoute><CicloEditorPage /></ProtectedRoute>},
   {path:"/bandelle-t", element:<ProtectedRoute><BandelleTPage /></ProtectedRoute>},

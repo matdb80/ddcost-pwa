@@ -58,7 +58,7 @@ describe("validazione salvataggio delle nuove materie prime", () => {
     const dataJson = JSON.stringify({ righe: [{ ...raw(), geometria_materia_prima: "tubo", diametro: 10, diametro_interno: 20 }] });
     const api = caller();
     for (const request of [
-      () => api.create({ dataJson }), () => api.update({ id: 1, dataJson }),
+      () => api.create({ idempotencyKey: "review-material-key", dataJson }), () => api.update({ id: 1, dataJson }),
       () => api.createRevision({ sourceId: 1, rootId: 1, dataJson }),
       () => api.overwriteLatest({ sourceId: 1, rootId: 1, expectedDataJson: null, confirmation: "SOVRASCRIVI DEFINITIVAMENTE", dataJson }),
     ]) await expect(request()).rejects.toMatchObject({ code: "BAD_REQUEST" });

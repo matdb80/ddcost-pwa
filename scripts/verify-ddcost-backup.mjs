@@ -30,10 +30,13 @@ try {
     throw new Error("Overall SHA-256 checksum mismatch");
   }
 
-  if (payload.tables?.includes("legacy_source_archives")) {
-    requiredTables.push("legacy_source_archives");
+  if (!Array.isArray(payload.tables) || payload.tables.some(t => typeof t !== "string") || new Set(payload.tables).size !== payload.tables.length) {
+    throw new Error("Invalid table inventory");
   }
   for (const table of requiredTables) {
+    if (!payload.tables.includes(table)) throw new Error("Missing table inventory entry: " + table);
+  }
+  for (const table of payload.tables) {
     const rows = payload.records?.[table];
     if (!Array.isArray(rows)) throw new Error("Missing table: " + table);
     if (rows.length !== payload.rowCounts?.[table]) {

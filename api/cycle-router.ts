@@ -1,3 +1,4 @@
+import {createCycleIdempotent} from "./cycle-idempotency";
 import { hasProjectAssociation } from "../src/types/cycle";
 import { z } from "zod";
 import { eq, desc, sql, count, and } from "drizzle-orm";
@@ -204,34 +205,12 @@ export const cycleRouter = createRouter({
         standardCost: z.string().optional(),
         minimumPrice: z.string().optional(),
         dataJson: cycleMaterialDataJson.optional(),
+        idempotencyKey: z.string().min(16).max(64),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const db = getDb();
-      const code=input.code?.trim()||undefined;
-      if(code){
-        const existing=await db.select({id:cycles.id}).from(cycles).where(and(
-          eq(cycles.userId,ctx.user.id),
-          sql`UPPER(TRIM(${cycles.code})) = ${code.toUpperCase()}`,
-        )).limit(1);
-        if(existing[0])
-          throw new Error("Codice già utilizzato. Inserire un codice diverso per creare un nuovo ciclo.");
-      }
-      const result = await db.insert(cycles).values({
-        userId: ctx.user.id,
-        code,
-        description: input.description,
-        client: input.client,
-        lot: input.lot,
-        standardCost: input.standardCost,
-        minimumPrice: input.minimumPrice,
-        dataJson: input.dataJson,
-        rootId: undefined,
-        rev: 1,
-      });
-      const id = Number(result[0].insertId);
-      await db.update(cycles).set({ rootId: id }).where(eq(cycles.id, id));
-      return { id };
+      const db=getDb(); const {idempotencyKey,...payload}=input;
+      return createCycleIdempotent(db,ctx.user.id,idempotencyKey,payload);
     }),
 
   update: authedQuery

@@ -14,6 +14,8 @@ const TABLES = [
   "colleague_access",
   "sales_assignments",
   "cycles",
+  "cycle_import_templates",
+  "cycle_create_receipts",
   "quotes",
   "cycle_simulations",
   "commercial_offers",

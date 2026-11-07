@@ -1,0 +1,9 @@
+import {describe,expect,it} from "vitest";
+import {extractF3Letters,setupMinutes} from "./excel-f3-letters";
+import type {CellEvidence,WorkbookEvidence} from "../types/excel-import";
+function workbook(rows:Array<Array<string|number|null>>,name="F3"):WorkbookEvidence{const cells:Record<string,CellEvidence>={};rows.forEach((row,ri)=>row.forEach((v,ci)=>{if(v==null)return;const r=ri+1,c=ci+1;cells[`${r}:${c}`]={address:`R${r}C${c}`,row:r,column:c,raw:v,displayText:String(v),hiddenRow:false,hiddenColumn:false}}));return{fileName:`${name}.xls`,sha256:"a".repeat(64),byteLength:1,parserVersion:"test",sheets:[{name,hidden:false,cells,merges:[],effectiveRows:rows.length,effectiveColumns:15}]};}
+const header=["TIPO COSTO","MATERIALE","VOCE DI COSTO","LUNGHEZZA","LARGHEZZA","SPESSORE","PESO LORDO","PESO NETTO","NR COMPONENTI","FORNITORE","COLPI/MIN","U.M.","TARIFFA FORNITURA","TARIFFA LAVORO","TOTALE"];
+describe("F3 structural extraction",()=>{
+ it("keeps base and option rows while O stays historical",()=>{const w=workbook([["CODE"],header,["m","f","base",10,10,1,.1,null,1,"x",null,"kg",2,.3,.2],["w",null,"work",null,null,null,"---",null,1,null,10,"pz",null,.3,.03],[null,null,"SILVER",null,null,null,"---",null,1,"supplier",null,"pz",.05,null,.05]]);const d=extractF3Letters(w);expect(d.products[0].rows.filter(r=>r.kind==="cost")).toHaveLength(3);expect(d.products[0].options).toHaveLength(1);expect(d.products[0].rows[1].problems.some(p=>p.code.includes("GROSS"))).toBe(false);});
+ it("distinguishes missing setup from known setup",()=>{const missing=extractF3Letters(workbook([["CODE"],header,["c",null,"a",null,null,null,"---",null,1,null,null,"pz",1,null,1],["c",null,"b",null,null,null,"---",null,1,null,null,"pz",1,null,1],["c",null,"c",null,null,null,"---",null,1,null,null,"pz",1,null,1]])).products[0];expect(missing.setupState?.status).toBe("missing");expect(setupMinutes(missing)).toBeUndefined();});
+});

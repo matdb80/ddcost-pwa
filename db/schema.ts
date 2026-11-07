@@ -1,6 +1,7 @@
 import {
   mysqlTable,
   uniqueIndex,
+  index,
   mysqlEnum,
   serial,
   varchar,
@@ -239,3 +240,29 @@ export const salesAssignments = mysqlTable("sales_assignments", {
   status: mysqlEnum("status", ["ready","transferred","sent"]).notNull().default("ready"),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, t=>[uniqueIndex("assignment_unique").on(t.kind,t.sourceId,t.recipientOid)]);
+
+
+// Excel templates are shared with the existing editor scope. Versions are append-only.
+export const cycleImportTemplates = mysqlTable("cycle_import_templates", {
+  id: bigint("id", { mode: "number", unsigned: true }).autoincrement().primaryKey(),
+  rootId: bigint("rootId", { mode: "number", unsigned: true }),
+  version: bigint("version", { mode: "number", unsigned: true }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  family: varchar("family", { length: 64 }).notNull(),
+  status: mysqlEnum("status", ["draft", "tested", "approved"]).default("draft").notNull(),
+  definitionJson: mediumtext("definitionJson").notNull(),
+  verifiedCasesJson: mediumtext("verifiedCasesJson").notNull(),
+  createdBy: bigint("createdBy", { mode: "number", unsigned: true }).notNull(),
+  validatedBy: bigint("validatedBy", { mode: "number", unsigned: true }),
+  validatedAt: timestamp("validatedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull().onUpdateNow(),
+}, table => [
+  uniqueIndex("cycle_import_templates_root_version_uq").on(table.rootId, table.version),
+  index("cycle_import_templates_family_status_idx").on(table.family, table.status),
+  index("cycle_import_templates_createdBy_idx").on(table.createdBy),
+]);
+
+export const cycleCreateReceipts = mysqlTable("cycle_create_receipts", {
+ id: bigint("id",{mode:"number",unsigned:true}).autoincrement().primaryKey(), userId: bigint("userId",{mode:"number",unsigned:true}).notNull(), idempotencyKey:varchar("idempotencyKey",{length:64}).notNull(), payloadHash:varchar("payloadHash",{length:64}).notNull(), cycleId:bigint("cycleId",{mode:"number",unsigned:true}), normalizedCode:varchar("normalizedCode",{length:255}), status:mysqlEnum("status",["claimed","completed"]).default("claimed").notNull(), createdAt:timestamp("createdAt").defaultNow().notNull(), updatedAt:timestamp("updatedAt").defaultNow().notNull().onUpdateNow(),
+},t=>[uniqueIndex("cycle_create_receipts_user_key_uq").on(t.userId,t.idempotencyKey),uniqueIndex("cycle_create_receipts_user_code_uq").on(t.userId,t.normalizedCode)]);

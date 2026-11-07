@@ -27,6 +27,7 @@ export default function CicliPage(){
   const [duplicateDescription,setDuplicateDescription]=useState("");
   const [duplicatePreparationError,setDuplicatePreparationError]=useState("");
   const [duplicateLoading,setDuplicateLoading]=useState(false);
+  const [duplicateCreateKey,setDuplicateCreateKey]=useState(() => crypto.randomUUID());
   const [offerSelection,setOfferSelection]=useState<{label:string;offers:LinkedCycleOffer[]}|null>(null);
   const utils=trpc.useUtils();
   const query=trpc.cycle.listGrouped.useQuery({
@@ -56,6 +57,7 @@ export default function CicliPage(){
   const openDuplicate=(c:(typeof groups)[number]["revisions"][number])=>{
     if(c.deleted===1)return;
     duplicateCycle.reset();
+    setDuplicateCreateKey(crypto.randomUUID());
     setDuplicatePreparationError("");
     setDuplicateSource({id:c.id,code:c.code,description:c.description,rev:c.rev});
     setDuplicateCode(c.code?.trim()?`${c.code.trim()}-COPIA`:"NUOVO-CICLO");
@@ -76,6 +78,7 @@ export default function CicliPage(){
       const draft=copyCycleAsNamedDraft(source,duplicateCode,duplicateDescription);
       const calculated=ricalcolaCiclo(draft);
       await duplicateCycle.mutateAsync({
+        idempotencyKey: duplicateCreateKey,
         code:calculated.codice,
         description:calculated.descrizione,
         client:calculated.cliente,
@@ -129,6 +132,7 @@ export default function CicliPage(){
               setShowDeleted(e.target.checked);setPage(1);setExpanded(new Set());
             }}/>Mostra eliminati
           </label>
+          <Link to="/cicli/import-excel" className="rounded-lg border border-emerald-600 px-3 py-2 text-sm font-medium text-emerald-700">Importa Excel</Link>
           <Link to="/cicli/new" className="flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white">
             <Plus size={16}/> Nuovo ciclo
           </Link>

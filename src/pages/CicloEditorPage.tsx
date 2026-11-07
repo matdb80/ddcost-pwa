@@ -29,6 +29,7 @@ import {
   Search,
 } from "lucide-react";
 import type { RigaCiclo, CicloEditorModel } from "@/types/cycle";
+import {loadImportDraft,consumeImportDraft,persistImportDraft} from "@/lib/excel-import-draft-storage";
 import {
   CATEGORIE_RIGA,
   emptyRiga,
@@ -82,6 +83,7 @@ export default function CicloEditorPage() {
   const numericId = isNew ? undefined : Number(id);
 
   const [model, setModel] = useState(emptyCicloEditorModel());
+  const [cycleCreateKey] = useState(() => crypto.randomUUID());
   const [originalJson, setOriginalJson] = useState<string>("");
   const [originalDbDataJson, setOriginalDbDataJson] = useState<string | null>(null);
   const [hasRecalculated, setHasRecalculated] = useState(false);
@@ -107,6 +109,13 @@ export default function CicloEditorPage() {
   const [importedCycleLabel, setImportedCycleLabel] = useState("");
   const allowLeaveRef=useRef(false);
   const utils = trpc.useUtils();
+  const [excelDraftId,setExcelDraftId]=useState<string|null>(null);
+  const loadedExcelDraft=useRef<string|null>(null);
+  const excelStorageWarning=useRef(false);
+  useEffect(()=>{if(!isNew)return;const importId=new URLSearchParams(location.search).get("importDraft");if(!importId||loadedExcelDraft.current===importId)return;try{const imported=loadImportDraft(importId);const dirty=JSON.stringify(serializeCycleDataJson(model))!==EMPTY_CYCLE_DATA_JSON;if(dirty&&!window.confirm("La bozza Excel sostituirà la bozza corrente. Continuare?"))return;loadedExcelDraft.current=importId;setModel(imported);setHasChanges(true);setIsReadOnly(false);setExcelDraftId(importId);}catch(e){alert(e instanceof Error?e.message:"Bozza Excel non valida");}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[isNew,location.search]);
+  useEffect(()=>{if(!isNew||!excelDraftId)return;try{persistImportDraft(excelDraftId,model);excelStorageWarning.current=false;}catch(e){if(!excelStorageWarning.current){excelStorageWarning.current=true;alert(e instanceof Error?e.message:"Impossibile conservare la bozza Excel: salvare prima di ricaricare.");}}},[isNew,excelDraftId,model]);
 
   const getCycle = trpc.cycle.get.useQuery(
     { id: numericId! },
@@ -126,7 +135,7 @@ export default function CicloEditorPage() {
   );
 
   const createCycle = trpc.cycle.create.useMutation({
-    onSuccess: () => { allowLeaveRef.current=true; navigate("/cicli"); },
+    onSuccess: () => { if(excelDraftId){try{consumeImportDraft(excelDraftId);}catch{} setExcelDraftId(null);} allowLeaveRef.current=true; navigate("/cicli"); },
     onError: (err) => alert(`Errore creazione: ${err.message}`),
   });
 
@@ -428,6 +437,7 @@ export default function CicloEditorPage() {
         standardCost: String(m.costo_standard),
         minimumPrice: String(m.prezzo_minimo),
         dataJson,
+        idempotencyKey: excelDraftId ?? cycleCreateKey,
       });
     } else {
       if (!isModified) {
@@ -665,7 +675,7 @@ export default function CicloEditorPage() {
                 </button>
                 <button
                   onClick={handleSave}
-                  disabled={!isNew && (!isModified || createRevision.isPending || overwriteLatest.isPending)}
+                  disabled={createCycle.isPending || (!isNew && (!isModified || createRevision.isPending || overwriteLatest.isPending))}
                   title={!isNew && !isModified ? "Nessuna modifica da salvare" : "Salva"}
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
