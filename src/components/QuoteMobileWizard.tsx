@@ -267,16 +267,18 @@ export default function QuoteMobileWizard(props:Props){
               className={actionClass+" w-full border border-slate-300 text-slate-700 disabled:opacity-40"}>
               <Copy size={18}/> Copia per email / documento
             </button>
-            <label className="flex min-h-12 items-center gap-3 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-700">
+            <div className="flex w-full flex-col gap-2">
+            <button type="button" onClick={onExportPdf} disabled={busy||!canShare}
+              className={actionClass+" w-full border border-slate-300 text-slate-700 disabled:opacity-40"}>
+              <FileText size={18}/> Esporta PDF cliente
+            </button>
+            <label className="flex w-full min-h-12 items-center gap-3 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-700">
               <input type="checkbox" checked={hideDocumentTotalInPdf}
                 onChange={e=>onHideDocumentTotalInPdfChange(e.target.checked)}
                 className="h-5 w-5 shrink-0 accent-emerald-600"/>
               Nascondi totale documento nel PDF cliente
             </label>
-            <button type="button" onClick={onExportPdf} disabled={busy||!canShare}
-              className={actionClass+" w-full border border-slate-300 text-slate-700 disabled:opacity-40"}>
-              <FileText size={18}/> Esporta PDF cliente
-            </button>
+            </div>
           </div>
         ):current.id==="listino_prodotto" ? (
           <select id="wizard-input" value={priceProductIndex} disabled={locked}

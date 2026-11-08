@@ -519,7 +519,7 @@ export default function PreventivoEditorPage() {
           <Link to="/preventivi" className="p-2 border rounded"><ArrowLeft size={16}/></Link>
           <h1 className="text-2xl font-bold">{isNew ? "Nuovo preventivo una tantum" : "Preventivo " + (quoteDocumentNumber(doc) ?? "#" + numericId) + " — rev. " + (data?.rev ?? 1)}</h1>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex items-start gap-2 flex-wrap">
           {!locked && <button type="button" onClick={()=>update("prodotti",[...doc.prodotti,blankProduct()],true)}
             className="border border-emerald-600 text-emerald-700 px-4 py-2 rounded flex gap-2 items-center"
             title="Aggiungi prodotto senza scorrere fino alla sezione prodotti">
@@ -535,16 +535,18 @@ export default function PreventivoEditorPage() {
             className="border border-emerald-600 text-emerald-700 px-4 py-2 rounded flex gap-2 items-center">
             <Copy size={16}/> Copia per email / documento
           </button>
-          <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium">
-            <input type="checkbox" className="h-4 w-4 accent-emerald-600"
-              checked={hideDocumentTotalInPdf} onChange={e=>setHideDocumentTotalInPdf(e.target.checked)}/>
-            Nascondi totale documento nel PDF cliente
-          </label>
+          <div className="flex w-full flex-col gap-2 sm:w-64">
           <button type="button" onClick={exportCustomerPdf} disabled={!canExportPdf}
-            className="border border-slate-300 text-slate-700 disabled:opacity-40 px-4 py-2 rounded flex gap-2 items-center"
+            className="w-full border border-slate-300 text-slate-700 disabled:opacity-40 px-4 py-2 rounded flex gap-2 items-center justify-center"
             title="Esporta il documento con i soli dati destinati al cliente">
             <FileText size={16}/> Esporta PDF cliente
           </button>
+          <label className="flex w-full min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium">
+            <input type="checkbox" className="h-4 w-4 shrink-0 accent-emerald-600"
+              checked={hideDocumentTotalInPdf} onChange={e=>setHideDocumentTotalInPdf(e.target.checked)}/>
+            Nascondi totale documento nel PDF cliente
+          </label>
+          </div>
           {locked ? <button className="bg-emerald-600 text-white px-4 py-2 rounded flex gap-2" onClick={() => setReadOnly(false)}><Pencil size={16}/> Modifica</button>
           : <>
               <button type="button" className="border px-4 py-2 rounded flex gap-2" onClick={() => { try { setDoc(calculateQuote(doc)); setDirtyCalculation(false); setError(""); } catch(e) { setError(e instanceof Error ? e.message : "Errore ricalcolo"); } }}><Calculator size={16}/> Ricalcola</button>
