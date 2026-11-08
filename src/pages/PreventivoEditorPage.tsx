@@ -14,8 +14,9 @@ import QuoteNumericInput, {type QuoteNumericKind} from "@/components/QuoteNumeri
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
 import QuoteMobileWizard from "@/components/QuoteMobileWizard";
+import QuoteTotal from "@/components/QuoteTotal";
 import {
-  blankProduct, blankQuote, calculateQuote, duplicateLastProductForNewLot, migrateQuoteToEngineeringHours,
+  blankProduct, blankQuote, calculateQuote, changeQuoteLaborMode, duplicateLastProductForNewLot, migrateQuoteToEngineeringHours,
   type Product, type QuoteDocument,
 } from "@/lib/quote-calculation";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
@@ -191,6 +192,11 @@ export default function PreventivoEditorPage() {
     return()=>window.removeEventListener("beforeunload",handler);
   },[unsavedChanges]);
   const update = (key: string, value: unknown, economic = false) => {
+    if(key==="lavoro_modalita" && (value==="complessivo" || value==="per_pezzo")){
+      try { setDoc(changeQuoteLaborMode(doc,value)); setDirtyCalculation(true); setError(""); }
+      catch(e){setError(e instanceof Error?e.message:"Impossibile cambiare imputazione delle ore");}
+      return;
+    }
     setDoc(prev => ({ ...prev, [key]: value }));
     if (economic) setDirtyCalculation(true);
   };
@@ -408,6 +414,8 @@ export default function PreventivoEditorPage() {
     ? "globale"
     : doc.trattamenti_modalita === "ore_lavoro" ? "ore_lavoro" : "per_prodotto";
   const legacyEngineeringModel = !(Number(doc.costi_comuni_versione) >= 3);
+  const laborPerPiece = doc.lavoro_modalita === "per_pezzo";
+  const laborOverall = doc.lavoro_modalita === "complessivo";
   const upgradeCosts = () => {
     if (locked) return;
     if (!window.confirm(
@@ -557,19 +565,22 @@ export default function PreventivoEditorPage() {
             </>}
         </div>
       </div>
-      <section className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+      <section className="grid grid-cols-2 xl:grid-cols-4 items-end gap-3">
         {(["cliente","riferimento_preventivo","titolo_preventivo"] as const).map(key=>
           <label key={key} className="flex flex-col gap-1 text-sm">
             <span className="font-medium">{key === "cliente" ? "Cliente *" : key === "riferimento_preventivo" ? "Riferimento" : "Titolo preventivo"}</span>
             <input className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100" value={doc[key] ?? ""} disabled={locked}
               onChange={e=>update(key,e.target.value)}/>
           </label>)}
+        <div className="flex flex-col gap-2">
+        <QuoteTotal value={preview?.totale_finale ?? preview?.totale}/>
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">Totale desiderato € (quadratura, facoltativo)</span>
           <QuoteNumericInput kind="euro" optional className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100"
             disabled={locked} value={doc.target_totale ?? null}
             onChange={value=>update("target_totale",value,true)}/>
         </label>
+        </div>
       </section>
       </div>
       {draftMessage && <div role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{draftMessage}</div>}
@@ -597,14 +608,14 @@ export default function PreventivoEditorPage() {
       ) : (
         <section className="bg-white border rounded-xl p-3 md:p-4 space-y-3">
           <div>
-            <h2 className="font-semibold text-lg">Costi comuni all'offerta</h2>
+            <h2 className="font-semibold text-lg">Attribuzione dei costi comuni</h2>
             <p className="text-xs text-slate-600 mt-1">
               La progettazione si inserisce una sola volta. La quota €/pezzo è il totale diviso
               per la somma delle quantità di tutti i prodotti.
               Nessun costo comune viene sommato due volte.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
             {legacyEngineeringModel ? (
               <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 <label className="flex flex-col gap-1 text-sm">
@@ -624,21 +635,48 @@ export default function PreventivoEditorPage() {
               </div>
             ) : (
               <div className="flex flex-col gap-2">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-wrap items-end gap-2">
                   <label className="flex min-w-0 flex-col gap-1 text-xs">
-                    <span className="font-medium" title="Ore complessive di progettazione">Ore progettazione</span>
+                    <span className="font-medium" title="Ore complessive di progettazione">Ore<br/>progettazione</span>
                     <QuoteNumericInput kind="decimal" value={doc.progettazione_ore ?? 0}
+                      aria-label="Ore progettazione"
                       disabled={locked} onChange={value=>update("progettazione_ore",value,true)}
+                      style={{width:"calc(4ch + 1rem + 2px)"}} size={4}
                       className={compactInputClass+" "+normalInputClass}/>
                   </label>
                   <label className="flex min-w-0 flex-col gap-1 text-xs">
-                    <span className="font-medium" title="Costo orario progettazione (€/h)">Progettazione €/h</span>
+                    <span className="font-medium" title="Costo orario progettazione (€/h)">Progettazione<br/>€/h</span>
                     <QuoteNumericInput kind="euro" value={doc.costo_progettazione_ora ?? 50}
+                      aria-label="Progettazione €/h"
                       disabled={locked} onChange={value=>update("costo_progettazione_ora",value,true)}
+                      style={{width:"calc(6ch + 1rem + 2px)"}} size={6}
                       className={compactInputClass+" "+(Number(doc.costo_progettazione_ora??50)===50?suggestedInputClass:normalInputClass)}
                       title={Number(doc.costo_progettazione_ora??50)===50?suggestedHint:undefined}/>
                   </label>
+                  <label className="flex min-w-0 flex-1 basis-48 flex-col gap-1 text-xs">
+                    <span className="font-medium">Imputazione ore di lavorazione</span>
+                    <select value={doc.lavoro_modalita ?? "per_riga"} disabled={locked}
+                      onChange={e=>update("lavoro_modalita",e.target.value,true)}
+                      className={compactInputClass+" "+normalInputClass}>
+                      <option value="complessivo">Ore lavoro imputate complessivamente</option>
+                      <option value="per_pezzo">Ore lavoro imputate per ciascun prodotto (singolo pezzo)</option>
+                      {doc.lavoro_modalita==null && <option value="per_riga">Ore totali per riga (modello precedente)</option>}
+                    </select>
+                  </label>
                 </div>
+                {laborOverall && <label className="flex flex-col gap-1 text-xs">
+                  <span className="font-medium">Ore totali di lavorazione dell'offerta</span>
+                  <QuoteNumericInput kind="decimal" value={doc.lavoro_ore_totali ?? 0} disabled={locked}
+                    onChange={value=>update("lavoro_ore_totali",value,true)}
+                    className={compactInputClass+" "+normalInputClass+" max-w-32"}/>
+                </label>}
+                <p className="text-xs text-slate-600">
+                  {laborOverall
+                    ? "Il monte ore viene ripartito automaticamente sulle righe in proporzione ai pezzi. Le quantità modificano la ripartizione, non le ore totali inserite."
+                    : laborPerPiece
+                    ? "Lavorazione: le ore inserite in ciascuna riga sono per un singolo pezzo e vengono moltiplicate per la quantità."
+                    : "Questo preventivo conserva le ore totali inserite nelle singole righe. Scegli una nuova modalità per modificare l'imputazione."}
+                </p>
                 <p className="text-xs text-slate-600">
                   Costo comune: <strong>€ {euro(preview?.costi_comuni_riepilogo?.progettazione_totale)}<FormulaTooltip label="Costo totale di progettazione" formula={CALCULATION_FORMULAS.quote.engineeringTotal}/></strong>
                   {" "}(ore × tariffa), diviso tra {preview?.costi_comuni_riepilogo?.quantita_totale ?? "—"} pezzi:
@@ -670,7 +708,7 @@ export default function PreventivoEditorPage() {
               ) : sharedTreatmentMode === "ore_lavoro" ? (
                 <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
                   Costo trattamenti inglobati nel tempo di produzione. Includi il tempo dei trattamenti
-                  nelle ore complessive di lavorazione di ciascun prodotto; non verrà aggiunto un costo
+                  nelle ore di lavorazione di ciascun prodotto secondo la modalità scelta; non verrà aggiunto un costo
                   trattamento separato.
                 </p>
               ) : (
@@ -737,8 +775,8 @@ export default function PreventivoEditorPage() {
           </div>
           {!legacyCostModel && sharedTreatmentMode === "ore_lavoro" &&
             <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
-              Costo trattamenti inglobati nel tempo di produzione. Includi il tempo dei trattamenti nelle ore totali
-              di lavorazione di questa riga; il costo trattamento separato è pari a zero.
+              Costo trattamenti inglobati nel tempo di produzione. Includi il tempo dei trattamenti nelle ore
+              di lavorazione {laborOverall ? "complessive dell'offerta" : laborPerPiece ? "per singolo pezzo" : "totali della riga"}; il costo trattamento separato è pari a zero.
             </p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2">
             <label className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-2">
@@ -793,12 +831,21 @@ export default function PreventivoEditorPage() {
               if(f.key==="trattamenti_cad" && !legacyCostModel && sharedTreatmentMode!=="per_prodotto")return null;
               const highlighted=suggestedProductValue(p,f.key);
               const quantityNeedsAttention=f.key==="quantita"&&(p[f.key]===""||p[f.key]===null||p[f.key]===undefined);
+              const fieldLabel=f.key==="lavoro_h" && laborPerPiece ? "Ore di lavorazione per singolo pezzo" : f.label;
+              const shortLabel=f.key==="lavoro_h" ? (laborPerPiece ? "Ore lavoro / pezzo" : "Ore lavoro totali") : f.shortLabel;
+              if(f.key==="lavoro_h" && laborOverall)return <div key={f.key} className="flex min-w-0 flex-col gap-1 text-xs">
+                <span className="font-medium text-slate-600">Ore lavoro attribuite</span>
+                <output aria-label={`Ore lavoro attribuite al prodotto ${index+1}`} className={compactInputClass+" border-slate-200 bg-slate-100"}>
+                  {preview ? Number(preview.prodotti[index].lavoro_ore_totali).toLocaleString("it-IT",{maximumFractionDigits:4}) : "—"}
+                </output>
+              </div>;
               return <label key={f.key} className="flex min-w-0 flex-col gap-1 text-xs">
-                <span className="truncate font-medium text-slate-600" title={f.label}>{f.shortLabel}</span>
+                <span className="truncate font-medium text-slate-600" title={fieldLabel}>{shortLabel}</span>
                 <QuoteNumericInput kind={f.kind} optional={f.optional||f.key==="quantita"} disabled={locked}
+                  fractionDigits={f.key==="lavoro_h" && laborPerPiece ? 6 : undefined}
                   id={`quote-product-${index}-${f.key}`}
                   className={compactInputClass+" "+(quantityNeedsAttention?"quote-quantity-attention":highlighted?suggestedInputClass:normalInputClass)}
-                  title={quantityNeedsAttention?"Inserisci la quantità del nuovo lotto":highlighted?suggestedHint:f.label}
+                  title={quantityNeedsAttention?"Inserisci la quantità del nuovo lotto":highlighted?suggestedHint:fieldLabel}
                   placeholder={quantityNeedsAttention?"Inserisci la quantità":undefined}
                   value={f.key==="quantita"?(p[f.key]??null):p[f.key]??(f.optional?null:0)}
                   onChange={value=>updateProduct(index,f.key,value)}/>

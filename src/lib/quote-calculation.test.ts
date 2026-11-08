@@ -219,7 +219,7 @@ describe("Una Tantum: quote-wide engineering and dual treatment allocation",()=>
     expect(back.prodotti.reduce((n:number,p:Record<string,number>)=>n+p.trattamenti_tot,0)).toBeCloseTo(140);
   });
   it("includes no separate treatment cost when treatment time is included in work hours",()=>{
-    const quote={...blankQuote(),trattamenti_modalita:"ore_lavoro",trattamenti_totale_euro:90,
+    const quote={...blankQuote(),lavoro_modalita:undefined,trattamenti_modalita:"ore_lavoro",trattamenti_totale_euro:90,
       prodotti:[product(10,1,{lavoro_h:2,trattamenti_cad:4}),product(20,2,{lavoro_h:3,trattamenti_cad:5})]};
     const result=calculateQuote(quote);
     expect(result.costi_comuni_riepilogo.trattamenti_modalita).toBe("ore_lavoro");

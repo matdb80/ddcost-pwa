@@ -2,6 +2,12 @@ import {describe,expect,it} from "vitest";
 import {formatQuoteNumeric,parseQuoteNumericDraft,roundQuoteNumeric,validQuoteNumericDraft} from "./QuoteNumericInput";
 
 describe("Preventivo Una Tantum: editable numeric fields",()=>{
+  it("supports precise per-piece labor hours without changing standard numeric precision",()=>{
+    expect(formatQuoteNumeric(100/105,"decimal",6)).toBe("0,952381");
+    expect(parseQuoteNumericDraft("0,952381","decimal",6)).toBeCloseTo(0.952381,10);
+    expect(validQuoteNumericDraft("0,952381","decimal")).toBe(false);
+    expect(formatQuoteNumeric(12.345,"euro")).toBe("12,35");
+  });
   it("accepts keyboard input with decimal comma or dot (including incomplete drafts)",()=>{
     for(const raw of ["","0","100","12,","12,3","12,34",".5",",5","12.34"]){
       expect(validQuoteNumericDraft(raw,"euro"),raw).toBe(true);

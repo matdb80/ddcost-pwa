@@ -16,6 +16,7 @@ export const blankQuote = (): QuoteDocument => ({
   titolo_preventivo: "Preventivo unatantum", prodotti: [blankProduct()],
   costi_comuni_versione: 3, progettazione_ore: 0, costo_progettazione_ora: 50,
   progettazione_totale_euro: 0,
+  lavoro_modalita: "complessivo", lavoro_ore_totali: 0,
   trattamenti_modalita: "per_prodotto", trattamenti_totale_euro: 0,
   target_totale: null, note_generali: "", note_cliente: "", note_fornitori: "", attachments: [],
 });
@@ -26,10 +27,43 @@ export function duplicateLastProductForNewLot(products: Product[]): Product[] {
   copy.quantita = "";
   return [...products, copy];
 }
+export function quoteLaborMode(document: QuoteDocument): "complessivo" | "per_pezzo" | "per_riga" {
+  if (document.lavoro_modalita == null) return "per_riga"; // Preserve saved quotes.
+  if (document.lavoro_modalita === "complessivo" || document.lavoro_modalita === "per_pezzo") return document.lavoro_modalita;
+  throw new Error("Modalità di imputazione delle ore di lavorazione non valida");
+}
+export function quoteLaborHours(document: QuoteDocument): number[] {
+  const mode=quoteLaborMode(document);
+  const products=document.prodotti as Product[];
+  const quantities=products.map(p=>Number(p.quantita));
+  if(quantities.some(q=>!Number.isFinite(q)||q<=0))throw new Error("La quantità dei prodotti deve essere maggiore di zero");
+  const hours=(value:unknown)=>{
+    const n=Number(value??0);
+    if(!Number.isFinite(n)||n<0)throw new Error("Le ore di lavorazione devono essere numeri non negativi");
+    return n;
+  };
+  if(mode==="complessivo"){
+    const total=hours(document.lavoro_ore_totali);
+    const pieces=quantities.reduce((sum,q)=>sum+q,0);
+    return quantities.map(q=>total*q/pieces);
+  }
+  return products.map((p,i)=>mode==="per_pezzo"?hours(p.lavoro_h)*quantities[i]:val(p.lavoro_h));
+}
+/** An explicit mode change conserves the current total hours, without editing stored history. */
+export function changeQuoteLaborMode(document: QuoteDocument, mode: "complessivo" | "per_pezzo"): QuoteDocument {
+  if(quoteLaborMode(document)===mode)return structuredClone(document);
+  const assigned=quoteLaborHours(document);
+  const next=structuredClone(document);
+  next.lavoro_modalita=mode;
+  if(mode==="complessivo")next.lavoro_ore_totali=assigned.reduce((sum,h)=>sum+h,0);
+  else next.prodotti=next.prodotti.map((p:Product,i:number)=>({...p,lavoro_h:assigned[i]/Number(p.quantita)}));
+  return next;
+}
 export function calculateQuote(document: QuoteDocument): QuoteDocument {
   const d = structuredClone(document);
   if (!Array.isArray(d.prodotti) || !d.prodotti.length) throw new Error("Inserire almeno un prodotto");
   const shared = Number(d.costi_comuni_versione) >= 2;
+  const laborHours = quoteLaborHours(d);
   const treatmentMode = d.trattamenti_modalita === "globale"
     ? "globale"
     : d.trattamenti_modalita === "ore_lavoro" ? "ore_lavoro" : "per_prodotto";
@@ -59,7 +93,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
   let baseTotal = 0;
   let saleBefore = 0;
   let fullTotal = 0;
-  for (const p of d.prodotti as Product[]) {
+  for (const [productIndex,p] of (d.prodotti as Product[]).entries()) {
     const q = val(p.quantita);
     if (!(q > 0)) throw new Error("La quantità dei prodotti deve essere maggiore di zero");
     // Existing documents without the checkbox retain their saved €/piece.
@@ -76,13 +110,14 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
     const m = weightCost?.materialCostPerPiece ?? val(p.materiale_cad);
     p.materiale_calcolato_cad = m;
     p.peso_teorico_kg = weightCost?.theoreticalWeightKg ?? null;
-    const lh = val(p.lavoro_h), hcost = val(p.costo_lavoro);
+    const hcost = val(p.costo_lavoro);
     const treatment = val(p.trattamenti_cad), ah = val(p.attrezzaggi_h);
     const dh = val(p.progettazione_h), dcost = val(p.costo_progettazione);
     const overhead = val(p.ricarico_spese), margin = val(p.margine);
     if (margin >= 1 || margin < 0 || overhead < 0) throw new Error("Margine e ricarico non validi");
     p.materiale_tot = m * q;
-    p.lavoro_tot = lh * hcost;
+    p.lavoro_ore_totali = laborHours[productIndex];
+    p.lavoro_tot = p.lavoro_ore_totali * hcost;
     p.trattamenti_tot = shared && treatmentMode === "ore_lavoro"
       ? 0
       : shared && treatmentMode === "globale" ? treatmentPerPiece * q : treatment * q;
@@ -142,6 +177,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
     };
   }
   d.num_prodotti = d.prodotti.length;
+  d.lavoro_ore_calcolate = laborHours.reduce((sum,h)=>sum+h,0);
   d.quantita = (d.prodotti as Product[]).reduce((sum,p) => sum + val(p.quantita), 0);
   d.totale_pre_quadratura = baseTotal;
   d.totale_vendita_pre_quadratura = saleBefore;

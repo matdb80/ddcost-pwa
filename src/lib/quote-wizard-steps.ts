@@ -20,6 +20,14 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
       step("titolo_preventivo","Titolo preventivo","Intestazione","Titolo descrittivo del documento.",{field:"titolo_preventivo",kind:"text",advanced:true}),
     ]:[]),
   ];
+  if(version>=3){
+    steps.push(step("lavoro_modalita","Come attribuire le ore di lavorazione?","Attribuzione dei costi comuni",
+      "Scegli un monte ore per tutta l'offerta oppure le ore necessarie per un singolo pezzo di ciascun prodotto.",
+      {field:"lavoro_modalita",kind:"select"}));
+    if(doc.lavoro_modalita==="complessivo")steps.push(step("lavoro_ore_totali","Ore totali di lavorazione dell'offerta","Attribuzione dei costi comuni",
+      "Inserisci il monte ore una sola volta. Sarà ripartito sulle righe in proporzione al numero di pezzi, conservando il totale inserito.",
+      {field:"lavoro_ore_totali",kind:"number",numeric:"decimal",required:true}));
+  }
   // Historical documents keep their original per-product treatment fields.
   // Newer quotes handle treatments in one dedicated block after all product
   // details, so the mode and its costs cannot be mistaken for repeated fields
@@ -44,7 +52,10 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     }else{
       add("materiale_cad","Costo materiale per pezzo","Costo diretto del materiale in euro per singolo pezzo.",{kind:"number",numeric:"euro"});
     }
-    add("lavoro_h","Ore complessive di lavorazione","Tempo totale per produrre la quantità indicata.",{kind:"number",numeric:"decimal"});
+    if(doc.lavoro_modalita!=="complessivo")add("lavoro_h",
+      doc.lavoro_modalita==="per_pezzo"?"Ore di lavorazione per singolo pezzo":"Ore complessive di lavorazione",
+      doc.lavoro_modalita==="per_pezzo"?"Tempo per un pezzo di questo prodotto: sarà moltiplicato per la quantità.":"Tempo totale per produrre la quantità indicata.",
+      {kind:"number",numeric:"decimal"});
     if(advanced){
       add("costo_lavoro","Costo orario manodopera","Tariffa di lavorazione in €/ora.",{kind:"number",numeric:"euro",advanced:true});
       add("attrezzaggi_h","Ore complessive di attrezzaggio","Tempo di preparazione relativo a questo prodotto.",{kind:"number",numeric:"decimal",advanced:true});
@@ -115,6 +126,8 @@ export function quoteWizardStepError(step:QuoteWizardStep,doc:QuoteDocument):str
   const value=obj?.[step.field||""];
   if(step.field==="quantita" || ["lunghezza_mm","larghezza_mm","spessore_mm"].includes(step.field??"")){
     if(!Number.isFinite(Number(value)) || Number(value)<=0) return "Inserisci un numero maggiore di zero.";
+  }else if(step.field==="lavoro_ore_totali"){
+    if(value==="" || value==null || !Number.isFinite(Number(value)) || Number(value)<0)return "Inserisci un monte ore valido, maggiore o uguale a zero.";
   }else if(step.field==="costo_materiale_kg"){
     if(!Number.isFinite(Number(value)) || Number(value)<0) return "Inserisci un costo al kg valido, non negativo.";
   }else if(!String(value??"").trim()){

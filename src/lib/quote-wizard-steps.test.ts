@@ -92,12 +92,12 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     const mode=steps.filter(x=>x.field==="trattamenti_modalita");
     expect(mode).toHaveLength(1);
     expect(mode[0].index).toBeUndefined();
-    expect(steps.indexOf(mode[0])).toBeGreaterThan(steps.findIndex(x=>x.id==="p:2:lavoro_h"));
+    expect(steps.indexOf(mode[0])).toBeGreaterThan(steps.findIndex(x=>x.id==="p:2:materiale_cad"));
     const local=steps.filter(x=>x.field==="trattamenti_cad");
     expect(local).toHaveLength(3);
     expect(local.map(x=>x.index)).toEqual([0,1,2]);
     expect(local.every(x=>x.hint.includes("questo prodotto"))).toBe(true);
-    expect(local.every(x=>steps.indexOf(x)>steps.findIndex(s=>s.id==="p:2:lavoro_h"))).toBe(true);
+    expect(local.every(x=>steps.indexOf(x)>steps.findIndex(s=>s.id==="p:2:materiale_cad"))).toBe(true);
     expect(steps.filter(x=>x.field==="trattamenti_totale_euro")).toHaveLength(0);
 
     const globalSteps=buildQuoteWizardSteps({...q,trattamenti_modalita:"globale"});
@@ -105,9 +105,9 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     expect(globalSteps.filter(x=>x.field==="trattamenti_totale_euro")).toHaveLength(1);
     expect(globalSteps.filter(x=>x.field==="trattamenti_cad")).toHaveLength(0);
     expect(globalSteps.findIndex(x=>x.id==="trattamenti_modalita"))
-      .toBeGreaterThan(globalSteps.findIndex(x=>x.id==="p:2:lavoro_h"));
+      .toBeGreaterThan(globalSteps.findIndex(x=>x.id==="p:2:materiale_cad"));
     expect(globalSteps.findIndex(x=>x.id==="trattamenti_totale_euro"))
-      .toBeGreaterThan(globalSteps.findIndex(x=>x.id==="p:2:lavoro_h"));
+      .toBeGreaterThan(globalSteps.findIndex(x=>x.id==="p:2:materiale_cad"));
   });
   it("allocates exactly one global amount, including when hidden product costs were previously filled",()=>{
     const q={...blankQuote(),trattamenti_modalita:"globale",trattamenti_totale_euro:120,
@@ -134,7 +134,7 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     const policy=path.filter(x=>x.field==="trattamenti_modalita");
     expect(policy).toHaveLength(1);
     expect(path.findIndex(x=>x.id==="trattamenti_modalita")).toBeGreaterThan(
-      path.findIndex(x=>x.id==="p:2:lavoro_h"));
+      path.findIndex(x=>x.id==="p:2:materiale_cad"));
     expect(path.filter(x=>x.field==="trattamenti_cad").map(x=>x.index)).toEqual([0,1,2]);
     expect(path.some(x=>x.id==="trattamenti_totale_euro")).toBe(false);
     expect(path.filter(x=>x.field==="trattamenti_cad").map(x=>x.title)).toEqual([
@@ -145,7 +145,7 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     const pathAdvanced=buildQuoteWizardSteps(q,true);
     expect(pathAdvanced.filter(x=>x.id==="trattamenti_modalita")).toHaveLength(1);
     expect(pathAdvanced.findIndex(x=>x.id==="trattamenti_modalita")).toBeGreaterThan(
-      pathAdvanced.findIndex(x=>x.id==="p:2:lavoro_h"));
+      pathAdvanced.findIndex(x=>x.id==="p:2:materiale_cad"));
   });
   it("global treatment for 3 products is entered exactly once after product details",()=>{
     const q={...blankQuote(),trattamenti_modalita:"globale",trattamenti_totale_euro:90,
@@ -159,8 +159,8 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     expect(path.filter(x=>x.id==="trattamenti_totale_euro")).toHaveLength(1);
     expect(path.some(x=>x.field==="trattamenti_cad")).toBe(false);
     expect(path.findIndex(x=>x.id==="trattamenti_modalita")).toBeLessThan(path.findIndex(x=>x.id==="trattamenti_totale_euro"));
-    expect(path.findIndex(x=>x.id==="trattamenti_modalita")).toBeGreaterThan(path.findIndex(x=>x.id==="p:2:lavoro_h"));
-    expect(path.findIndex(x=>x.id==="trattamenti_totale_euro")).toBeGreaterThan(path.findIndex(x=>x.id==="p:2:lavoro_h"));
+    expect(path.findIndex(x=>x.id==="trattamenti_modalita")).toBeGreaterThan(path.findIndex(x=>x.id==="p:2:materiale_cad"));
+    expect(path.findIndex(x=>x.id==="trattamenti_totale_euro")).toBeGreaterThan(path.findIndex(x=>x.id==="p:2:materiale_cad"));
     const totals=calculateQuote(q).prodotti.map((p:Record<string,number>)=>p.trattamenti_tot);
     expect(totals).toEqual([15,30,45]);
     const alternative={...q,trattamenti_modalita:"per_prodotto"};
@@ -180,7 +180,7 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     const steps=buildQuoteWizardSteps(q);
     expect(steps.filter(s=>s.id==="trattamenti_modalita")).toHaveLength(1);
     expect(steps.findIndex(s=>s.id==="trattamenti_modalita"))
-      .toBeGreaterThan(steps.findIndex(s=>s.id==="p:2:lavoro_h"));
+      .toBeGreaterThan(steps.findIndex(s=>s.id==="p:2:materiale_cad"));
     expect(steps.filter(s=>s.field==="trattamenti_cad")).toHaveLength(3);
     expect(steps.filter(s=>s.field==="trattamenti_totale_euro")).toHaveLength(0);
     for(const [i,field] of steps.filter(s=>s.field==="trattamenti_cad").entries()){
@@ -205,7 +205,7 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
       expect(steps.findIndex(s=>s.id==="trattamenti_modalita"))
         .toBeLessThan(steps.findIndex(s=>s.id==="trattamenti_totale_euro"));
       expect(steps.findIndex(s=>s.id==="trattamenti_totale_euro"))
-        .toBeGreaterThan(steps.findIndex(s=>s.id==="p:2:lavoro_h"));
+        .toBeGreaterThan(steps.findIndex(s=>s.id==="p:2:materiale_cad"));
     }
     const result=calculateQuote(q);
     expect(result.prodotti.map((p:Record<string,number>)=>p.trattamenti_tot))
@@ -220,7 +220,7 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
       .toBeCloseTo(140);
   });
   it("does not ask for separate treatment costs when their time is included in product work hours",()=>{
-    const q={...blankQuote(),trattamenti_modalita:"ore_lavoro",
+    const q={...blankQuote(),lavoro_modalita:"per_pezzo",trattamenti_modalita:"ore_lavoro",
       prodotti:[blankProduct(),blankProduct()]};
     const steps=buildQuoteWizardSteps(q);
     expect(steps.filter(s=>s.field==="trattamenti_modalita")).toHaveLength(1);

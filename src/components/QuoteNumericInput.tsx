@@ -4,54 +4,55 @@ import type {InputHTMLAttributes} from "react";
 export type QuoteNumericKind = "euro" | "decimal" | "percent";
 export const quoteNumericDecimals = (kind:QuoteNumericKind):number => kind==="euro"?2:1;
 
-export function formatQuoteNumeric(value:number|null|undefined,kind:QuoteNumericKind):string {
+export function formatQuoteNumeric(value:number|null|undefined,kind:QuoteNumericKind,fractionDigits=quoteNumericDecimals(kind)):string {
   if(value===null || value===undefined || !Number.isFinite(value))return "";
   const n=kind==="percent"?value*100:value;
   return n.toLocaleString("it-IT",{
     useGrouping:false,minimumFractionDigits:kind==="euro"?2:0,
-    maximumFractionDigits:quoteNumericDecimals(kind),
+    maximumFractionDigits:fractionDigits,
   });
 }
 
 /** Accepts decimal comma and dot, preserving transitional typing like '1,'
  *  while refusing excess decimal digits and browser's spinner/exponent syntax.
  */
-export function validQuoteNumericDraft(raw:string,kind:QuoteNumericKind):boolean {
+export function validQuoteNumericDraft(raw:string,kind:QuoteNumericKind,fractionDigits=quoteNumericDecimals(kind)):boolean {
   if(raw==="")return true;
-  const decimals=quoteNumericDecimals(kind);
+  const decimals=fractionDigits;
   return new RegExp("^\\d*(?:[.,]\\d{0,"+decimals+"})?$").test(raw);
 }
 
-export function parseQuoteNumericDraft(raw:string,kind:QuoteNumericKind):number|null {
-  if(!validQuoteNumericDraft(raw,kind) || !/\d/.test(raw))return null;
+export function parseQuoteNumericDraft(raw:string,kind:QuoteNumericKind,fractionDigits=quoteNumericDecimals(kind)):number|null {
+  if(!validQuoteNumericDraft(raw,kind,fractionDigits) || !/\d/.test(raw))return null;
   const normalized=Number(raw.replace(",","."));
   if(!Number.isFinite(normalized)||normalized<0)return null;
   return kind==="percent"?normalized/100:normalized;
 }
 
-export function roundQuoteNumeric(value:number,kind:QuoteNumericKind):number {
-  const factor=Math.pow(10,quoteNumericDecimals(kind));
+export function roundQuoteNumeric(value:number,kind:QuoteNumericKind,fractionDigits=quoteNumericDecimals(kind)):number {
+  const factor=Math.pow(10,fractionDigits);
   // Only user-entered values are rounded. Historic stored costs are unchanged.
   if(kind==="percent")return Math.round((value*100+Number.EPSILON)*factor)/factor/100;
   return Math.round((value+Number.EPSILON)*factor)/factor;
 }
 
 export default function QuoteNumericInput({
-  value, onChange, kind, optional=false, disabled=false, className="", "aria-label":ariaLabel,
+  value, onChange, kind, fractionDigits=quoteNumericDecimals(kind), optional=false, disabled=false, className="", "aria-label":ariaLabel,
   ...rest
 }: {
   value:number|null|undefined;
   onChange:(next:number|null)=>void;
   kind:QuoteNumericKind;
   optional?:boolean;
+  fractionDigits?:number;
 } & Omit<InputHTMLAttributes<HTMLInputElement>,
   "value"|"onChange"|"type"|"inputMode"|"step"|"min"|"max">) {
   const focused=useRef(false);
   const edited=useRef(false);
-  const [draft,setDraft]=useState(()=>formatQuoteNumeric(value,kind));
+  const [draft,setDraft]=useState(()=>formatQuoteNumeric(value,kind,fractionDigits));
   useEffect(()=>{
-    if(!focused.current)setDraft(formatQuoteNumeric(value,kind));
-  },[value,kind]);
+    if(!focused.current)setDraft(formatQuoteNumeric(value,kind,fractionDigits));
+  },[value,kind,fractionDigits]);
 
   return <input
     {...rest}
@@ -63,23 +64,23 @@ export default function QuoteNumericInput({
     onFocus={()=>{focused.current=true;edited.current=false;}}
     onChange={event=>{
       const text=event.target.value;
-      if(!validQuoteNumericDraft(text,kind))return;
+      if(!validQuoteNumericDraft(text,kind,fractionDigits))return;
       edited.current=true;
       setDraft(text); // Don't replace an in-progress comma or erase the caret.
-      const parsed=parseQuoteNumericDraft(text,kind);
+      const parsed=parseQuoteNumericDraft(text,kind,fractionDigits);
       if(parsed!==null)onChange(parsed);
       // Empty means no final value until blur, so users may freely Backspace.
     }}
     onBlur={()=>{
       focused.current=false;
       if(!edited.current){
-        setDraft(formatQuoteNumeric(value,kind));
+        setDraft(formatQuoteNumeric(value,kind,fractionDigits));
         return; // Never round historic values merely from focus/blur.
       }
-      const parsed=parseQuoteNumericDraft(draft,kind);
-      const committed=parsed===null?(optional?null:0):roundQuoteNumeric(parsed,kind);
+      const parsed=parseQuoteNumericDraft(draft,kind,fractionDigits);
+      const committed=parsed===null?(optional?null:0):roundQuoteNumeric(parsed,kind,fractionDigits);
       onChange(committed);
-      setDraft(formatQuoteNumeric(committed,kind));
+      setDraft(formatQuoteNumeric(committed,kind,fractionDigits));
     }}
   />;
 }

@@ -7,6 +7,7 @@ import {
   Plus, Save, Settings2, Trash2,
 } from "lucide-react";
 import QuoteNumericInput from "@/components/QuoteNumericInput";
+import QuoteTotal from "@/components/QuoteTotal";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
@@ -105,7 +106,7 @@ export default function QuoteMobileWizard(props:Props){
   const updateValue=(v:unknown)=>{
     setLocalError("");
     if(!field)return;
-    if(productIndex===undefined)onUpdate(field,v,current.kind==="number"||field==="trattamenti_modalita");
+    if(productIndex===undefined)onUpdate(field,v,current.kind==="number"||field==="trattamenti_modalita"||field==="lavoro_modalita");
     else onUpdateProduct(productIndex,field,v);
   };
   const createNewGroup=async()=>{
@@ -153,6 +154,9 @@ export default function QuoteMobileWizard(props:Props){
         </button>
       </div>
     </header>
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+      <QuoteTotal value={preview?.totale_finale ?? preview?.totale}/>
+    </div>
     <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2.5 border border-slate-200">
       <label htmlFor="quote-wizard-advanced" className="flex items-center gap-2 text-sm font-medium text-slate-700">
         <Settings2 size={16}/> Opzioni avanzate
@@ -315,6 +319,13 @@ export default function QuoteMobileWizard(props:Props){
         ):field==="oggetto_modifica" && product && productIndex!==undefined?(
           <QuoteModificationObjectFields value={value} disabled={locked} compact idPrefix={`wizard-modification-${productIndex}`}
             onChange={selected=>onUpdateProduct(productIndex,"oggetto_modifica",selected)}/>
+        ):field==="lavoro_modalita"?(
+          <select id="wizard-input" className={inputClass} disabled={locked} value={value??"per_riga"}
+            onChange={e=>updateValue(e.target.value)}>
+            <option value="complessivo">Ore lavoro imputate complessivamente</option>
+            <option value="per_pezzo">Ore lavoro imputate per ciascun prodotto (singolo pezzo)</option>
+            {value==null && <option value="per_riga">Ore totali per riga (modello precedente)</option>}
+          </select>
         ):field==="trattamenti_modalita"?(
           <div className="space-y-3">
             {[["per_prodotto","Costo separato per ciascun prodotto (€/pz)"],
@@ -330,7 +341,7 @@ export default function QuoteMobileWizard(props:Props){
               {value==="globale"
                 ?"Inserirai una sola cifra nel prossimo passo. Nessun campo trattamenti verrà chiesto sui singoli prodotti."
                 :value==="ore_lavoro"
-                  ?"Il costo separato dei trattamenti sarà zero. Includi il loro tempo nelle ore complessive di lavorazione di ciascun prodotto; non verranno chiesti costi trattamento separati."
+                  ?"Il costo separato dei trattamenti sarà zero. Includi il loro tempo nelle ore di lavorazione secondo la modalità scelta (monte ore dell'offerta o ore per pezzo); non verranno chiesti costi trattamento separati."
                   :"Il Wizard ti chiederà un costo trattamento €/pezzo per ogni prodotto, identificando sempre l'articolo. Non ti chiederà un totale globale."}
               Cambiare modalità conserva i vecchi valori, ma il preventivo conteggia esclusivamente la modalità selezionata.
             </p>
@@ -347,6 +358,7 @@ export default function QuoteMobileWizard(props:Props){
           <QuoteNumericInput key={current.id} id="wizard-input"
             className={inputClass+(field==="quantita"&&(value===""||value===null||value===undefined)?" quote-quantity-attention":"")}
             kind={current.numeric}
+            fractionDigits={field==="lavoro_h" && doc.lavoro_modalita==="per_pezzo" ? 6 : undefined}
             optional={field==="quantita"||field==="prezzo_manuale"||field==="target_totale"}
             placeholder={field==="quantita"?"Inserisci la quantità":undefined}
             disabled={locked}
