@@ -19,6 +19,7 @@ import { migrateStagingCycleCapacity } from "./staging-cycle-capacity-migration"
 import { migrateStagingBandellePrices } from "./staging-bandelle-price-migration";
 import { migrateStagingBandelleTPrices } from "./staging-bandelle-t-price-migration";
 import { downloadBackup } from "./backup";
+import { runStagingF3Release } from "./staging-f3-release";
 import { previewLegacyImport, commitLegacyImport } from "./legacy-import";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
@@ -50,6 +51,16 @@ app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
 export default app;
 
 if (env.isProduction) {
+  if (process.env.DDCOST_STAGING_F3_ACTION && process.env.DDCOST_STAGING_F3_ACTION !== "off") {
+    try { await runStagingF3Release(); }
+    catch (error) {
+      // Do not expose SQL values, connection strings or business records in deployment logs.
+      const message = error instanceof Error && error.message.startsWith("[F3 release]")
+        ? error.message : "[F3 release] Database check failed; startup stopped";
+      console.error(message);
+      process.exit(1);
+    }
+  }
   if(process.env.DDCOST_STAGING_MIGRATE_SALES==="1")await migrateStagingSales();
   if (process.env.DDCOST_STAGING_MIGRATE_SOFT_DELETE === "1") {
     await migrateStagingCycles();

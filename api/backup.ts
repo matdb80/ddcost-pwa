@@ -36,36 +36,12 @@ function sha256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-export async function downloadBackup(c: Context): Promise<Response> {
-  let user: Awaited<ReturnType<typeof authenticateRequest>>;
+/** Shared read-only collector; callers own connection lifecycle, never authentication. */
+export async function collectLogicalBackup(connection: Connection) {
   try {
-    user = await authenticateRequest(c.req.raw.headers);
-  } catch {
-    return c.json({ error: "Authentication required" }, 401);
-  }
-
-  if (user.role !== "admin" || !env.allowedMicrosoftOids.includes(user.unionId)) {
-    return c.json({ error: "Not authorized" }, 403);
-  }
-
-  let connection: Connection | undefined;
-  let transactionStarted = false;
-
-  try {
-    connection = await mysql.createConnection({
-      uri: env.databaseUrl,
-      ssl: { rejectUnauthorized: true },
-      connectTimeout: 10000,
-      supportBigNumbers: true,
-      bigNumberStrings: true,
-      decimalNumbers: false,
-      dateStrings: true,
-    });
-
     // A single transaction keeps rows from all tables in one snapshot.
     // SQL identifiers below come only from the hard-coded TABLES constant.
     await connection.query("START TRANSACTION");
-    transactionStarted = true;
 
     // Include *all* current DDCost tables, including feedback and export
     // receipts. On older production environments optional tables may not yet
@@ -107,7 +83,6 @@ export async function downloadBackup(c: Context): Promise<Response> {
     }
 
     await connection.query("COMMIT");
-    transactionStarted = false;
 
     // This is a logical SQL-schema + JSON-data backup, not a TiDB physical snapshot.
     // Numeric SQL columns and timestamps remain exact strings; dataJson is not parsed.
@@ -123,8 +98,40 @@ export async function downloadBackup(c: Context): Promise<Response> {
       records,
     };
 
-    const checksumSha256 = sha256(JSON.stringify(payload));
-    const json = JSON.stringify({ ...payload, checksumSha256 }, null, 2) + "\n";
+    return { ...payload, checksumSha256: sha256(JSON.stringify(payload)) };
+  } catch (error) {
+    try { await connection.query("ROLLBACK"); } catch { /* read-only */ }
+    throw error;
+  }
+}
+
+export async function downloadBackup(c: Context): Promise<Response> {
+  let user: Awaited<ReturnType<typeof authenticateRequest>>;
+  try {
+    user = await authenticateRequest(c.req.raw.headers);
+  } catch {
+    return c.json({ error: "Authentication required" }, 401);
+  }
+
+  if (user.role !== "admin" || !env.allowedMicrosoftOids.includes(user.unionId)) {
+    return c.json({ error: "Not authorized" }, 403);
+  }
+
+  let connection: Connection | undefined;
+
+  try {
+    connection = await mysql.createConnection({
+      uri: env.databaseUrl,
+      ssl: { rejectUnauthorized: true },
+      connectTimeout: 10000,
+      supportBigNumbers: true,
+      bigNumberStrings: true,
+      decimalNumbers: false,
+      dateStrings: true,
+    });
+
+    const backup = await collectLogicalBackup(connection);
+    const json = JSON.stringify(backup, null, 2) + "\n";
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const filename = "DDCost_backup_" + stamp + ".json";
 
@@ -138,9 +145,6 @@ export async function downloadBackup(c: Context): Promise<Response> {
       },
     });
   } catch (err: unknown) {
-    if (connection && transactionStarted) {
-      try { await connection.query("ROLLBACK"); } catch { /* read-only */ }
-    }
     const errorCode = (err as { code?: string })?.code ?? "UNKNOWN";
     console.error("[DDCost] Backup export failed, code:", errorCode);
     return c.json({ error: "Backup export failed. No data was modified." }, 500);
