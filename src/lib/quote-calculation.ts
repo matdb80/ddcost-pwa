@@ -27,9 +27,9 @@ export function duplicateLastProductForNewLot(products: Product[]): Product[] {
   copy.quantita = "";
   return [...products, copy];
 }
-export function quoteLaborMode(document: QuoteDocument): "complessivo" | "per_pezzo" | "per_riga" {
+export function quoteLaborMode(document: QuoteDocument): "complessivo" | "per_prodotto" | "per_pezzo" | "per_riga" {
   if (document.lavoro_modalita == null) return "per_riga"; // Preserve saved quotes.
-  if (document.lavoro_modalita === "complessivo" || document.lavoro_modalita === "per_pezzo") return document.lavoro_modalita;
+  if (document.lavoro_modalita === "complessivo" || document.lavoro_modalita === "per_prodotto" || document.lavoro_modalita === "per_pezzo") return document.lavoro_modalita;
   throw new Error("Modalità di imputazione delle ore di lavorazione non valida");
 }
 export function quoteLaborHours(document: QuoteDocument): number[] {
@@ -47,16 +47,17 @@ export function quoteLaborHours(document: QuoteDocument): number[] {
     const pieces=quantities.reduce((sum,q)=>sum+q,0);
     return quantities.map(q=>total*q/pieces);
   }
-  return products.map((p,i)=>mode==="per_pezzo"?hours(p.lavoro_h)*quantities[i]:val(p.lavoro_h));
+  // per_pezzo is retained only for documents saved by the previous release.
+  return products.map((p,i)=>mode==="per_pezzo"?hours(p.lavoro_h)*quantities[i]:mode==="per_prodotto"?hours(p.lavoro_h):val(p.lavoro_h));
 }
 /** An explicit mode change conserves the current total hours, without editing stored history. */
-export function changeQuoteLaborMode(document: QuoteDocument, mode: "complessivo" | "per_pezzo"): QuoteDocument {
+export function changeQuoteLaborMode(document: QuoteDocument, mode: "complessivo" | "per_prodotto" | "per_pezzo"): QuoteDocument {
   if(quoteLaborMode(document)===mode)return structuredClone(document);
   const assigned=quoteLaborHours(document);
   const next=structuredClone(document);
   next.lavoro_modalita=mode;
   if(mode==="complessivo")next.lavoro_ore_totali=assigned.reduce((sum,h)=>sum+h,0);
-  else next.prodotti=next.prodotti.map((p:Product,i:number)=>({...p,lavoro_h:assigned[i]/Number(p.quantita)}));
+  else next.prodotti=next.prodotti.map((p:Product,i:number)=>({...p,lavoro_h:mode==="per_prodotto"?assigned[i]:assigned[i]/Number(p.quantita)}));
   return next;
 }
 export function calculateQuote(document: QuoteDocument): QuoteDocument {

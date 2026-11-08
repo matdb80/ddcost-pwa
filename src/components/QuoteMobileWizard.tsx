@@ -322,11 +322,11 @@ export default function QuoteMobileWizard(props:Props){
           <QuoteModificationObjectFields value={value} disabled={locked} compact idPrefix={`wizard-modification-${productIndex}`}
             onChange={selected=>onUpdateProduct(productIndex,"oggetto_modifica",selected)}/>
         ):field==="lavoro_modalita"?(
-          <select id="wizard-input" className={inputClass} disabled={locked} value={value??"per_riga"}
+          <select id="wizard-input" className={inputClass} disabled={locked} value={value??"per_prodotto"}
             onChange={e=>updateValue(e.target.value)}>
-            <option value="complessivo">Ore lavoro imputate complessivamente</option>
-            <option value="per_pezzo">Ore lavoro imputate per ciascun prodotto (singolo pezzo)</option>
-            {value==null && <option value="per_riga">Ore totali per riga (modello precedente)</option>}
+            <option value="complessivo">Ore di lavoro imputate complessivamente</option>
+            <option value="per_prodotto">Ore di lavoro imputate per ciascun prodotto</option>
+            {value==="per_pezzo" && <option value="per_pezzo">Ore per singolo pezzo (modalità precedente)</option>}
           </select>
         ):field==="trattamenti_modalita"?(
           <div className="space-y-3">
@@ -343,7 +343,7 @@ export default function QuoteMobileWizard(props:Props){
               {value==="globale"
                 ?"Inserirai una sola cifra nel prossimo passo. Nessun campo trattamenti verrà chiesto sui singoli prodotti."
                 :value==="ore_lavoro"
-                  ?"Il costo separato dei trattamenti sarà zero. Includi il loro tempo nelle ore di lavorazione secondo la modalità scelta (monte ore dell'offerta o ore per pezzo); non verranno chiesti costi trattamento separati."
+                  ?"Il costo separato dei trattamenti sarà zero. Includi il loro tempo nelle ore di lavorazione secondo la modalità scelta (monte ore dell'offerta o ore di ciascuna riga prodotto); non verranno chiesti costi trattamento separati."
                   :"Il Wizard ti chiederà un costo trattamento €/pezzo per ogni prodotto, identificando sempre l'articolo. Non ti chiederà un totale globale."}
               Cambiare modalità conserva i vecchi valori, ma il preventivo conteggia esclusivamente la modalità selezionata.
             </p>
@@ -360,7 +360,7 @@ export default function QuoteMobileWizard(props:Props){
           <QuoteNumericInput key={current.id} id="wizard-input"
             className={inputClass+(field==="quantita"&&(value===""||value===null||value===undefined)?" quote-quantity-attention":"")}
             kind={current.numeric}
-            fractionDigits={field==="lavoro_h" && doc.lavoro_modalita==="per_pezzo" ? 6 : undefined}
+            fractionDigits={field==="lavoro_h" && (doc.lavoro_modalita==="per_pezzo" || doc.lavoro_modalita==="per_prodotto") ? 6 : undefined}
             optional={field==="quantita"||field==="prezzo_manuale"||field==="target_totale"}
             placeholder={field==="quantita"?"Inserisci la quantità":undefined}
             disabled={locked}

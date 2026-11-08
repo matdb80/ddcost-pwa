@@ -22,7 +22,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
   ];
   if(version>=3){
     steps.push(step("lavoro_modalita","Come attribuire le ore di lavorazione?","Attribuzione dei costi comuni",
-      "Scegli un monte ore per tutta l'offerta oppure le ore necessarie per un singolo pezzo di ciascun prodotto.",
+      "Scegli un monte ore per tutta l'offerta oppure le ore necessarie per realizzare la quantità indicata in ciascuna riga prodotto.",
       {field:"lavoro_modalita",kind:"select"}));
     if(doc.lavoro_modalita==="complessivo")steps.push(step("lavoro_ore_totali","Ore totali di lavorazione dell'offerta","Attribuzione dei costi comuni",
       "Inserisci il monte ore una sola volta. Sarà ripartito sulle righe in proporzione al numero di pezzi, conservando il totale inserito.",
@@ -53,8 +53,8 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
       add("materiale_cad","Costo materiale per pezzo","Costo diretto del materiale in euro per singolo pezzo.",{kind:"number",numeric:"euro"});
     }
     if(doc.lavoro_modalita!=="complessivo")add("lavoro_h",
-      doc.lavoro_modalita==="per_pezzo"?"Ore di lavorazione per singolo pezzo":"Ore complessive di lavorazione",
-      doc.lavoro_modalita==="per_pezzo"?"Tempo per un pezzo di questo prodotto: sarà moltiplicato per la quantità.":"Tempo totale per produrre la quantità indicata.",
+      doc.lavoro_modalita==="per_pezzo"?"Ore di lavorazione per singolo pezzo (modalità precedente)":"Ore di lavorazione di questo prodotto",
+      doc.lavoro_modalita==="per_pezzo"?"Modalità precedente: tempo per un pezzo, moltiplicato per la quantità. Puoi convertirlo al passo di imputazione delle ore.":"Inserisci le ore per produrre tutti i pezzi della riga: 16 ore per 10 pezzi equivalgono a 1,6 ore per pezzo.",
       {kind:"number",numeric:"decimal"});
     if(advanced){
       add("costo_lavoro","Costo orario manodopera","Tariffa di lavorazione in €/ora.",{kind:"number",numeric:"euro",advanced:true});

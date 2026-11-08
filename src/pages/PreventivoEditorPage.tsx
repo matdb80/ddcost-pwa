@@ -192,7 +192,7 @@ export default function PreventivoEditorPage() {
     return()=>window.removeEventListener("beforeunload",handler);
   },[unsavedChanges]);
   const update = (key: string, value: unknown, economic = false) => {
-    if(key==="lavoro_modalita" && (value==="complessivo" || value==="per_pezzo")){
+    if(key==="lavoro_modalita" && (value==="complessivo" || value==="per_prodotto" || value==="per_pezzo")){
       try { setDoc(changeQuoteLaborMode(doc,value)); setDirtyCalculation(true); setError(""); }
       catch(e){setError(e instanceof Error?e.message:"Impossibile cambiare imputazione delle ore");}
       return;
@@ -657,12 +657,12 @@ export default function PreventivoEditorPage() {
                   </label>
                   <label className="flex min-w-0 flex-1 basis-48 flex-col gap-1 text-xs">
                     <span className="font-medium">Imputazione ore di lavorazione</span>
-                    <select value={doc.lavoro_modalita ?? "per_riga"} disabled={locked}
+                    <select value={doc.lavoro_modalita ?? "per_prodotto"} disabled={locked}
                       onChange={e=>update("lavoro_modalita",e.target.value,true)}
                       className={compactInputClass+" "+normalInputClass}>
-                      <option value="complessivo">Ore lavoro imputate complessivamente</option>
-                      <option value="per_pezzo">Ore lavoro imputate per ciascun prodotto (singolo pezzo)</option>
-                      {doc.lavoro_modalita==null && <option value="per_riga">Ore totali per riga (modello precedente)</option>}
+                      <option value="complessivo">Ore di lavoro imputate complessivamente</option>
+                      <option value="per_prodotto">Ore di lavoro imputate per ciascun prodotto</option>
+                      {laborPerPiece && <option value="per_pezzo">Ore per singolo pezzo (modalità precedente)</option>}
                     </select>
                   </label>
                 </div>
@@ -676,8 +676,8 @@ export default function PreventivoEditorPage() {
                   {laborOverall
                     ? "Il monte ore viene ripartito automaticamente sulle righe in proporzione ai pezzi. Le quantità modificano la ripartizione, non le ore totali inserite."
                     : laborPerPiece
-                    ? "Lavorazione: le ore inserite in ciascuna riga sono per un singolo pezzo e vengono moltiplicate per la quantità."
-                    : "Questo preventivo conserva le ore totali inserite nelle singole righe. Scegli una nuova modalità per modificare l'imputazione."}
+                    ? "Questo preventivo usa la modalità precedente: ore per singolo pezzo. Scegli 'per ciascun prodotto' per convertirle in ore totali della riga conservando il costo attuale; poi puoi modificarle."
+                    : "Inserisci in ogni riga le ore necessarie per realizzare tutti i pezzi di quel prodotto. Le ore per pezzo si ottengono dividendo per la quantità della riga."}
                 </p>
                 <p className="text-xs text-slate-600">
                   Costo comune: <strong>€ {euro(preview?.costi_comuni_riepilogo?.progettazione_totale)}<FormulaTooltip label="Costo totale di progettazione" formula={CALCULATION_FORMULAS.quote.engineeringTotal}/></strong>
@@ -833,8 +833,8 @@ export default function PreventivoEditorPage() {
               if(f.key==="trattamenti_cad" && !legacyCostModel && sharedTreatmentMode!=="per_prodotto")return null;
               const highlighted=suggestedProductValue(p,f.key);
               const quantityNeedsAttention=f.key==="quantita"&&(p[f.key]===""||p[f.key]===null||p[f.key]===undefined);
-              const fieldLabel=f.key==="lavoro_h" && laborPerPiece ? "Ore di lavorazione per singolo pezzo" : f.label;
-              const shortLabel=f.key==="lavoro_h" ? (laborPerPiece ? "Ore lavoro / pezzo" : "Ore lavoro totali") : f.shortLabel;
+              const fieldLabel=f.key==="lavoro_h" ? (laborPerPiece ? "Ore di lavorazione per singolo pezzo" : "Ore complessive per realizzare la quantità indicata in questa riga") : f.label;
+              const shortLabel=f.key==="lavoro_h" ? (laborPerPiece ? "Ore lavoro / pezzo" : "Ore lavoro prodotto") : f.shortLabel;
               if(f.key==="lavoro_h" && laborOverall)return <div key={f.key} className="flex min-w-0 flex-col gap-1 text-xs">
                 <span className="font-medium text-slate-600">Ore lavoro attribuite</span>
                 <output aria-label={`Ore lavoro attribuite al prodotto ${index+1}`} className={compactInputClass+" border-slate-200 bg-slate-100"}>
@@ -844,7 +844,7 @@ export default function PreventivoEditorPage() {
               return <label key={f.key} className="flex min-w-0 flex-col gap-1 text-xs">
                 <span className="truncate font-medium text-slate-600" title={fieldLabel}>{shortLabel}</span>
                 <QuoteNumericInput kind={f.kind} optional={f.optional||f.key==="quantita"} disabled={locked}
-                  fractionDigits={f.key==="lavoro_h" && laborPerPiece ? 6 : undefined}
+                  fractionDigits={f.key==="lavoro_h" && (laborPerPiece || doc.lavoro_modalita==="per_prodotto") ? 6 : undefined}
                   id={`quote-product-${index}-${f.key}`}
                   className={compactInputClass+" "+(quantityNeedsAttention?"quote-quantity-attention":highlighted?suggestedInputClass:normalInputClass)}
                   title={quantityNeedsAttention?"Inserisci la quantità del nuovo lotto":highlighted?suggestedHint:fieldLabel}

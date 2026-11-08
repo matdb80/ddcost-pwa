@@ -67,25 +67,65 @@ it("keeps legacy quotes unchanged until the labor allocation is explicitly selec
   fireEvent.change(screen.getByLabelText("Imputazione ore di lavorazione"),{target:{value:"complessivo"}});
   await waitFor(()=>expect((screen.getByLabelText("Ore totali di lavorazione dell'offerta") as HTMLInputElement).value).toBe("50"));
   expect(screen.getByLabelText("Ore lavoro attribuite al prodotto 1").textContent).toBe("12,5");
-  fireEvent.change(screen.getByLabelText("Imputazione ore di lavorazione"),{target:{value:"per_pezzo"}});
-  expect(screen.getAllByText("Ore lavoro / pezzo")).toHaveLength(2);
+  fireEvent.change(screen.getByLabelText("Imputazione ore di lavorazione"),{target:{value:"per_prodotto"}});
+  expect(screen.getAllByText("Ore lavoro prodotto")).toHaveLength(2);
 });
 it("does not present a missing draft calculation as a zero total",async()=>{
   mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),quantita:""}]});
   await waitFor(()=>expect(screen.getByLabelText("Totale preventivo").textContent).toBe("Da calcolare"));
 });
-it("keeps precise converted per-piece hours when a field is focused without editing",async()=>{
+it("keeps precise allocated per-product hours when a field is focused without editing",async()=>{
   mount({...blankQuote(),stato_preventivo:"bozza",lavoro_ore_totali:100,
     prodotti:[50,25,30].map(quantita=>({...blankProduct(),quantita}))});
   await waitFor(()=>expect(screen.getByLabelText("Ore lavoro attribuite al prodotto 1").textContent).toBe("47,619"));
-  fireEvent.change(screen.getByLabelText("Imputazione ore di lavorazione"),{target:{value:"per_pezzo"}});
-  const hours=screen.getAllByLabelText("Ore lavoro / pezzo")[0] as HTMLInputElement;
-  expect(hours.value).toBe("0,952381");
+  fireEvent.change(screen.getByLabelText("Imputazione ore di lavorazione"),{target:{value:"per_prodotto"}});
+  const hours=screen.getAllByLabelText("Ore lavoro prodotto")[0] as HTMLInputElement;
+  expect(hours.value).toBe("47,619048");
   fireEvent.focus(hours);fireEvent.blur(hours);
   fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
   await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
   const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
   expect(calculateQuote(saved).lavoro_ore_calcolate).toBeCloseTo(100,10);
+});
+it("lets the user enter 16 and four row hours for quote A and persists that meaning",async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[10,20].map(quantita=>({...blankProduct(),quantita,materiale_cad:1,trattamenti_cad:1}))});
+  await screen.findByLabelText("Imputazione ore di lavorazione");
+  fireEvent.change(screen.getByLabelText("Imputazione ore di lavorazione"),{target:{value:"per_prodotto"}});
+  expect(screen.queryByRole("option",{name:/singolo pezzo/})).toBeNull();
+  expect(screen.queryByLabelText("Ore totali di lavorazione dell'offerta")).toBeNull();
+  const hours=screen.getAllByLabelText("Ore lavoro prodotto");
+  fireEvent.change(hours[0],{target:{value:"16"}});
+  fireEvent.change(hours[1],{target:{value:"4"}});
+  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("1.181,25");
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
+  expect(saved.lavoro_modalita).toBe("per_prodotto");
+  expect(saved.prodotti.map((p:Record<string,number>)=>p.lavoro_h)).toEqual([16,4]);
+  expect(calculateQuote(saved).totale_finale).toBeCloseTo(1181.25,10);
+});
+it("preserves a quote saved in the old per-piece mode until explicit conversion",async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza",lavoro_modalita:"per_pezzo",
+    prodotti:[{...blankProduct(),quantita:10,lavoro_h:16,materiale_cad:1,trattamenti_cad:1}]});
+  await waitFor(()=>expect(screen.getByLabelText("Totale preventivo").textContent).toContain("8.443,75"));
+  expect((screen.getByLabelText("Ore lavoro / pezzo") as HTMLInputElement).value).toBe("16");
+  fireEvent.change(screen.getByLabelText("Imputazione ore di lavorazione"),{target:{value:"per_prodotto"}});
+  expect((screen.getByLabelText("Ore lavoro prodotto") as HTMLInputElement).value).toBe("160");
+  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("8.443,75");
+  fireEvent.change(screen.getByLabelText("Ore lavoro prodotto"),{target:{value:"16"}});
+  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("883,75");
+});
+it("offers per-product row hours in the actual mobile mode selector",async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza",lavoro_ore_totali:16,
+    prodotti:[8,12].map(quantita=>({...blankProduct(),quantita,materiale_cad:1,trattamenti_cad:1}))},true);
+  await waitFor(()=>expect(screen.getByLabelText("Totale preventivo").textContent).toContain("927,50"));
+  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  const selector=screen.getByRole("combobox");
+  expect(screen.getByRole("option",{name:"Ore di lavoro imputate per ciascun prodotto"})).toBeTruthy();
+  expect(screen.queryByRole("option",{name:/singolo pezzo/})).toBeNull();
+  fireEvent.change(selector,{target:{value:"per_prodotto"}});
+  expect((selector as HTMLSelectElement).value).toBe("per_prodotto");
+  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("927,50");
 });
 it("shows the reopened saved total also in the actual mobile wizard",async()=>{
   mount({...blankQuote(),totale_finale:321.45},true);

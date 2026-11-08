@@ -220,7 +220,7 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
       .toBeCloseTo(140);
   });
   it("does not ask for separate treatment costs when their time is included in product work hours",()=>{
-    const q={...blankQuote(),lavoro_modalita:"per_pezzo",trattamenti_modalita:"ore_lavoro",
+    const q={...blankQuote(),lavoro_modalita:"per_prodotto",trattamenti_modalita:"ore_lavoro",
       prodotti:[blankProduct(),blankProduct()]};
     const steps=buildQuoteWizardSteps(q);
     expect(steps.filter(s=>s.field==="trattamenti_modalita")).toHaveLength(1);
