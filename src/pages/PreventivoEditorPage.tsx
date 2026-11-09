@@ -817,13 +817,20 @@ export default function PreventivoEditorPage() {
               di lavorazione {laborOverall ? "complessive dell'offerta" : laborPerPiece ? "per singolo pezzo" : "totali della riga"}; il costo trattamento separato è pari a zero.
             </p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2">
-            <label className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-2">
-              <span className="font-medium">Codice articolo</span>
-              <input className={compactInputClass+" "+normalInputClass} disabled={locked} value={p.codice??""}
+            <div className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-3">
+              <div className="flex min-h-7 items-center justify-between gap-2">
+                <label htmlFor={"product-code-"+index} className="font-medium">Codice articolo</label>
+                <TemporaryProductCode disabled={locked} ral={doc.verniciatura_ral??null} onApply={(code,ral)=>{
+                  updateProduct(index,"codice",code.code); updateProduct(index,"codice_temporaneo",code);
+                  updateProduct(index,"materiale_prodotto",({I:"ferro",X:"inox","6":"inox",B:"ottone",A:"alluminio"} as Record<string,string>)[code.material]);
+                  update("verniciatura_ral",ral,true);
+                }}/>
+              </div>
+              <input id={"product-code-"+index} className={compactInputClass+" "+normalInputClass} disabled={locked} value={p.codice??""}
                 onChange={e=>updateProduct(index,"codice",e.target.value)}/>
-            </label>
-            <label className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-5">
-              <span className="flex items-center justify-between gap-2">
+            </div>
+            <label className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-4">
+              <span className="flex min-h-7 items-center justify-between gap-2">
                 <span className="font-medium">Descrizione *</span>
                 <span id={"description-count-"+index} className={String(p.descrizione??"").length>QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH?"text-red-700":"text-slate-500"}>
                   {String(p.descrizione??"").length}/{QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH}
@@ -837,7 +844,7 @@ export default function PreventivoEditorPage() {
                 onChange={e=>updateProduct(index,"descrizione",e.target.value)}/>
             </label>
             <div className="flex min-w-0 flex-col gap-1 text-xs lg:col-span-3">
-              <label htmlFor={"group-"+index} className="font-medium">Gruppo merceologico *</label>
+              <label htmlFor={"group-"+index} className="flex min-h-7 items-center font-medium">Gruppo merceologico *</label>
               <select id={"group-"+index} disabled={locked} className={compactInputClass+" "+normalInputClass}
                 value={p.gruppo_merceologico ?? ""} onChange={e=>updateProduct(index,"gruppo_merceologico",e.target.value)}>
                 <option value="">Seleziona un gruppo esistente</option>
@@ -858,7 +865,7 @@ export default function PreventivoEditorPage() {
                     onClick={()=>{setNewGroupName("");setNewGroupIndex(index);}}>+ Crea un nuovo gruppo merceologico</button>)}
             </div>
             <label className="flex min-w-0 flex-col gap-1 text-xs lg:col-span-2">
-              <span className="font-medium">Materiale *</span>
+              <span className="flex min-h-7 items-center font-medium">Materiale *</span>
               <select className={compactInputClass+" "+normalInputClass} disabled={locked}
                 value={p.materiale_prodotto ?? ""} onChange={e=>updateProduct(index,"materiale_prodotto",e.target.value)}>
                 <option value="">Seleziona materiale</option>
@@ -869,11 +876,6 @@ export default function PreventivoEditorPage() {
               </select>
             </label>
           </div>
-          <TemporaryProductCode disabled={locked} ral={doc.verniciatura_ral??null} onApply={(code,ral)=>{
-            updateProduct(index,"codice",code.code); updateProduct(index,"codice_temporaneo",code);
-            updateProduct(index,"materiale_prodotto",({I:"ferro",X:"inox","6":"inox",B:"ottone",A:"alluminio"} as Record<string,string>)[code.material]);
-            update("verniciatura_ral",ral,true);
-          }}/>
           <QuoteModificationObjectFields value={p.oggetto_modifica} disabled={locked}
             idPrefix={`quote-product-${index}-modification`}
             onChange={value=>updateProduct(index,"oggetto_modifica",value)}/>
