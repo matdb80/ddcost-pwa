@@ -1,4 +1,5 @@
 import type {QuoteDocument} from "./quote-calculation";
+import {modificationObjectError} from "./quote-modification-validation";
 
 export type QuoteWizardStep = {
   id:string; title:string; section:string; hint:string;
@@ -16,8 +17,8 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
   const steps:QuoteWizardStep[]=[
     step("cliente","Per quale cliente?","Intestazione","Indica il cliente del preventivo.",{field:"cliente",kind:"text",required:true}),
     ...(advanced?[
-      step("riferimento_preventivo","Riferimento preventivo","Intestazione","Numero o riferimento interno, facoltativo.",{field:"riferimento_preventivo",kind:"text",advanced:true}),
-      step("titolo_preventivo","Titolo preventivo","Intestazione","Titolo descrittivo del documento.",{field:"titolo_preventivo",kind:"text",advanced:true}),
+      step("riferimento_preventivo","Riferimento Interno","Intestazione","Numero o riferimento interno, facoltativo.",{field:"riferimento_preventivo",kind:"text",advanced:true}),
+      step("titolo_preventivo","Riferimento Cliente","Intestazione","Riferimento indicato dal cliente.",{field:"titolo_preventivo",kind:"text",advanced:true}),
     ]:[]),
   ];
   if(version>=3){
@@ -38,7 +39,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     const add=(key:string,title:string,hint:string,more:Partial<QuoteWizardStep>={})=>
       steps.push(step("p:"+i+":"+key,title,s,hint,{field:key,index:i,...more}));
     add("descrizione","Che prodotto vuoi preventivare?","Descrivi l'articolo o la lavorazione.",{kind:"text",required:true});
-    add("oggetto_modifica","Oggetto della modifica","Selezione facoltativa, puoi indicare più voci.",{kind:"multiselect"});
+    add("oggetto_modifica","Oggetto della modifica","Seleziona almeno una voce per questo prodotto. Puoi indicare più voci o aggiungerne una personalizzata.",{kind:"multiselect",required:true});
     if(advanced)add("codice","Codice articolo","Codice interno, se già disponibile.",{kind:"text",advanced:true});
     add("gruppo_merceologico","Gruppo merceologico","Seleziona il gruppo di appartenenza.",{kind:"select",required:true});
     add("materiale_prodotto","Materiale del prodotto","Scegli il materiale principale.",{kind:"select",required:true});
@@ -106,7 +107,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     {field:"margine",index:i,kind:"number",numeric:"percent"},
   )));
   if(advanced){
-    steps.push(step("target_totale","Totale desiderato (€)","Opzioni avanzate","Facoltativo: la quadratura adatta i prezzi delle righe non bloccate.",{field:"target_totale",kind:"number",numeric:"euro",advanced:true}));
+    steps.push(step("target_totale",doc.verniciatura_ral?"Totale desiderato prima RAL (€)":"Totale desiderato (€)","Opzioni avanzate","Facoltativo: la quadratura adatta i prezzi delle righe non bloccate, prima dell’eventuale verniciatura RAL.",{field:"target_totale",kind:"number",numeric:"euro",advanced:true}));
     steps.push(step("listino_prodotto","Prodotto di riferimento per il listino","Opzioni avanzate","Scegli il prodotto a cui riferire lo sconto del cliente.",{kind:"select",advanced:true}));
     steps.push(step("listino_sconto","Sconto cliente","Opzioni avanzate","Ad esempio 40+10%. Il listino lordo viene ricavato dal prezzo netto.",{kind:"text",advanced:true}));
     for(const [key,title,hint] of [
@@ -124,6 +125,7 @@ export function quoteWizardStepError(step:QuoteWizardStep,doc:QuoteDocument):str
   if(!step.required)return null;
   const obj=step.index===undefined?doc:doc.prodotti?.[step.index];
   const value=obj?.[step.field||""];
+  if(step.field==="oggetto_modifica")return modificationObjectError(value);
   if(step.field==="quantita" || ["lunghezza_mm","larghezza_mm","spessore_mm"].includes(step.field??"")){
     if(!Number.isFinite(Number(value)) || Number(value)<=0) return "Inserisci un numero maggiore di zero.";
   }else if(step.field==="lavoro_ore_totali"){

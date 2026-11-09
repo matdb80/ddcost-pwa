@@ -266,3 +266,32 @@ export const cycleImportTemplates = mysqlTable("cycle_import_templates", {
 export const cycleCreateReceipts = mysqlTable("cycle_create_receipts", {
  id: bigint("id",{mode:"number",unsigned:true}).autoincrement().primaryKey(), userId: bigint("userId",{mode:"number",unsigned:true}).notNull(), idempotencyKey:varchar("idempotencyKey",{length:64}).notNull(), payloadHash:varchar("payloadHash",{length:64}).notNull(), cycleId:bigint("cycleId",{mode:"number",unsigned:true}), normalizedCode:varchar("normalizedCode",{length:255}), status:mysqlEnum("status",["claimed","completed"]).default("claimed").notNull(), createdAt:timestamp("createdAt").defaultNow().notNull(), updatedAt:timestamp("updatedAt").defaultNow().notNull().onUpdateNow(),
 },t=>[uniqueIndex("cycle_create_receipts_user_key_uq").on(t.userId,t.idempotencyKey),uniqueIndex("cycle_create_receipts_user_code_uq").on(t.userId,t.normalizedCode)]);
+
+// Attachments are shared by quote revisions; original Windows references stay in dataJson.
+export const quoteAttachments = mysqlTable("quote_attachments", {
+  id: serial("id").primaryKey(),
+  rootId: bigint("rootId", { mode: "number", unsigned: true }).notNull(),
+  userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  fileName: varchar("fileName", { length: 180 }).notNull(),
+  mimeType: varchar("mimeType", { length: 100 }).notNull(),
+  sizeBytes: bigint("sizeBytes", { mode: "number", unsigned: true }).notNull(),
+  sha256: varchar("sha256", { length: 64 }).notNull(),
+  dataBase64: mediumtext("dataBase64").notNull(),
+}, table => [uniqueIndex("quote_attachment_content").on(table.rootId, table.sha256)]);
+
+export const temporaryProductSequence = mysqlTable("temporary_product_sequence", {
+  id: bigint("id", { mode: "number", unsigned: true }).primaryKey(),
+  lastNumber: bigint("lastNumber", { mode: "number", unsigned: true }).notNull().default(0),
+});
+export const temporaryProductCodes = mysqlTable("temporary_product_codes", {
+  id: serial("id").primaryKey(),
+  sequence: bigint("sequence", { mode: "number", unsigned: true }).notNull(),
+  requestKey: varchar("requestKey", { length: 36 }).notNull(),
+  userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+  family: varchar("family", { length: 2 }).notNull(),
+  material: varchar("material", { length: 1 }),
+  color: varchar("color", { length: 4 }),
+  code: varchar("code", { length: 16 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [uniqueIndex("temporary_sequence").on(table.sequence), uniqueIndex("temporary_request").on(table.requestKey), uniqueIndex("temporary_code").on(table.code)]);

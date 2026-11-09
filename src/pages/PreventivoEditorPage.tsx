@@ -14,12 +14,16 @@ import QuoteNumericInput, {type QuoteNumericKind} from "@/components/QuoteNumeri
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
 import QuoteMobileWizard from "@/components/QuoteMobileWizard";
+import TemporaryProductCode from "@/components/TemporaryProductCode";
+import RalSettings from "@/components/RalSettings";
+import QuoteAttachments from "@/components/QuoteAttachments";
 import QuoteTotal from "@/components/QuoteTotal";
 import {
   blankProduct, blankQuote, calculateQuote, changeQuoteLaborMode, duplicateLastProductForNewLot, migrateQuoteToEngineeringHours,
   type Product, type QuoteDocument,
 } from "@/lib/quote-calculation";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
+import { quoteModificationError } from "@/lib/quote-modification-validation";
 const val = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const euro = (v: unknown) => val(v).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const euroDetailed = (v: unknown) => val(v).toLocaleString("it-IT", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
@@ -204,6 +208,7 @@ export default function PreventivoEditorPage() {
     setDoc(prev => {
       const prodotti = [...(prev.prodotti as Product[])];
       prodotti[index] = { ...prodotti[index], [key]: value };
+      if(key==="codice")delete prodotti[index].codice_temporaneo;
       return { ...prev, prodotti };
     });
     if (!["gruppo_merceologico","materiale_prodotto","codice","descrizione"].includes(key))
@@ -286,6 +291,8 @@ export default function PreventivoEditorPage() {
     setError("");
     setCopyMessage("");
     try {
+      const missingModification=quoteModificationError(doc.prodotti);
+      if((isNew || changed) && missingModification)throw new Error(missingModification);
       const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
       if (listinoModified && String(doc.listino?.sconto_riferimento ?? "").trim())
         computed.listino = buildListino(computed.listino ?? {}, computed, priceProductIndex);
@@ -303,7 +310,9 @@ export default function PreventivoEditorPage() {
     return doc;
   }, [doc, dirtyCalculation, isNew]);
   const canExportPdf = preview !== null && !isSavedDraft &&
-    !buildQuoteWizardSteps(doc).some(step => quoteWizardStepError(step,doc));
+    !buildQuoteWizardSteps(doc).some(step =>
+      // Reading/exporting an unchanged historical document must not rewrite it.
+      (step.field!=="oggetto_modifica" || isNew || changed) && quoteWizardStepError(step,doc));
   const exportCustomerPdf = () => {
     if (isSavedDraft) {
       setError("Prima completa il preventivo: una bozza incompleta non va inviata al cliente.");
@@ -332,9 +341,11 @@ export default function PreventivoEditorPage() {
       const p = doc.prodotti[i];
       if (!String(p.gruppo_merceologico ?? "").trim())
         return setError("Indicare un gruppo merceologico per il prodotto " + (i+1));
-      if (!["ferro","ottone","inox"].includes(String(p.materiale_prodotto ?? "")))
-        return setError("Indicare ferro, ottone o inox per il prodotto " + (i+1));
+      if (!["ferro","ottone","inox","alluminio"].includes(String(p.materiale_prodotto ?? "")))
+        return setError("Indicare il materiale per il prodotto " + (i+1));
     }
+    const missingModification=quoteModificationError(doc.prodotti);
+    if(missingModification)return setError(missingModification);
     if (!isNew && !changed && !isSavedDraft) return setError("Nessuna modifica rilevata");
     if (savingRef.current || create.isPending || revise.isPending || overwrite.isPending || finalizeDraftMutation.isPending || draftSaving) return;
     savingRef.current = true;
@@ -491,6 +502,9 @@ export default function PreventivoEditorPage() {
               throw err;
             }
           }}
+          onTemporaryCode={(index, code, ral)=>{ updateProduct(index,"codice",code.code); updateProduct(index,"codice_temporaneo",code); updateProduct(index,"materiale_prodotto",({I:"ferro",X:"inox","6":"inox",B:"ottone",A:"alluminio"} as Record<string,string>)[code.material]); update("verniciatura_ral",ral,true); }}
+          ralSettings={<RalSettings value={doc.verniciatura_ral??null} disabled={locked} onChange={value=>update("verniciatura_ral",value,true)} result={preview?.ral_riepilogo}/> }
+          attachments={<QuoteAttachments key={id??"new"} quoteId={isNew?null:numericId} ensureQuoteId={persistDraft} disabled={draftSaving}/> }
           onPriceProductIndex={index=>{
             setPriceProductIndex(index);
             setListinoModified(Boolean(String(doc.listino?.sconto_riferimento??"").trim()));
@@ -513,13 +527,19 @@ export default function PreventivoEditorPage() {
           </label>
         </div>
       {/* Sticky quote identity and actions share the same scroll container as the editor. */}
-      <div className="sticky top-0 z-30 -mx-2 mb-4 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-md space-y-3 max-h-[60vh] overflow-y-auto">
-      <div className="flex flex-wrap justify-between gap-3 items-center">
-        <div className="flex items-center gap-2">
+      <div className="sticky top-0 z-30 -mx-2 mb-4 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-md space-y-2 max-h-[50vh] overflow-y-auto">
+      <div className="space-y-2">
+        <div className="flex min-w-0 items-center justify-between gap-2" data-testid="quote-primary-actions">
+        <div className="flex min-w-0 items-center gap-2">
           <Link to="/preventivi" className="p-2 border rounded"><ArrowLeft size={16}/></Link>
-          <h1 className="text-2xl font-bold">{isNew ? "Nuovo preventivo una tantum" : "Preventivo " + (quoteDocumentNumber(doc) ?? "#" + numericId) + " — rev. " + (data?.rev ?? 1)}</h1>
+          <h1 className="min-w-0 truncate text-base font-bold md:text-lg">{isNew ? "Nuovo preventivo una tantum" : "Preventivo " + (quoteDocumentNumber(doc) ?? "#" + numericId) + " — rev. " + (data?.rev ?? 1)}</h1>
         </div>
-        <div className="flex items-start gap-2 flex-wrap">
+        {!locked && (<button type="button" disabled={create.isPending || revise.isPending || overwrite.isPending || finalizeDraftMutation.isPending || draftSaving || (!isNew && !changed && !isSavedDraft)}
+                className="bg-emerald-600 disabled:opacity-40 text-white px-3 py-2 rounded inline-flex shrink-0 items-center gap-2 whitespace-nowrap text-sm" onClick={()=>void save()}>
+                <Save size={16}/> {isSavedDraft?"Completa preventivo":isNew?"Salva preventivo":"Salva nuova versione"}
+              </button>)}
+        </div>
+        <div className="flex items-start gap-2 overflow-x-auto pb-1 text-xs [&>button]:shrink-0 [&>button]:whitespace-nowrap [&>button]:px-2 [&>button]:py-1.5 [&>button]:items-center">
           {!locked && <button type="button" onClick={()=>update("prodotti",[...doc.prodotti,blankProduct()],true)}
             className="border border-emerald-600 text-emerald-700 px-4 py-2 rounded flex gap-2 items-center"
             title="Aggiungi prodotto senza scorrere fino alla sezione prodotti">
@@ -531,11 +551,12 @@ export default function PreventivoEditorPage() {
             title="Copia l’ultimo prodotto, lasciando vuota la quantità per il nuovo lotto">
             <Copy size={16}/> Copia prodotto e scala su lotto
           </button>}
+          <QuoteAttachments key={id??"new"} quoteId={isNew?null:numericId} ensureQuoteId={persistDraft} disabled={draftSaving}/>
           <button type="button" onClick={copyQuote}
             className="border border-emerald-600 text-emerald-700 px-4 py-2 rounded flex gap-2 items-center">
             <Copy size={16}/> Copia per email / documento
           </button>
-          <div className="flex w-full flex-col gap-2 sm:w-64">
+          <div className="flex w-52 shrink-0 flex-col gap-1">
           <button type="button" onClick={exportCustomerPdf} disabled={!canExportPdf}
             className="w-full border border-slate-300 text-slate-700 disabled:opacity-40 px-4 py-2 rounded flex gap-2 items-center justify-center"
             title="Esporta il documento con i soli dati destinati al cliente">
@@ -560,24 +581,21 @@ export default function PreventivoEditorPage() {
                 onClick={()=>void save("overwrite")}>
                 <Save size={16}/> Salva e sovrascrivi versione attuale
               </button>}
-              <button type="button" disabled={create.isPending || revise.isPending || overwrite.isPending || finalizeDraftMutation.isPending || draftSaving || (!isNew && !changed && !isSavedDraft)}
-                className="bg-emerald-600 disabled:opacity-40 text-white px-4 py-2 rounded flex gap-2" onClick={()=>void save()}>
-                <Save size={16}/> {isSavedDraft?"Completa preventivo":isNew?"Salva preventivo":"Salva nuova versione"}
-              </button>
+
             </>}
         </div>
       </div>
-      <section className="grid grid-cols-2 xl:grid-cols-4 items-end gap-3">
+      <section className="grid grid-cols-2 xl:grid-cols-4 items-end gap-2">
         {(["cliente","riferimento_preventivo","titolo_preventivo"] as const).map(key=>
           <label key={key} className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">{key === "cliente" ? "Cliente *" : key === "riferimento_preventivo" ? "Riferimento" : "Titolo preventivo"}</span>
+            <span className="font-medium">{key === "cliente" ? "Cliente *" : key === "riferimento_preventivo" ? "Riferimento Interno" : "Riferimento Cliente"}</span>
             <input className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100" value={doc[key] ?? ""} disabled={locked}
               onChange={e=>update(key,e.target.value)}/>
           </label>)}
         <div className="flex flex-col gap-2">
         <QuoteTotal value={preview?.totale_finale ?? preview?.totale}/>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Totale desiderato € (quadratura, facoltativo)</span>
+          <span className="font-medium">{doc.verniciatura_ral?"Totale desiderato prima RAL € (facoltativo)":"Totale desiderato € (quadratura, facoltativo)"}</span>
           <QuoteNumericInput kind="euro" optional className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100"
             disabled={locked} value={doc.target_totale ?? null}
             onChange={value=>update("target_totale",value,true)}/>
@@ -617,7 +635,7 @@ export default function PreventivoEditorPage() {
               Nessun costo comune viene sommato due volte.
             </p>
           </div>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(14rem,0.45fr)] gap-3">
             {legacyEngineeringModel ? (
               <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 <label className="flex flex-col gap-1 text-sm">
@@ -655,7 +673,8 @@ export default function PreventivoEditorPage() {
                       className={compactInputClass+" "+(Number(doc.costo_progettazione_ora??50)===50?suggestedInputClass:normalInputClass)}
                       title={Number(doc.costo_progettazione_ora??50)===50?suggestedHint:undefined}/>
                   </label>
-                  <label className="flex min-w-0 flex-1 basis-48 flex-col gap-1 text-xs">
+                  <div className="flex min-w-0 flex-1 basis-96 items-end gap-2">
+                  <label className="flex min-w-0 flex-1 basis-64 flex-col gap-1 text-xs">
                     <span className="font-medium">Imputazione ore di lavorazione</span>
                     <select value={doc.lavoro_modalita ?? "per_prodotto"} disabled={locked}
                       onChange={e=>update("lavoro_modalita",e.target.value,true)}
@@ -665,13 +684,14 @@ export default function PreventivoEditorPage() {
                       {laborPerPiece && <option value="per_pezzo">Ore per singolo pezzo (modalità precedente)</option>}
                     </select>
                   </label>
-                </div>
-                {laborOverall && <label className="flex flex-col gap-1 text-xs">
-                  <span className="font-medium">Ore totali di lavorazione dell'offerta</span>
-                  <QuoteNumericInput kind="decimal" value={doc.lavoro_ore_totali ?? 0} disabled={locked}
+                {laborOverall && <label className="flex shrink-0 flex-col gap-1 text-xs">
+                  <span className="font-medium">Ore totali<br/>lavorazione</span>
+                  <QuoteNumericInput kind="decimal" aria-label="Ore totali di lavorazione dell'offerta" style={{width:"calc(6ch + 1.25rem)"}} size={6} value={doc.lavoro_ore_totali ?? 0} disabled={locked}
                     onChange={value=>update("lavoro_ore_totali",value,true)}
-                    className={compactInputClass+" "+normalInputClass+" max-w-32"}/>
+                    className={compactInputClass+" "+normalInputClass}/>
                 </label>}
+                  </div>
+                </div>
                 <p className="text-xs text-slate-600">
                   {laborOverall
                     ? "Il monte ore viene ripartito automaticamente sulle righe in proporzione ai pezzi. Le quantità modificano la ripartizione, non le ore totali inserite."
@@ -727,6 +747,7 @@ export default function PreventivoEditorPage() {
           </p>
         </section>
       )}
+      <RalSettings value={doc.verniciatura_ral??null} disabled={locked} onChange={value=>update("verniciatura_ral",value,true)} result={preview?.ral_riepilogo}/>
       <section className="bg-white border rounded-xl p-3 md:p-4 space-y-2">
         <h2 className="font-semibold text-lg">Prezzo di listino da sconto cliente</h2>
         <p className="text-xs text-slate-600">Il listino lordo viene ricavato dal prezzo netto finale dell'articolo selezionato, applicando gli sconti successivi (es. 40+10% = fattore 0,54). Il listino è arrotondato in eccesso al centesimo; il prezzo netto del preventivo non viene cambiato.</p>
@@ -820,16 +841,23 @@ export default function PreventivoEditorPage() {
                 <option value="ferro">Ferro</option>
                 <option value="ottone">Ottone</option>
                 <option value="inox">Inox</option>
+                <option value="alluminio">Alluminio (costo materiale noto)</option>
               </select>
             </label>
           </div>
+          <TemporaryProductCode disabled={locked} ral={doc.verniciatura_ral??null} onApply={(code,ral)=>{
+            updateProduct(index,"codice",code.code); updateProduct(index,"codice_temporaneo",code);
+            updateProduct(index,"materiale_prodotto",({I:"ferro",X:"inox","6":"inox",B:"ottone",A:"alluminio"} as Record<string,string>)[code.material]);
+            update("verniciatura_ral",ral,true);
+          }}/>
           <QuoteModificationObjectFields value={p.oggetto_modifica} disabled={locked}
             idPrefix={`quote-product-${index}-modification`}
             onChange={value=>updateProduct(index,"oggetto_modifica",value)}/>
-          <QuoteMaterialCostFields product={p} disabled={locked}
+          <QuoteMaterialCostFields product={p} disabled={locked} placement="dimensions"
             onChange={(key,value)=>updateProduct(index,key,value)}/>
           <div className="grid grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8">
             {fields.map(f=>{
+              if(f.key==="attrezzaggi_h")return null;
               if(f.key==="trattamenti_cad" && !legacyCostModel && sharedTreatmentMode!=="per_prodotto")return null;
               const highlighted=suggestedProductValue(p,f.key);
               const quantityNeedsAttention=f.key==="quantita"&&(p[f.key]===""||p[f.key]===null||p[f.key]===undefined);
@@ -841,7 +869,9 @@ export default function PreventivoEditorPage() {
                   {preview ? Number(preview.prodotti[index].lavoro_ore_totali).toLocaleString("it-IT",{maximumFractionDigits:4}) : "—"}
                 </output>
               </div>;
-              return <label key={f.key} className="flex min-w-0 flex-col gap-1 text-xs">
+              return <div key={f.key} className={f.key==="trattamenti_cad"?"col-span-2 grid grid-cols-2 gap-2":"contents"}>
+              {f.key==="trattamenti_cad" && <QuoteMaterialCostFields product={p} disabled={locked} placement="cost" onChange={(key,value)=>updateProduct(index,key,value)}/>}
+              <label className="flex min-w-0 flex-col gap-1 text-xs">
                 <span className="truncate font-medium text-slate-600" title={fieldLabel}>{shortLabel}</span>
                 <QuoteNumericInput kind={f.kind} optional={f.optional||f.key==="quantita"} disabled={locked}
                   fractionDigits={f.key==="lavoro_h" && (laborPerPiece || doc.lavoro_modalita==="per_prodotto") ? 6 : undefined}
@@ -851,8 +881,9 @@ export default function PreventivoEditorPage() {
                   placeholder={quantityNeedsAttention?"Inserisci la quantità":undefined}
                   value={f.key==="quantita"?(p[f.key]??null):p[f.key]??(f.optional?null:0)}
                   onChange={value=>updateProduct(index,f.key,value)}/>
-              </label>;
+              </label></div>;
             })}
+            {!legacyCostModel && sharedTreatmentMode!=="per_prodotto" && <QuoteMaterialCostFields product={p} disabled={locked} placement="cost" onChange={(key,value)=>updateProduct(index,key,value)}/>}
             {legacyCostModel && (
               <>
                 <label className="flex min-w-0 flex-col gap-1 text-xs">
@@ -878,21 +909,26 @@ export default function PreventivoEditorPage() {
               Prezzo modificabile dalla quadratura
             </label>
           </div>
-          <div className="bg-slate-50 rounded px-3 py-2 text-xs grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-x-3 gap-y-1">
+          <div className="overflow-x-auto rounded bg-slate-50" aria-label={`Costi e prezzo prodotto ${index+1}`}>
+          <div className="grid grid-flow-col auto-cols-[minmax(105px,1fr)] items-end gap-2 px-2 py-2 text-xs [&>span>b]:block">
+            <label className="flex min-w-0 flex-col gap-1">
+              <span>Ore attrezzaggio</span>
+              <QuoteNumericInput kind="decimal" disabled={locked} value={p.attrezzaggi_h??0} className={compactInputClass+" "+normalInputClass} onChange={value=>updateProduct(index,"attrezzaggi_h",value)}/>
+            </label>
             <span>Costo primo €/pz: <b>{euro(preview?.prodotti?.[index]?.costo_primo_cad)}<FormulaTooltip label="Costo primo per pezzo" formula={CALCULATION_FORMULAS.quote.productDirectCost}/></b></span>
             {!legacyCostModel && <span>Progettazione comune €/pz: <b>{euroDetailed(preview?.prodotti?.[index]?.progettazione_comune_cad)}<FormulaTooltip label="Progettazione comune per pezzo" formula={CALCULATION_FORMULAS.quote.engineeringPerPiece}/></b></span>}
             {!legacyCostModel && sharedTreatmentMode === "globale" && <span>Trattamenti comuni €/pz: <b>{euroDetailed(preview?.prodotti?.[index]?.trattamenti_globali_cad)}<FormulaTooltip label="Trattamenti comuni per pezzo" formula={CALCULATION_FORMULAS.quote.globalTreatmentPerPiece}/></b></span>}
             <span>Full cost €/pz: <b>{euro(preview?.prodotti?.[index]?.full_cost)}<FormulaTooltip label="Full cost del prodotto" formula={CALCULATION_FORMULAS.quote.productFullCost}/></b></span>
             <span>Prezzo finale €/pz: <b>{euro(preview?.prodotti?.[index]?.prezzo_netto_unitario_finale)}<FormulaTooltip label="Prezzo finale unitario" formula={CALCULATION_FORMULAS.quote.productFinalPrice}/></b></span>
             <label className="flex min-w-0 flex-col gap-1" title="Imposta un prezzo unitario manuale: sostituisce il prezzo calcolato della riga">
-              <span className="font-medium text-slate-600">Prezzo manuale €/pz</span>
+              <span className="font-medium text-slate-600">{doc.verniciatura_ral?"Prezzo manuale prima RAL €/pz":"Prezzo manuale €/pz"}</span>
               <QuoteNumericInput kind="euro" optional disabled={locked}
                 value={p.prezzo_manuale??null}
                 className={compactInputClass+" "+normalInputClass+" max-w-36"}
                 onChange={value=>updateProduct(index,"prezzo_manuale",value)}/>
             </label>
             <span>Totale riga €: <b>{euro(preview?.prodotti?.[index]?.totale_finale)}<FormulaTooltip label="Totale riga prodotto" formula={CALCULATION_FORMULAS.quote.productTotal}/></b></span>
-          </div>
+          </div></div>
         </section>)}
       <section className="bg-white border rounded-xl p-3 md:p-4 space-y-3">
         <h2 className="font-semibold">Note e riepilogo</h2>

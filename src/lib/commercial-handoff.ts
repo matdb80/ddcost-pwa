@@ -1,3 +1,4 @@
+import {prepareRalOffer} from "./ral-documents";
 import {calculateOfferLotPrice,cycleForOfferRow,offerLotTerms,selectedOfferLots,type CommercialOfferRow} from './commercial-offer-pricing';
 import {quoteDocumentNumber} from './commercial-offer-number';
 import {listinoProductIndex} from './quote-copy';
@@ -11,7 +12,8 @@ export function copyNumber(value:unknown):string {
 }
 // Explicit allowlist: NEVER return the source JSON, costs, margins or internal notes.
 export function salesDocument(kind:'quote'|'offer',raw:string):SalesDocument{
-  const d=JSON.parse(raw);
+  let d=JSON.parse(raw);
+  if(kind==='offer' && d?.verniciatura_ral)d=prepareRalOffer(d);
   if(!d||typeof d!=='object')throw new Error('Documento non valido');
   if(d.stato_preventivo==='bozza')throw new Error('Completa il preventivo prima di condividerlo');
   const source=kind==='quote'?d.prodotti:d.righe;
@@ -35,9 +37,10 @@ export function salesDocument(kind:'quote'|'offer',raw:string):SalesDocument{
         discount,netPrice:copyNumber(net)};
     });
   });
+  if(d.ral_riepilogo?.fixed)rows.push({code:"",description:"Cambio colore RAL "+String(d.ral_riepilogo.color)+" (una volta per ordine)",quantity:"1",listPrice:"",discount:"",netPrice:copyNumber(d.ral_riepilogo.fixed)});
   const number=kind==='quote'?quoteDocumentNumber(d):(String(d.nome??'').trim()||undefined);
   return {...(number?{number}:{}),client:String(d.cliente??''),reference:String(d.riferimento_preventivo??d.riferimento??d.nome??''),
-    notes:String(d.note_cliente??''),payment:String(d.pagamento??''),transport:String(d.trasporto??''),rows};
+    notes:String(d.note_cliente??'')+(d.ral_riepilogo?'\nPrezzo verniciato indicativo, da confermare dall’ufficio.':''),payment:String(d.pagamento??''),transport:String(d.trasporto??''),rows};
 }
 export function salesText(d:SalesDocument):string{
   return [...(d.number?['Numero: '+d.number]:[]),'Cliente: '+d.client,'Riferimento: '+d.reference,...d.rows.map(r=>[

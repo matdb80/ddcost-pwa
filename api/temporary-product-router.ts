@@ -1,0 +1,37 @@
+import { z } from "zod";
+import { eq } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
+import { temporaryProductSequence, temporaryProductCodes } from "@db/schema";
+import { getDb } from "./queries/connection";
+import { createRouter, authedQuery } from "./middleware";
+import { temporaryCode, TEMPORARY_FAMILIES } from "../src/lib/ral-pricing";
+const family = z.enum(TEMPORARY_FAMILIES);
+const requestKey = z.string().uuid();
+export const temporaryProductRouter = createRouter({
+  reserve: authedQuery.input(z.object({ requestKey, family })).mutation(async ({ ctx, input }) => {
+    return getDb().transaction(async tx => {
+      const [counter] = await tx.select().from(temporaryProductSequence).where(eq(temporaryProductSequence.id, 1)).limit(1).for("update");
+      if (!counter) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Contatore codici temporanei non disponibile" });
+      const [existing] = await tx.select().from(temporaryProductCodes).where(eq(temporaryProductCodes.requestKey, input.requestKey)).limit(1).for("update");
+      if (existing) {
+        if (existing.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+        return { sequence: existing.sequence, requestKey: input.requestKey };
+      }
+      const sequence = counter.lastNumber + 1;
+      if (sequence > 9999999) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Progressivi temporanei esauriti" });
+      await tx.update(temporaryProductSequence).set({ lastNumber: sequence }).where(eq(temporaryProductSequence.id, 1));
+      await tx.insert(temporaryProductCodes).values({ sequence, requestKey: input.requestKey, family: input.family, userId: ctx.user.id });
+      return { sequence, requestKey: input.requestKey };
+    });
+  }),
+  complete: authedQuery.input(z.object({ requestKey, family, material: z.enum(["I", "X", "6", "B", "A"]), color: z.string().regex(/^\d{4}$/).nullable() })).mutation(async ({ ctx, input }) => {
+    return getDb().transaction(async tx => {
+      const [reservation] = await tx.select().from(temporaryProductCodes).where(eq(temporaryProductCodes.requestKey, input.requestKey)).limit(1).for("update");
+      if (!reservation || reservation.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND", message: "Prenotazione non trovata" });
+      const code = temporaryCode(reservation.sequence, input.family, input.material, input.color);
+      if (reservation.code && reservation.code !== code) throw new TRPCError({ code: "CONFLICT", message: "Progressivo già assegnato: genera un nuovo codice" });
+      if (!reservation.code) await tx.update(temporaryProductCodes).set({ family: input.family, material: input.material, color: input.color, code }).where(eq(temporaryProductCodes.id, reservation.id));
+      return { sequence: reservation.sequence, family: input.family, material: input.material, color: input.color, code };
+    });
+  }),
+});

@@ -79,7 +79,7 @@ class Store {
   connect(){return this.adapter();}
 }
 const context=(id=1,commercialOnly=false):TrpcContext=>({req:new Request("https://test.local"),resHeaders:new Headers(),user:{id,role:"admin",commercialOnly} as TrpcContext["user"]});
-const doc=()=>({cliente:"Cliente",riferimento_preventivo:"Progetto alfa",stato_preventivo:"completo",prodotti:[{codice:"TMP-storico-17",descrizione:"Bandella",gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",quantita:10}],note_cliente:"Prima"});
+const doc=()=>({cliente:"Cliente",riferimento_preventivo:"Progetto alfa",stato_preventivo:"completo",prodotti:[{codice:"TMP-storico-17",descrizione:"Bandella",gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",quantita:10,oggetto_modifica:["occhio"]}],note_cliente:"Prima"});
 const payload=(document=doc())=>({client:"Cliente",reference:"Progetto alfa",numProducts:1,totalFinal:"100",targetTotal:null,dataJson:JSON.stringify(document)});
 let store:Store;
 beforeEach(()=>{vi.useFakeTimers();vi.setSystemTime(new Date("2026-11-05T12:00:00Z"));store=new Store();connection.db=store.connect();});
@@ -87,6 +87,42 @@ afterEach(()=>vi.useRealTimers());
 const caller=()=>quoteRouter.createCaller(context());
 const offer=()=>offerRouter.createCaller(context());
 async function createQuote(){const p=payload();return caller().create({...p,targetTotal:undefined});}
+
+describe("mandatory modification selection",()=>{
+  it("rejects missing, empty and malformed selections before reserving a number",async()=>{
+    for(const oggetto_modifica of [undefined,null,[],"occhio",["","  "],[1,null]]){
+      const invalid={...doc(),prodotti:[{...doc().prodotti[0],oggetto_modifica}]} as any;
+      await expect(caller().create({...payload(invalid),targetTotal:undefined})).rejects.toMatchObject({code:"BAD_REQUEST"});
+    }
+    expect(store.counter).toBe(0);
+    expect(store.quotes).toHaveLength(0);
+  });
+  it("keeps an incomplete draft but requires a selection on every row before completion",async()=>{
+    const incomplete={...doc(),prodotti:[doc().prodotti[0],{...doc().prodotti[0],oggetto_modifica:[]}]};
+    const draft=await caller().saveDraft({dataJson:JSON.stringify(incomplete)});
+    const before=structuredClone(store.quotes);
+    await expect(caller().finalizeDraft({draftId:draft.id,...payload(incomplete),numProducts:2})).rejects.toThrow("Prodotto 2");
+    expect(store.quotes).toEqual(before);
+    incomplete.prodotti[1].oggetto_modifica=["Foratura aggiuntiva"];
+    await caller().finalizeDraft({draftId:draft.id,...payload(incomplete),numProducts:2});
+    expect(JSON.parse(store.quotes[0].dataJson)).toMatchObject({stato_preventivo:"completo",prodotti:[{oggetto_modifica:["occhio"]},{oggetto_modifica:["Foratura aggiuntiva"]}]});
+    expect(store.counter).toBe(1);
+  });
+  it("rejects removing the last selection on overwrite and revision, while history remains readable",async()=>{
+    const created=await createQuote();
+    const incomplete={...doc(),prodotti:[{...doc().prodotti[0],oggetto_modifica:[]}]};
+    const before=structuredClone(store.quotes);
+    await expect(caller().update({id:created.id,expectedToken:quoteWriteToken(store.quotes[0]),...payload(incomplete)})).rejects.toThrow("almeno una voce");
+    await expect(caller().saveRevision({sourceId:created.id,...payload(incomplete)})).rejects.toThrow("almeno una voce");
+    expect(store.quotes).toEqual(before);
+    store.quotes[0].dataJson=JSON.stringify(incomplete);
+    const historical=store.quotes[0].dataJson;
+    expect((await caller().get({id:created.id}))?.dataJson).toBe(historical);
+    expect(store.quotes[0].dataJson).toBe(historical);
+    await expect(caller().createRevision({rootId:created.id})).rejects.toThrow("almeno una voce");
+    expect(store.quotes).toHaveLength(1);
+  });
+});
 
 describe("shared commercial numbering",()=>{
   it("alternates standard offers and one-time quotes on one progressive",async()=>{
@@ -175,7 +211,7 @@ describe("overwrite selected quote revision",()=>{
   });
   it("validates mandatory product classification before overwrite",async()=>{
     const q=await createQuote();const row=structuredClone(store.quotes[0]);
-    await expect(caller().update({id:q.id,expectedToken:quoteWriteToken(row),...payload({...doc(),prodotti:[{...doc().prodotti[0],materiale_prodotto:""}]})})).rejects.toThrow("ferro, ottone o inox");
+    await expect(caller().update({id:q.id,expectedToken:quoteWriteToken(row),...payload({...doc(),prodotti:[{...doc().prodotti[0],materiale_prodotto:""}]})})).rejects.toThrow("ferro, ottone, inox o alluminio");
     expect(store.quotes[0]).toEqual(row);
   });
   it("rejects a draft on the completed-revision overwrite endpoint",async()=>{

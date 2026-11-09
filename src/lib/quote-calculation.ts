@@ -1,3 +1,5 @@
+import { calculateRal, validRal, ralSourceCode } from "./ral-pricing";
+import { assertPaintedTemporaryCodes } from "./ral-documents";
 import { calculateMaterialByWeight, type MaterialName } from "./quote-material-weight";
 export type Product = Record<string, any>;
 export type QuoteDocument = Record<string, any>;
@@ -164,7 +166,20 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
     p.prezzo_netto_unitario_finale = p.prezzo_vendita_pre_quadratura + p.rettifica_unitaria;
     p.totale_finale = p.prezzo_netto_unitario_finale * val(p.quantita);
   }
-  const totalFinal = (d.prodotti as Product[]).reduce((sum,p) => sum + p.totale_finale, 0);
+  let totalFinal = (d.prodotti as Product[]).reduce((sum,p) => sum + p.totale_finale, 0);
+  const totalBeforeRal = totalFinal;
+  assertPaintedTemporaryCodes(d.prodotti, d.verniciatura_ral);
+  if (d.verniciatura_ral) {
+    if (!validRal(d.verniciatura_ral)) throw new Error("Configurazione RAL non valida");
+    const options = d.verniciatura_ral;
+    const result = calculateRal((d.prodotti as Product[]).map(p => ({ code: ralSourceCode(p, options), net: p.prezzo_netto_unitario_finale, quantity: Number(p.quantita) })), options);
+    result.rows.forEach((r, i) => Object.assign(d.prodotti[i], { netto_prima_ral: r.baseNet, ral_ricarico_cad: r.surcharge, ral_percentuale: r.percent, prezzo_netto_unitario_finale: r.net, totale_finale: r.total }));
+    d.ral_riepilogo = result;
+    totalFinal = result.total!;
+  } else {
+    delete d.ral_riepilogo;
+    for (const p of d.prodotti) { delete p.netto_prima_ral; delete p.ral_ricarico_cad; delete p.ral_percentuale; }
+  }
   if (shared) {
     d.costi_comuni_riepilogo = {
       quantita_totale: quantityTotal,
@@ -183,7 +198,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
   d.totale_pre_quadratura = baseTotal;
   d.totale_vendita_pre_quadratura = saleBefore;
   d.quadratura_applicata = target !== null;
-  d.rettifica_totale = totalFinal - saleBefore;
+  d.rettifica_totale = totalBeforeRal - saleBefore;
   d.totale_finale = totalFinal;
   d.totale = totalFinal;
   d.prezzo_netto_unitario = d.quantita ? totalFinal / d.quantita : 0;
@@ -196,7 +211,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
   );
   d.summary = "PREVENTIVO UNA TANTUM\nCliente: " + (d.cliente || "") +
     "\nRiferimento: " + (d.riferimento_preventivo || "") +
-    "\n\n" + lines.join("\n") + "\n\nTotale: € " + euro(totalFinal);
+    "\n\n" + lines.join("\n") + (d.ral_riepilogo ? "\nCambio colore RAL: € " + euro(d.ral_riepilogo.fixed) : "") + "\n\nTotale: € " + euro(totalFinal);
   return d;
 }
 

@@ -1,11 +1,13 @@
 import SalesHandoffPanel from "./SalesHandoffPanel";
 import { quoteDocumentNumber } from "@/lib/commercial-offer-number";
-import {useEffect, useMemo, useRef, useState} from "react";
+import {useEffect, useMemo, useRef, useState, type ReactNode} from "react";
 import {Link} from "react-router";
 import {
   ArrowLeft, ArrowRight, Check, ChevronLeft, Copy, FileText,
   Plus, Save, Settings2, Trash2,
 } from "lucide-react";
+import TemporaryProductCode, {type GeneratedProductCode} from "./TemporaryProductCode";
+import type {RalOptions} from "@/lib/ral-pricing";
 import QuoteNumericInput from "@/components/QuoteNumericInput";
 import QuoteTotal from "@/components/QuoteTotal";
 import FormulaTooltip from "@/components/FormulaTooltip";
@@ -26,6 +28,9 @@ const actionClass="inline-flex min-h-12 items-center justify-center gap-2 rounde
 type Group={id:number;name:string};
 type Props={
   doc:QuoteDocument;
+  attachments?:ReactNode;
+  ralSettings?:ReactNode;
+  onTemporaryCode?:(index:number,code:GeneratedProductCode,ral:RalOptions|null)=>void;
   preview:QuoteDocument|null;
   locked:boolean;
   isNew:boolean;
@@ -135,7 +140,8 @@ export default function QuoteMobileWizard(props:Props){
   const hasPreview=preview!==null && Number.isFinite(Number(preview.totale_finale));
   const price=euro(preview?.totale_finale);
   const cashMargin=Number(preview?.margine_netto_complessivo_perc??0);
-  const canShare=hasPreview && !isSavedDraft && !steps.some(s=>quoteWizardStepError(s,doc));
+  const canShare=hasPreview && !isSavedDraft && !steps.some(s=>
+    (s.field!=="oggetto_modifica" || isNew || unsavedChanges) && quoteWizardStepError(s,doc));
   const costVersion=Number(doc.costi_comuni_versione)||0;
   return <div ref={top} className="mx-auto flex w-full max-w-xl flex-col gap-3 pb-40 text-slate-900" data-testid="quote-mobile-wizard">
     <header className="rounded-xl bg-slate-900 px-4 py-3 text-white shadow-sm">
@@ -153,7 +159,9 @@ export default function QuoteMobileWizard(props:Props){
           <Settings2 size={16} className="mx-auto mb-0.5"/> Vista completa
         </button>
       </div>
+      <div className="mt-2">{props.attachments}</div>
     </header>
+    {props.ralSettings}
     <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
       <QuoteTotal value={preview?.totale_finale ?? preview?.totale}/>
     </div>
@@ -180,6 +188,7 @@ export default function QuoteMobileWizard(props:Props){
 
       <h1 className="mt-6 text-xl font-bold leading-tight">{current.title}</h1>
       <p className="mt-2 text-sm leading-relaxed text-slate-600">{current.hint}</p>
+      {productIndex!==undefined && (field==="codice" || field==="descrizione") && props.onTemporaryCode && <TemporaryProductCode disabled={locked} ral={doc.verniciatura_ral??null} onApply={(code,ral)=>props.onTemporaryCode!(productIndex,code,ral)}/>}
       <div className="mt-5">
         {current.id==="riepilogo" ? (
           <div className="space-y-4">
@@ -313,7 +322,7 @@ export default function QuoteMobileWizard(props:Props){
           <select id="wizard-input" className={inputClass} disabled={locked}
             value={String(value??"")} onChange={e=>updateValue(e.target.value)}>
             <option value="">Seleziona materiale...</option>
-            <option value="ferro">Ferro</option><option value="ottone">Ottone</option><option value="inox">Inox</option>
+            <option value="ferro">Ferro</option><option value="ottone">Ottone</option><option value="inox">Inox</option><option value="alluminio">Alluminio (costo materiale noto)</option>
           </select>
         ):field==="materiale_cad" && product && productIndex!==undefined?(
           <QuoteMaterialCostFields product={product} disabled={locked} mobile

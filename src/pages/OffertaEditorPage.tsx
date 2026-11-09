@@ -1,6 +1,10 @@
 import SalesHandoffPanel from "@/components/SalesHandoffPanel";
 import { useEffect, useRef, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router";
+import TemporaryProductCode from "@/components/TemporaryProductCode";
+import RalSettings from "@/components/RalSettings";
+import {validRal} from "@/lib/ral-pricing";
+import {prepareRalOffer} from "@/lib/ral-documents";
 import Layout from "@/components/Layout";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { trpc } from "@/providers/trpc";
@@ -76,7 +80,7 @@ const blankRow = (): OfferRow => ({
   full_cost: null, prezzo_minimo: null,
   lotti_selezionati: [], lotti_aggiuntivi: [], prezzi_lotti: {},
 });
-const blankOffer = (): OfferDocument => ({ tmp_code_version: 2, nome: "", cliente: "", riferimento: "", pagamento: "", trasporto: "", note: "", righe: [blankRow()] });
+const blankOffer = (): OfferDocument => ({ tmp_code_version: 3, nome: "", cliente: "", riferimento: "", pagamento: "", trasporto: "", note: "", righe: [blankRow()] });
 
 function combinedDiscount(row: OfferRow): string {
   const base = String(row.sconto_base ?? "").trim();
@@ -203,7 +207,9 @@ export default function OffertaEditorPage() {
     window.addEventListener("beforeunload",handler);
     return()=>window.removeEventListener("beforeunload",handler);
   },[unsavedChanges]);
-  const edit = (key: string, value: unknown) => setOffer((previous) => ({ ...previous, [key]: value }));
+  const edit = (key: string, value: unknown) => setOffer((previous) => ({ ...previous, [key]: value,
+    ...(key==="verniciatura_ral"?{righe:previous.righe.map(row=>({...row,verniciatura_ral:value})),ral_riepilogo:undefined}:{}),
+    ...(key==="righe"?{righe:(value as OfferRow[]).map(row=>({...row,verniciatura_ral:previous.verniciatura_ral??null}))}:{}) }));
   const replaceRow = (index: number, next: OfferRow) => setOffer((previous) => {
     const rows = [...previous.righe];
     rows[index] = next;
@@ -211,6 +217,7 @@ export default function OffertaEditorPage() {
   });
   const editRow = (index: number, key: string, value: unknown) => {
     let next = { ...offer.righe[index], [key]: value } as OfferRow;
+    if(key==="codice")delete next.codice_temporaneo;
     let validationMessage = "";
     if (["listino", "sconto_base", "extra"].includes(key)) {
       try { Object.assign(next, recompute(next)); }
@@ -239,7 +246,13 @@ export default function OffertaEditorPage() {
       setOffer((previous) => {
         if (!Array.isArray(previous.righe) || !previous.righe[rowIndex]) return previous;
         const righe = [...previous.righe];
-        righe[rowIndex] = applyStandardCycleToOfferRow(righe[rowIndex], cycle, righe, previous.tmp_code_version === 2) as OfferRow;
+        const prior = righe[rowIndex];
+        righe[rowIndex] = applyStandardCycleToOfferRow(prior, cycle, righe, previous.tmp_code_version === 2) as OfferRow;
+        if (!String(cycle.code??"" ).trim()) {
+          righe[rowIndex].codice = prior.codice_temporaneo ? prior.codice : "";
+          righe[rowIndex].codice_temporaneo = prior.codice_temporaneo;
+        } else delete righe[rowIndex].codice_temporaneo;
+        righe[rowIndex].verniciatura_ral=previous.verniciatura_ral??null;
         try { righe[rowIndex] = withCalculatedOfferRow(righe[rowIndex]) as OfferRow; }
         catch { /* The row remains editable and the validation message is shown below. */ }
         return { ...previous, righe };
@@ -270,6 +283,7 @@ export default function OffertaEditorPage() {
         next = withOfferLotTerms(next, lot, {
           listino: generated.listino,
           listino_generato_per_netto: price.netPrice,
+          netto_prima_ral_generato: row.verniciatura_ral && price.baseNetFromCustomerList ? price.baseNetPrice : undefined,
           listino_generato_sconto: discount,
         }) as OfferRow;
       }
@@ -284,6 +298,7 @@ export default function OffertaEditorPage() {
     const next = withOfferLotTerms(offer.righe[index], lot, {
       listino: value,
       listino_generato_per_netto: undefined,
+      netto_prima_ral_generato: undefined,
       listino_generato_sconto: undefined,
     }) as OfferRow;
     replaceRow(index, recompute(next));
@@ -326,7 +341,7 @@ export default function OffertaEditorPage() {
     replaceRow(index, next);
   };
 
-  const preparedOffer = (): OfferDocument => ({
+  const preparedOffer = (): OfferDocument => prepareRalOffer({
     ...offer,
     righe: offer.righe.map((row) => {
       try { return cycleForOfferRow(row) ? withCalculatedOfferRow(row) as OfferRow : recompute(row); }
@@ -520,6 +535,8 @@ export default function OffertaEditorPage() {
         </div>
       </section>
 
+      <RalSettings value={validRal(offer.verniciatura_ral)?offer.verniciatura_ral:null} disabled={locked} onChange={value=>edit("verniciatura_ral",value)} result={(()=>{try{return prepareRalOffer(offer).ral_riepilogo as any;}catch{return null;}})()}/>
+      {Boolean(offer.verniciatura_ral) && (()=>{try{const r=prepareRalOffer(offer).ral_riepilogo as any;return <p className="rounded border bg-sky-50 p-3 text-sm">Totale indicativo con RAL e cambio colore: <b>{r?.total==null?"Su richiesta":"€ "+money(r.total)}</b></p>;}catch(e){return <p role="alert" className="text-sm text-red-700">{errorMessage(e,"Verifica RAL")}</p>;}})()}
       <div className="sticky top-0 z-30 -mx-3 md:-mx-6 px-3 md:px-6 py-2 border-y border-slate-200 bg-slate-50/95 shadow-sm backdrop-blur">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="flex items-center gap-2 text-xl font-semibold"><ShoppingCart size={20} aria-hidden="true"/>Prodotti ({offer.righe.length})</h2>
@@ -552,8 +569,9 @@ export default function OffertaEditorPage() {
             </>}
           </div>
 
+          <TemporaryProductCode disabled={locked} ral={validRal(offer.verniciatura_ral)?offer.verniciatura_ral:null} onApply={(code,ral)=>setOffer(previous=>({...previous,verniciatura_ral:ral,righe:previous.righe.map((r,i)=>({...r,verniciatura_ral:ral,...(i===index?{codice:code.code,codice_temporaneo:code}:{})}))}))}/>
           <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
-            <label className="flex w-24 shrink-0 flex-col gap-1 text-xs">
+            <label className="flex w-44 shrink-0 flex-col gap-1 text-xs">
               <span>Codice articolo</span>
               <input disabled={locked} className="h-8 w-full rounded border px-2 text-sm disabled:bg-slate-100" value={String(row.codice ?? "")} onChange={(event) => editRow(index, "codice", event.target.value)}/>
             </label>

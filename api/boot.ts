@@ -18,6 +18,7 @@ import { migrateStagingProductGroups } from "./staging-product-group-migration";
 import { migrateStagingCycleCapacity } from "./staging-cycle-capacity-migration";
 import { migrateStagingBandellePrices } from "./staging-bandelle-price-migration";
 import { migrateStagingBandelleTPrices } from "./staging-bandelle-t-price-migration";
+import { activateNov09Staging } from "./staging-nov09-release";
 import { downloadBackup } from "./backup";
 import { runStagingF3Release } from "./staging-f3-release";
 import { previewLegacyImport, commitLegacyImport } from "./legacy-import";
@@ -51,6 +52,7 @@ app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
 export default app;
 
 if (env.isProduction) {
+  if (process.env.RENDER_SERVICE_ID === "srv-db5np90473hc73bq8c1g") await activateNov09Staging();
   if (process.env.DDCOST_STAGING_F3_ACTION && process.env.DDCOST_STAGING_F3_ACTION !== "off") {
     try { await runStagingF3Release(); }
     catch (error) {

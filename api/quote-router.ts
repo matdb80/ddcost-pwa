@@ -1,3 +1,4 @@
+import {validateTemporaryProductDocument} from "./temporary-code-validation";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { reserveCommercialDocumentNumber } from "./commercial-document-number";
@@ -8,10 +9,12 @@ import { getDb } from "./queries/connection";
 import { quotes, productGroups } from "@db/schema";
 import {parseIncompleteQuote,quoteIsDraft} from "../src/lib/quote-draft-state";
 import {latestCompletedQuotePerRoot,readQuoteOutcome,summarizeQuoteOutcomes} from "../src/lib/quote-outcomes";
+import {modificationObjectError} from "../src/lib/quote-modification-validation";
 
-const ALLOWED_MATERIALS = new Set(["ferro","ottone","inox"]);
+const ALLOWED_MATERIALS = new Set(["ferro","ottone","inox","alluminio"]);
 
 async function validateQuoteClassifications(dataJson: string | undefined): Promise<void> {
+  await validateTemporaryProductDocument(dataJson,"prodotti");
   if (!dataJson) throw new Error("Il preventivo deve contenere i prodotti");
   let document: unknown;
   try { document = JSON.parse(dataJson); }
@@ -27,7 +30,9 @@ async function validateQuoteClassifications(dataJson: string | undefined): Promi
     const material = String(product.materiale_prodotto ?? "").trim().toLocaleLowerCase("it-IT");
     if (!group) throw new Error("Selezionare il gruppo merceologico del prodotto " + (i+1));
     if (!ALLOWED_MATERIALS.has(material))
-      throw new Error("Selezionare ferro, ottone o inox per il prodotto " + (i+1));
+      throw new Error("Selezionare ferro, ottone, inox o alluminio per il prodotto " + (i+1));
+    const missingModification=modificationObjectError(product.oggetto_modifica);
+    if(missingModification)throw new TRPCError({code:"BAD_REQUEST",message:`Prodotto ${i+1}: ${missingModification}`});
     usedGroups.add(group);
   }
   const db = getDb();
@@ -178,6 +183,7 @@ export const quoteRouter = createRouter({
     }))
     .mutation(async ({ctx,input})=>{
       const document=parseIncompleteQuote(input.dataJson);
+      await validateTemporaryProductDocument(input.dataJson,"prodotti",true);
       const db=getDb();
       return db.transaction(async tx=>{
         const source=input.sourceId
@@ -441,6 +447,7 @@ export const quoteRouter = createRouter({
 
       const latest = rows[0];
       if (!latest) throw new Error("Quote not found");
+      if (!quoteIsDraft(latest.dataJson)) await validateQuoteClassifications(latest.dataJson ?? undefined);
 
       const newRev = (latest.rev ?? 1) + 1;
       const result = await db.insert(quotes).values({

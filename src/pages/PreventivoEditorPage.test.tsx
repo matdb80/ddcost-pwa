@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import type { ReactNode } from "react";
 import { blankProduct, blankQuote, calculateQuote } from "../lib/quote-calculation";
@@ -34,6 +34,38 @@ beforeEach(()=>{
   Element.prototype.scrollIntoView=vi.fn();
 });
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+it("blocks completion until each product has a modification selection",async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[0,1].map(i=>({...blankProduct(),
+    descrizione:"Prodotto "+(i+1),gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",oggetto_modifica:i===0?["occhio"]:[]}))});
+  await screen.findByRole("button",{name:"Completa preventivo"});
+  fireEvent.click(screen.getByRole("button",{name:"Completa preventivo"}));
+  expect(screen.getByText(/Prodotto 2: Seleziona almeno una voce/)).toBeTruthy();
+  expect(state.calls).toHaveLength(0);
+  const second=screen.getAllByRole("group",{name:"Oggetto della modifica *"})[1];
+  fireEvent.click(within(second).getByRole("checkbox",{name:"Occhio"}));
+  fireEvent.click(screen.getByRole("button",{name:"Completa preventivo"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.finalizeDraft")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.finalizeDraft")!.input.dataJson);
+  expect(saved.prodotti.map((p:Record<string,unknown>)=>p.oggetto_modifica)).toEqual([["occhio"],["occhio"]]);
+});
+it("blocks the mobile wizard at the modification step until a choice is made",async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Bandella"}]},true);
+  await screen.findByTestId("quote-mobile-wizard");
+  // Client, labor mode, common hours, description, then modification selection.
+  for(let i=0;i<4;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(screen.getByRole("heading",{name:"Oggetto della modifica"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(screen.getByText("Seleziona almeno una voce in Oggetto della modifica.")).toBeTruthy();
+  expect(screen.getByRole("heading",{name:"Oggetto della modifica"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("checkbox",{name:"Occhio"}));
+  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(screen.getByRole("heading",{name:"Gruppo merceologico"})).toBeTruthy();
+});
+it("keeps the original PDF available on an unchanged historical quote without modification metadata",async()=>{
+  mount({...blankQuote(),totale_finale:100,prodotti:[{...blankProduct(),descrizione:"Bandella",gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro"}]});
+  await waitFor(()=>expect(screen.getByLabelText("Totale preventivo").textContent).toContain("100,00"));
+  expect((screen.getByRole("button",{name:"Esporta PDF cliente"}) as HTMLButtonElement).disabled).toBe(false);
+});
 it("shows the saved historical total prominently above the target without recalculating it",async()=>{
   mount({...blankQuote(),totale_finale:1234.56,totale:1234.56});
   const total=await screen.findByLabelText("Totale preventivo");

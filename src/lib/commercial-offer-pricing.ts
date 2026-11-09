@@ -1,3 +1,4 @@
+import { ralLinePrice } from "./ral-pricing";
 import { calcolaCostoFissoPerPezzo, calcolaSimulazioni } from "./cycle-calculator";
 import type { SimulazioneLotto } from "@/types/cycle";
 import { parseCycleRow, type CicloEditorModel } from "@/types/cycle";
@@ -8,6 +9,7 @@ export type OfferLotTerms = {
   listino?: number | string;
   listino_generato_per_netto?: number;
   listino_generato_sconto?: string;
+  netto_prima_ral_generato?: number;
   prezzo_netto_manuale?: number | string;
   prezzo_finale_riferimento?: number;
 };
@@ -24,6 +26,8 @@ export type OfferLotPrice = {
   calculatedNetPrice: number;
   manualNetPrice: number | null;
   netPrice: number;
+  baseNetPrice: number;
+  baseNetFromCustomerList: boolean;
   actualMarginPercent: number;
 };
 
@@ -129,6 +133,7 @@ export function offerLotTerms(row: CommercialOfferRow, lot: number): OfferLotTer
     return {
       listino: row.listino as number | string | undefined,
       listino_generato_per_netto: numberOrUndefined(row.listino_generato_per_netto),
+      netto_prima_ral_generato: numberOrUndefined(row.netto_prima_ral_generato),
       listino_generato_sconto: typeof row.listino_generato_sconto === "string" ? row.listino_generato_sconto : undefined,
       prezzo_netto_manuale: row.prezzo_netto_manuale as number | string | undefined,
     };
@@ -152,6 +157,7 @@ export function withOfferLotTerms(
       listino: nextTerms[String(lot)].listino ?? "",
       listino_generato_per_netto: nextTerms[String(lot)].listino_generato_per_netto,
       listino_generato_sconto: nextTerms[String(lot)].listino_generato_sconto,
+      netto_prima_ral_generato: nextTerms[String(lot)].netto_prima_ral_generato,
       prezzo_netto_manuale: nextTerms[String(lot)].prezzo_netto_manuale,
     };
   }
@@ -169,6 +175,7 @@ export function withSelectedOfferLot(
       listino: row.listino as number | string | undefined,
       listino_generato_per_netto: numberOrUndefined(row.listino_generato_per_netto),
       listino_generato_sconto: typeof row.listino_generato_sconto === "string" ? row.listino_generato_sconto : undefined,
+      netto_prima_ral_generato: numberOrUndefined(row.netto_prima_ral_generato),
       prezzo_netto_manuale: row.prezzo_netto_manuale as number | string | undefined,
     })
     : row;
@@ -185,6 +192,7 @@ export function withSelectedOfferLot(
     listino: primaryTerms.listino ?? "",
     listino_generato_per_netto: primaryTerms.listino_generato_per_netto,
     listino_generato_sconto: primaryTerms.listino_generato_sconto,
+    netto_prima_ral_generato: primaryTerms.netto_prima_ral_generato,
     prezzo_netto_manuale: primaryTerms.prezzo_netto_manuale,
   };
 }
@@ -225,7 +233,12 @@ export function calculateOfferLotPrice(row: CommercialOfferRow, lot: number): Of
   // displayed value never erodes that margin.
   const calculatedNetPrice = Math.ceil((theoreticalNet - 1e-10) * 100) / 100;
   const manualNetPrice = parseManualNetPrice(offerLotTerms(row, lot).prezzo_netto_manuale);
-  const netPrice = manualNetPrice ?? calculatedNetPrice;
+  const terms = offerLotTerms(row, lot);
+  const customerListNet = row.verniciatura_ral && !terms.listino_generato_per_netto && Number(terms.listino) > 0
+    ? Number(terms.listino) * discountFactor(String(row.sconto_base || "0")) * (1 - Number(row.extra ?? 0) / 100) : null;
+  const generatedBase = row.verniciatura_ral && terms.listino_generato_per_netto ? terms.netto_prima_ral_generato : undefined;
+  const baseNetPrice = manualNetPrice ?? generatedBase ?? customerListNet ?? calculatedNetPrice;
+  const netPrice = ralLinePrice(row, baseNetPrice);
   return {
     lot,
     simulation,
@@ -238,6 +251,8 @@ export function calculateOfferLotPrice(row: CommercialOfferRow, lot: number): Of
     calculatedNetPrice,
     manualNetPrice,
     netPrice,
+    baseNetPrice,
+    baseNetFromCustomerList: manualNetPrice===null && (customerListNet!==null || generatedBase!==undefined),
     actualMarginPercent: netPrice > 0 ? (netPrice - fullCost) / netPrice * 100 : 0,
   };
 }

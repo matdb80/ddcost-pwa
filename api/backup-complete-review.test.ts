@@ -106,3 +106,14 @@ it("review: receipt table is included with exact rows and checksum when present"
     tables.pop();
   }
 });
+
+it.each(["quote_attachments", "temporary_product_sequence", "temporary_product_codes"])("includes optional %s in complete backups", async table => {
+  tables.push(table);
+  try {
+    const app=new Hono(); app.get("/backup",downloadBackup);
+    const res=await app.request("/backup"); const body=await res.json() as any;
+    expect(res.status).toBe(200); expect(body.tables).toContain(table);
+    expect(body.records[table]).toEqual([{value:"preserved"}]);
+    expect(body.tableChecksums[table]).toMatch(/^[a-f0-9]{64}$/);
+  } finally {tables.pop();}
+});

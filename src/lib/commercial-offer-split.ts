@@ -1,3 +1,4 @@
+import {prepareRalOffer} from "./ral-documents";
 import {
   calculateOfferLotPrice,
   cycleForOfferRow,
@@ -38,6 +39,7 @@ export function previewCommercialOfferSplit(
   markupPercent: number,
   pricePresentation: CustomerPricePresentation = "netto",
 ): CommercialOfferSplitPrice[] {
+  offer=prepareRalOffer(offer);
   if (!Array.isArray(offer.righe) || !offer.righe.length)
     throw new Error("Inserire almeno un prodotto nel preventivo");
 
@@ -72,6 +74,7 @@ export function buildDistributorOffer(
   markupPercent: number,
   pricePresentation: CustomerPricePresentation = "netto",
 ): CommercialOfferDocument {
+  offer=prepareRalOffer(offer);
   const preview = previewCommercialOfferSplit(offer, markupPercent, pricePresentation);
   const pricesByRow = new Map<number, CommercialOfferSplitPrice[]>();
   for (const price of preview) {
@@ -83,7 +86,7 @@ export function buildDistributorOffer(
   const rows = offer.righe.map((row, rowIndex) => {
     const prices = pricesByRow.get(rowIndex) ?? [];
     if (cycleForOfferRow(row)) {
-      let distributorRow = { ...row };
+      let distributorRow = { ...row, ...(offer.verniciatura_ral?{verniciatura_ral:null,ral_consolidato:true}:{}) };
       for (const price of prices) {
         distributorRow = withOfferLotTerms(distributorRow, price.lotto, {
           prezzo_netto_manuale: price.prezzoDistributore,
@@ -94,7 +97,7 @@ export function buildDistributorOffer(
     }
 
     if (!prices.length) return row;
-    let distributorRow = { ...row };
+    let distributorRow = { ...row, ...(offer.verniciatura_ral?{verniciatura_ral:null,ral_consolidato:true}:{}) };
     for (const price of prices) {
       distributorRow = withOfferLotTerms(distributorRow, price.lotto, {
         prezzo_netto_manuale: price.prezzoDistributore,
@@ -111,7 +114,8 @@ export function buildDistributorOffer(
     };
   });
 
-  return { ...offer, cliente: distributorName, righe: rows };
+  const ral = offer.ral_riepilogo as {fixed:number;[key:string]:unknown}|undefined;
+  return { ...offer, cliente: distributorName, righe: rows, ...(ral?{verniciatura_ral:null,ral_consolidato:true,ral_riepilogo:{...ral,fixed:ral.fixed/(1+markupPercent/100)}}:{}) };
 }
 
 function finalCustomerNetPrice(
@@ -121,6 +125,7 @@ function finalCustomerNetPrice(
   rowIndex: number,
   pricePresentation: CustomerPricePresentation,
 ): number {
+  if (row.verniciatura_ral) return isCycleRow?calculateOfferLotPrice(row,lot).netPrice:Number(row.netto);
   if (isCycleRow) {
     const calculated = calculateOfferLotPrice(row, lot);
     if (calculated.manualNetPrice != null || pricePresentation === "netto") return calculated.netPrice;

@@ -1,3 +1,4 @@
+import {prepareRalOffer} from "./ral-documents";
 import {
   additionalDiscountPercent,
   calculateOfferLotPrice,
@@ -21,6 +22,7 @@ export type CommercialOfferPrintDocument = {
   note?: string;
   note_cliente?: string;
   righe: CommercialOfferRow[];
+  [key:string]:unknown;
 };
 
 const COST_CATEGORIES = [
@@ -70,6 +72,8 @@ export function buildCommercialOfferPrintHtml(
     unitPriceFractionDigits?: number;
   } = {},
 ): string {
+  offer = prepareRalOffer(offer);
+  const ral = offer.ral_riepilogo as {color:string;fixed:number;onRequest?:boolean}|undefined;
   const internal = mode === "internal";
   const title = internal ? "Analisi interna dell’offerta" : "Offerta commerciale";
   const client = escapeHtml(offer.cliente || "");
@@ -78,7 +82,7 @@ export function buildCommercialOfferPrintHtml(
   const rows = Array.isArray(offer.righe) ? offer.righe : [];
   const body = internal
     ? rows.map((row, index) => internalProductSection(row, index)).join("")
-    : customerOfferTable(rows, pricePresentation, options);
+    : customerOfferTable(rows, pricePresentation, {...options,ral});
   const noteSection = (heading: string, raw: unknown) => {
     const note = String(raw ?? "").trim();
     return note ? `<section class="notes">${sectionHeading("notes", heading)}<p>${escapeHtml(note).replace(/\n/g, "<br>")}</p></section>` : "";
@@ -143,7 +147,7 @@ export function buildCommercialOfferPrintHtml(
 <header><img src="${escapeAttribute(logoUrl)}" alt="DDF Didieffe Group"><div class="company"><strong>${COMPANY.name}</strong>${companyDetails}</div></header>
 <h1>${title}</h1>
 ${sectionHeading("person", "Intestazione")}<section class="meta"><div><b>Numero offerta</b><span class="meta-value">${offerName}</span></div><div><b>Data</b><span class="meta-value">${new Date().toLocaleDateString("it-IT")}</span></div><div><b>Cliente</b><span class="meta-value">${client || "—"}</span></div><div><b>Riferimento</b><span class="meta-value">${reference || "—"}</span></div></section>
-${sectionHeading("products", "Prodotti")}${body}${paymentTransportBlock}${internalFootnote}${noteBlock}
+${sectionHeading("products", "Prodotti")}${body}${internal && ral ? `<p>RAL ${escapeHtml(ral.color)} · Cambio colore una volta: € ${money(ral.fixed)}. Prezzo indicativo.</p>`:""}${paymentTransportBlock}${internalFootnote}${noteBlock}
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>
 </body></html>`;
 }
@@ -260,11 +264,12 @@ function customerOfferTable(
     showCalculatedPriceComparison?: boolean;
     showFinalCustomerReferencePrice?: boolean;
     unitPriceFractionDigits?: number;
+    ral?:{color:string;fixed:number;onRequest?:boolean};
   },
 ): string {
   const hideDocumentTotal = options.hideDocumentTotal === true;
   const showFinalCustomerReferencePrice = options.showFinalCustomerReferencePrice === true;
-  const unitPriceFractionDigits = Math.max(2, Math.min(6, Math.trunc(options.unitPriceFractionDigits ?? 2)));
+  const unitPriceFractionDigits = Math.max(2, Math.min(6, Math.trunc(options.unitPriceFractionDigits ?? (options.ral?4:2))));
   const expanded = rows.flatMap((row, index) => {
     const selectedLots = selectedOfferLots(row);
     const lots = selectedLots.length ? selectedLots : [positiveNumber(row.lotto) ?? 0];
@@ -272,6 +277,7 @@ function customerOfferTable(
   });
   const lines = expanded.map(({ row, index, lot }) => {
     const code = escapeHtml(String(row.codice ?? ""));
+    if(row.ral_su_richiesta)return `<tr><td>${index+1}</td><td>${code}<br>${escapeHtml(row.descrizione)}</td><td>${formatNumber(lot)} pz</td><td>Su richiesta</td>${showFinalCustomerReferencePrice?"<td>—</td>":""}<td>Su richiesta</td></tr>`;
     const description = escapeHtml(String(row.descrizione ?? ""));
     const calculatedPrice = offerLotPrice(row, lot);
     const manualNet = calculatedPrice?.manualNetPrice;
@@ -305,6 +311,7 @@ function customerOfferTable(
         : `<strong>€ ${unitPriceMoney(unitNet, unitPriceFractionDigits)}</strong>`;
       priceCell = `<div>Prezzo netto unitario: ${netDisplay}</div>`;
     }
+    if(row.verniciatura_ral)priceCell += `<div class="muted">RAL ${escapeHtml(options.ral?.color)} incluso nel netto</div>`;
     const referencePrice = number(offerLotTerms(row, lot).prezzo_finale_riferimento);
     const finalPriceCell = showFinalCustomerReferencePrice
       ? `<td class="num">€ ${unitPriceMoney(referencePrice, 2)}</td>`
@@ -312,18 +319,19 @@ function customerOfferTable(
     return `<tr><td>${index + 1}</td><td><strong>${code}</strong><br>${description}</td><td class="num">${formatNumber(lot)} pz</td><td>${priceCell}</td>${finalPriceCell}<td class="num">€ ${money(unitNet * lot)}</td></tr>`;
   }).join("");
   const hasAlternativeQuantities = rows.some((row) => selectedOfferLots(row).length > 1);
-  const total = hasAlternativeQuantities ? null : expanded.reduce((sum, { row, lot }) => {
+  const total = hasAlternativeQuantities || options.ral?.onRequest ? null : expanded.reduce((sum, { row, lot }) => {
     return sum + customerUnitNet(row, lot, presentation, offerLotPrice(row, lot), unitPriceFractionDigits) * lot;
-  }, 0);
+  }, options.ral?.fixed ?? 0);
   const totalBlock = hideDocumentTotal
     ? hasAlternativeQuantities ? `<p class="footnote">Le quantità indicate sono alternative. Il totale per ogni lotto è riportato nella relativa riga.</p>` : ""
+    : options.ral?.onRequest ? `<p>Totale su richiesta: uno o più prezzi netti mancanti.</p>`
     : total == null
       ? `<p class="footnote">Le quantità indicate sono alternative. Il totale è riportato per ciascun lotto.</p>`
       : `<div class="customer-total">${showFinalCustomerReferencePrice ? "Totale netto al distributore" : "Totale netto offerta"}: € ${money(total)}</div>`;
   const priceHeading = showFinalCustomerReferencePrice
     ? `<th>Prezzo al distributore</th><th class="num">Prezzo finale cliente €/pz</th>`
     : `<th>${presentation === "netto" ? "Prezzo" : "Listino e sconto"}</th>`;
-  return `<table class="customer-lines"><thead><tr><th>#</th><th>Prodotto</th><th class="num">Lotto</th>${priceHeading}<th class="num">${showFinalCustomerReferencePrice ? "Totale al distributore" : "Totale netto"}</th></tr></thead><tbody>${lines}</tbody></table>${totalBlock}`;
+  return `<table class="customer-lines"><thead><tr><th>#</th><th>Prodotto</th><th class="num">Lotto</th>${priceHeading}<th class="num">${showFinalCustomerReferencePrice ? "Totale al distributore" : "Totale netto"}</th></tr></thead><tbody>${lines}</tbody></table>${options.ral?`<p>RAL ${escapeHtml(options.ral.color)} · Cambio colore (una volta per ordine): € ${money(options.ral.fixed)}. Prezzo verniciato indicativo, da confermare dall’ufficio.</p>`:""}${totalBlock}`;
 }
 
 function offerLotPrice(row: CommercialOfferRow, lot: number): ReturnType<typeof calculateOfferLotPrice> | null {
@@ -338,6 +346,7 @@ function customerUnitNet(
   calculatedPrice = offerLotPrice(row, lot),
   unitPriceFractionDigits = 2,
 ): number {
+  if (row.verniciatura_ral) return calculatedPrice?.netPrice ?? number(row.netto);
   if (calculatedPrice?.manualNetPrice != null) return roundToPrecision(calculatedPrice.netPrice, unitPriceFractionDigits);
   if (presentation === "listino_sconto")
     return roundToPrecision(number(offerLotTerms(row, lot).listino) * discountFactor(discountText(row)), unitPriceFractionDigits);
@@ -349,7 +358,7 @@ function storedOfferSummary(row: CommercialOfferRow): string {
   const list = number(row.listino);
   const discount = discountText(row);
   let net = number(row.netto);
-  try { net = list * discountFactor(discount); } catch { /* Keep historical stored net. */ }
+  try { if(!row.verniciatura_ral)net = list * discountFactor(discount); } catch { /* Keep historical stored net. */ }
   return `<p>Lotto: ${formatNumber(row.lotto)} pz · Listino: € ${money(list)} · Sconto: ${escapeHtml(discount || "—")} · Netto unitario: € ${money(net)}</p>`;
 }
 

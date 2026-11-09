@@ -1,3 +1,4 @@
+import {validateTemporaryProductDocument} from "./temporary-code-validation";
 import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
@@ -69,6 +70,7 @@ export const offerRouter = createRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
+      await validateTemporaryProductDocument(input.dataJson,"righe");
       const { numberEdited: _numberEdited, ...offer } = input;
 
       return db.transaction(async (tx) => {
@@ -104,6 +106,7 @@ export const offerRouter = createRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
+      await validateTemporaryProductDocument(input.dataJson,"righe");
       const { id, ...data } = input;
       await db
         .update(commercialOffers)

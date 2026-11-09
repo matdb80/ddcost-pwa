@@ -1,5 +1,6 @@
 import {useState} from "react";
 import {MODIFICATION_OBJECTS,toggleModificationObject} from "@/lib/quote-material-weight";
+import {modificationObjectError} from "@/lib/quote-modification-validation";
 
 type Props={
   value:unknown;
@@ -14,6 +15,7 @@ export default function QuoteModificationObjectFields({value,disabled=false,idPr
   const [added,setAdded]=useState<string[]>([]);
   const selected=Array.isArray(value)?value.filter((item):item is string=>typeof item==="string" && !!item.trim()):[];
   const options=Array.from(new Set<string>([...MODIFICATION_OBJECTS,...added,...selected]));
+  const missing=!disabled && Boolean(modificationObjectError(value));
   const add=()=>{
     const name=custom.trim().replace(/\s+/g," ");
     if(!name||disabled)return;
@@ -23,9 +25,10 @@ export default function QuoteModificationObjectFields({value,disabled=false,idPr
     if(!selected.includes(option))onChange([...selected,option]);
     setCustom("");
   };
-  return <fieldset className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
-    <legend className="px-1 text-sm font-semibold text-slate-800">Oggetto della modifica</legend>
-    <p className="mb-2 text-xs text-slate-600">Seleziona una o più voci, se pertinenti al prodotto.</p>
+  return <fieldset aria-invalid={missing} aria-describedby={`${idPrefix}-hint`}
+    className={`min-w-0 rounded-lg border p-3 ${missing?"border-amber-400 bg-amber-50":"border-slate-200 bg-slate-50"}`}>
+    <legend className="px-1 text-sm font-semibold text-slate-800">Oggetto della modifica *</legend>
+    <p id={`${idPrefix}-hint`} className="mb-2 text-xs text-slate-600">Seleziona almeno una voce per questo prodotto (obbligatorio). Puoi aggiungere una voce personalizzata.</p>
     <div className={`grid grid-cols-1 ${compact?"sm:grid-cols-2":"sm:grid-cols-2 lg:grid-cols-3"} gap-x-3 gap-y-1.5`}>
       {options.map((option,index)=>{
         const id=`${idPrefix}-${index}`;

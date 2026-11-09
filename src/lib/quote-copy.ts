@@ -59,7 +59,7 @@ export function formatQuoteForCopy(doc: Data): string {
       if (discount) lines.push("Sconto cliente: " + discount);
     }
     lines.push(
-      "Prezzo netto unitario: " + money(net),
+      "Prezzo netto unitario: " + (doc.ral_riepilogo?net.toLocaleString("it-IT",{minimumFractionDigits:4,maximumFractionDigits:4})+" €":money(net)),
       "Quantità: " + qty.toLocaleString("it-IT"),
       "Totale riga: " + money(lineTotal),
       ""
@@ -68,6 +68,7 @@ export function formatQuoteForCopy(doc: Data): string {
   const docTotal = doc.totale_finale != null
     ? asNumber(doc.totale_finale)
     : calculatedTotal;
+  if(doc.ral_riepilogo)lines.push("RAL " + doc.ral_riepilogo.color + " · Cambio colore (una volta): " + money(asNumber(doc.ral_riepilogo.fixed)), "Prezzo verniciato indicativo, da confermare dall’ufficio.");
   lines.push("Totale documento: " + money(docTotal));
   if (asText(doc.note_cliente)) lines.push("", "Note cliente:", asText(doc.note_cliente));
   return lines.join("\n");

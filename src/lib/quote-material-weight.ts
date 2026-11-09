@@ -24,6 +24,7 @@ export interface MaterialWeightResult {
 }
 export function calculateMaterialByWeight(v:MaterialByWeight):MaterialWeightResult {
   const density=MATERIAL_DENSITY_G_CM3[v.material];
+  if(String(v.material)==="alluminio")throw new Error("Per l’alluminio seleziona Conosci il costo del materiale e inserisci il costo €/pz");
   if(!density)throw new Error("Seleziona ferro, inox oppure ottone prima di calcolare il peso");
   if(![v.lengthMm,v.widthMm,v.thicknessMm,v.euroPerKg].every(Number.isFinite) ||
      v.lengthMm<=0 || v.widthMm<=0 || v.thicknessMm<=0 ||

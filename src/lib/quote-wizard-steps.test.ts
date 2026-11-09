@@ -3,6 +3,21 @@ import {blankProduct,blankQuote,calculateQuote} from "./quote-calculation";
 import {buildQuoteWizardSteps,quoteWizardStepError} from "./quote-wizard-steps";
 
 describe("Una Tantum mobile wizard step sequencing",()=>{
+  it("requires at least one nonempty modification on each product, including custom entries",()=>{
+    const quote={...blankQuote(),prodotti:[{...blankProduct(),oggetto_modifica:["occhio"]},blankProduct()]};
+    const steps=buildQuoteWizardSteps(quote);
+    const first=steps.find(s=>s.id==="p:0:oggetto_modifica")!;
+    const second=steps.find(s=>s.id==="p:1:oggetto_modifica")!;
+    expect(first.required).toBe(true);
+    expect(second.required).toBe(true);
+    expect(quoteWizardStepError(first,quote)).toBeNull();
+    for(const value of [undefined,null,[],"occhio",["","  "],[1,null]]){
+      quote.prodotti[1].oggetto_modifica=value;
+      expect(quoteWizardStepError(second,quote)).toMatch(/almeno una voce/);
+    }
+    quote.prodotti[1].oggetto_modifica=["Foratura aggiuntiva"];
+    expect(quoteWizardStepError(second,quote)).toBeNull();
+  });
   it("has a single final summary after every input in all supported paths",()=>{
     for(const advanced of [false,true])
       for(const version of [1,2,3])
