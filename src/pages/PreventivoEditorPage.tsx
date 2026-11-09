@@ -11,6 +11,10 @@ import { buildOneTimeQuotePrintHtml } from "@/lib/quote-pdf";
 import { openCommercialOfferPrintWindow } from "@/lib/commercial-offer-pdf";
 import { buildQuoteWizardSteps, quoteWizardStepError } from "@/lib/quote-wizard-steps";
 import QuoteNumericInput, {type QuoteNumericKind} from "@/components/QuoteNumericInput";
+import LaborCostField from "@/components/LaborCostField";
+import ArticleCodeInput from "@/components/ArticleCodeInput";
+import StandardBlackFinish from "@/components/StandardBlackFinish";
+import {manualTemporaryCodePrefix,validManualTemporaryCode} from "@/lib/ral-pricing";
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
 import QuoteMobileWizard from "@/components/QuoteMobileWizard";
@@ -212,7 +216,10 @@ export default function PreventivoEditorPage() {
       prodotti[index] = { ...before, [key]: value };
       if(key==="costo_materiale_noto" && value===false && before.costo_materiale_noto!==false && before.geometria_materiale===undefined)
         prodotti[index].geometria_materiale="";
-      if(key==="codice")delete prodotti[index].codice_temporaneo;
+      if(key==="codice"){
+        const prefix=manualTemporaryCodePrefix(before.codice_temporaneo);
+        if(!prefix||!validManualTemporaryCode(String(value),prefix,true))delete prodotti[index].codice_temporaneo;
+      }
       return { ...prev, prodotti };
     });
     if (!["gruppo_merceologico","materiale_prodotto","codice","descrizione"].includes(key) ||
@@ -826,8 +833,9 @@ export default function PreventivoEditorPage() {
                   update("verniciatura_ral",ral,true);
                 }}/>
               </div>
-              <input id={"product-code-"+index} className={compactInputClass+" "+normalInputClass} disabled={locked} value={p.codice??""}
-                onChange={e=>updateProduct(index,"codice",e.target.value)}/>
+              <ArticleCodeInput id={"product-code-"+index} className={compactInputClass+" "+normalInputClass} disabled={locked} value={p.codice??""}
+                protectedPrefix={!doc.verniciatura_ral?manualTemporaryCodePrefix(p.codice_temporaneo):null}
+                onChange={value=>updateProduct(index,"codice",value)}/>
             </div>
             <label className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-4">
               <span className="flex min-h-7 items-center justify-between gap-2">
@@ -876,6 +884,8 @@ export default function PreventivoEditorPage() {
               </select>
             </label>
           </div>
+          {!doc.verniciatura_ral && <StandardBlackFinish value={p.nero_standard_goffrato} disabled={locked}
+            onChange={value=>updateProduct(index,"nero_standard_goffrato",value)}/>}
           <QuoteModificationObjectFields value={p.oggetto_modifica} disabled={locked}
             idPrefix={`quote-product-${index}-modification`}
             onChange={value=>updateProduct(index,"oggetto_modifica",value)}/>
@@ -889,6 +899,11 @@ export default function PreventivoEditorPage() {
               const quantityNeedsAttention=f.key==="quantita"&&(p[f.key]===""||p[f.key]===null||p[f.key]===undefined);
               const fieldLabel=f.key==="lavoro_h" ? (laborPerPiece ? "Ore di lavorazione per singolo pezzo" : "Ore complessive per realizzare la quantità indicata in questa riga") : f.label;
               const shortLabel=f.key==="lavoro_h" ? (laborPerPiece ? "Ore lavoro / pezzo" : "Ore lavoro prodotto") : f.shortLabel;
+              if(f.key==="costo_lavoro")return <LaborCostField key={f.key} id={`quote-product-${index}-${f.key}`}
+                value={p.costo_lavoro??0} disabled={locked}
+                inputClassName={compactInputClass+" "+(highlighted?suggestedInputClass:normalInputClass)}
+                inputTitle={highlighted?suggestedHint:fieldLabel}
+                onChange={value=>updateProduct(index,"costo_lavoro",value)}/>;
               if(f.key==="lavoro_h" && laborOverall)return <div key={f.key} className="flex min-w-0 flex-col gap-1 text-xs">
                 <span className="font-medium text-slate-600">Ore lavoro attribuite</span>
                 <output aria-label={`Ore lavoro attribuite al prodotto ${index+1}`} className={compactInputClass+" border-slate-200 bg-slate-100"}>

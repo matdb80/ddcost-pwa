@@ -4,6 +4,7 @@ import { trpc } from "@/providers/trpc";
 import Layout from "@/components/Layout";
 import CycleCostPie from "@/components/CycleCostPie";
 import CycleRawMaterialFields from "@/components/CycleRawMaterialFields";
+import LaborCostField from "@/components/LaborCostField";
 import { prepareRawMaterialEditor, finalizeRawMaterialRow } from "@/lib/cycle-raw-material";
 import CostReductionBreakdown from "@/components/CostReductionBreakdown";
 import FormulaTooltip from "@/components/FormulaTooltip";
@@ -775,16 +776,13 @@ export default function CicloEditorPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">
-                Costo Lavoro €/min
-              </label>
-              <input
-                type="number"
-                step="0.01"
+              <LaborCostField
+                id="cycle-labor-hourly-cost"
+                storedUnit="minute"
                 value={model.costo_lavoro_min}
-                onChange={(e) => handleChange("costo_lavoro_min", parseFloat(e.target.value) || 0)}
+                onChange={value => handleChange("costo_lavoro_min", value)}
                 disabled={isReadOnly && !isNew}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-50"
+                inputClassName="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-50"
               />
             </div>
           </div>

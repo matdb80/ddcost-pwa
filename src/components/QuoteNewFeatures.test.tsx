@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {temporaryCode} from "@/lib/ral-pricing";
 const mock=vi.hoisted(()=>({files:[] as any[],calls:[] as {name:string;input:any}[],failReserve:false}));
 vi.mock("@/providers/trpc",()=>({trpc:{
   useUtils:()=>({quoteAttachment:{list:{invalidate:async()=>{}}}}),
@@ -11,13 +12,52 @@ vi.mock("@/providers/trpc",()=>({trpc:{
   },
   temporaryProduct:{
     reserve:{useMutation:()=>({mutateAsync:async(input:any)=>{mock.calls.push({name:"reserve",input});if(mock.failReserve){mock.failReserve=false;throw new Error("Connessione interrotta");}return {sequence:42,requestKey:input.requestKey};}})},
-    complete:{useMutation:()=>({mutateAsync:async(input:any)=>{mock.calls.push({name:"complete",input});return {sequence:42,...input,code:`T${input.family}0000042${input.material}${input.color?"O"+input.color:""}`};}})},
+    complete:{useMutation:()=>({mutateAsync:async(input:any)=>{mock.calls.push({name:"complete",input});return {sequence:42,...input,code:temporaryCode(42,input.family,input.material,input.color,input.suffix)};}})},
   },
 }}));
 import QuoteAttachments from "./QuoteAttachments";
 import TemporaryProductCode from "./TemporaryProductCode";
 beforeEach(()=>{mock.files=[];mock.calls=[];mock.failReserve=false;URL.createObjectURL=vi.fn(()=>"blob:test");URL.revokeObjectURL=vi.fn();});
 afterEach(()=>cleanup());
+it.each([["I","n"],["X","P"],["6","P"]])("generates the automatic unpainted finish for %s",async(material,suffix)=>{
+  const apply=vi.fn();render(<TemporaryProductCode disabled={false} ral={null} onApply={apply}/>);
+  fireEvent.click(screen.getByRole("button",{name:"Genera codice temporaneo"}));
+  fireEvent.change(screen.getByLabelText("Famiglia"),{target:{value:"FP"}});
+  await waitFor(()=>expect((screen.getByLabelText("Progressivo automatico") as HTMLInputElement).value).toBe("0000042"));
+  fireEvent.change(screen.getByLabelText("Materiale"),{target:{value:material}});
+  expect(screen.getByLabelText("Codice temporaneo completo").textContent).toBe(`TFP0000042${material}${suffix}`);
+  fireEvent.click(screen.getByRole("button",{name:"Usa questo codice"}));
+  await waitFor(()=>expect(apply).toHaveBeenCalledWith(expect.objectContaining({code:`TFP0000042${material}${suffix}`}),null));
+});
+it.each(["B","A"])("lets users enter only one final character for unpainted %s",async material=>{
+  const apply=vi.fn();render(<TemporaryProductCode disabled={false} ral={null} onApply={apply}/>);
+  fireEvent.click(screen.getByRole("button",{name:"Genera codice temporaneo"}));
+  fireEvent.change(screen.getByLabelText("Famiglia"),{target:{value:"FP"}});
+  await waitFor(()=>expect((screen.getByLabelText("Progressivo automatico") as HTMLInputElement).value).toBe("0000042"));
+  fireEvent.change(screen.getByLabelText("Materiale"),{target:{value:material}});
+  const code=screen.getByRole("textbox",{name:"Codice temporaneo completo"}) as HTMLInputElement;
+  const prefix=`TFP0000042${material}`;
+  expect(code.value).toBe(prefix);
+  expect((screen.getByRole("button",{name:"Usa questo codice"}) as HTMLButtonElement).disabled).toBe(true);
+  for(const invalid of ["",prefix.slice(1),prefix+"ab",prefix+" ","TFP0000043"+material+"z"]){
+    fireEvent.change(code,{target:{value:invalid}});expect(code.value).toBe(prefix);
+  }
+  fireEvent.focus(code);
+  fireEvent.paste(code,{clipboardData:{getData:()=>"z"}});
+  expect(code.value).toBe(prefix+"z");
+  fireEvent.click(screen.getByRole("button",{name:"Usa questo codice"}));
+  await waitFor(()=>expect(apply).toHaveBeenCalledWith(expect.objectContaining({code:prefix+"z"}),null));
+  expect(mock.calls.find(c=>c.name==="complete")!.input.suffix).toBe("z");
+});
+it("keeps the RAL code read-only even for brass when the document flag is selected",async()=>{
+  render(<TemporaryProductCode disabled={false} ral={{color:"9006",textured:false}} onApply={vi.fn()}/>);
+  fireEvent.click(screen.getByRole("button",{name:"Genera codice temporaneo"}));
+  fireEvent.change(screen.getByLabelText("Famiglia"),{target:{value:"FP"}});
+  await waitFor(()=>expect((screen.getByLabelText("Progressivo automatico") as HTMLInputElement).value).toBe("0000042"));
+  fireEvent.change(screen.getByLabelText("Materiale"),{target:{value:"B"}});
+  expect(screen.queryByRole("textbox",{name:"Codice temporaneo completo"})).toBeNull();
+  expect(screen.getByLabelText("Codice temporaneo completo").textContent).toBe("TFP0000042BO9006");
+});
 it("creates a draft before uploading, opens image preview, zooms and reopens the attachment",async()=>{
   const ensure=vi.fn(async()=>123);
   render(<QuoteAttachments quoteId={null} ensureQuoteId={ensure}/>);

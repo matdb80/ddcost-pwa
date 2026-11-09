@@ -10,7 +10,7 @@ export const blankProduct = (): Product => ({
   codice: "", descrizione: "", quantita: 1, materiale_cad: 0,
   costo_materiale_noto: true, geometria_materiale: "", diametro_mm: 0, diametro_interno_mm: 0, lunghezza_mm: 0, larghezza_mm: 0, spessore_mm: 0,
   costo_materiale_kg: 0, oggetto_modifica: [], lavoro_h: 0, costo_lavoro: 24,
-  trattamenti_cad: 0, attrezzaggi_h: 0,
+  trattamenti_cad: 0, attrezzaggi_h: 0, nero_standard_goffrato: false,
   ricarico_spese: 0.75, margine: 0.2, prezzo_manuale: null, quadrabile: true,
 });
 export const blankQuote = (): QuoteDocument => ({

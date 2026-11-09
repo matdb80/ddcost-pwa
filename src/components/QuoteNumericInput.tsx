@@ -37,11 +37,13 @@ export function roundQuoteNumeric(value:number,kind:QuoteNumericKind,fractionDig
 }
 
 export default function QuoteNumericInput({
-  value, onChange, kind, fractionDigits=quoteNumericDecimals(kind), optional=false, disabled=false, className="", "aria-label":ariaLabel,
+  value, onChange, onDraftChange, kind, fractionDigits=quoteNumericDecimals(kind), optional=false, disabled=false, className="", "aria-label":ariaLabel,
   ...rest
 }: {
   value:number|null|undefined;
   onChange:(next:number|null)=>void;
+  /** Live display-only value, including an empty/incomplete draft. */
+  onDraftChange?:(next:number|null)=>void;
   kind:QuoteNumericKind;
   optional?:boolean;
   fractionDigits?:number;
@@ -68,6 +70,7 @@ export default function QuoteNumericInput({
       edited.current=true;
       setDraft(text); // Don't replace an in-progress comma or erase the caret.
       const parsed=parseQuoteNumericDraft(text,kind,fractionDigits);
+      onDraftChange?.(parsed);
       if(parsed!==null)onChange(parsed);
       // Empty means no final value until blur, so users may freely Backspace.
     }}
@@ -79,6 +82,7 @@ export default function QuoteNumericInput({
       }
       const parsed=parseQuoteNumericDraft(draft,kind,fractionDigits);
       const committed=parsed===null?(optional?null:0):roundQuoteNumeric(parsed,kind,fractionDigits);
+      onDraftChange?.(committed);
       onChange(committed);
       setDraft(formatQuoteNumeric(committed,kind,fractionDigits));
     }}

@@ -2,8 +2,10 @@ import SalesHandoffPanel from "@/components/SalesHandoffPanel";
 import { useEffect, useRef, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import TemporaryProductCode from "@/components/TemporaryProductCode";
+import ArticleCodeInput from "@/components/ArticleCodeInput";
+import StandardBlackFinish from "@/components/StandardBlackFinish";
 import RalSettings from "@/components/RalSettings";
-import {validRal} from "@/lib/ral-pricing";
+import {validRal,manualTemporaryCodePrefix,validManualTemporaryCode} from "@/lib/ral-pricing";
 import {prepareRalOffer} from "@/lib/ral-documents";
 import Layout from "@/components/Layout";
 import FormulaTooltip from "@/components/FormulaTooltip";
@@ -217,7 +219,10 @@ export default function OffertaEditorPage() {
   });
   const editRow = (index: number, key: string, value: unknown) => {
     let next = { ...offer.righe[index], [key]: value } as OfferRow;
-    if(key==="codice")delete next.codice_temporaneo;
+    if(key==="codice"){
+      const prefix=manualTemporaryCodePrefix(offer.righe[index].codice_temporaneo);
+      if(!prefix||!validManualTemporaryCode(String(value),prefix,true))delete next.codice_temporaneo;
+    }
     let validationMessage = "";
     if (["listino", "sconto_base", "extra"].includes(key)) {
       try { Object.assign(next, recompute(next)); }
@@ -570,10 +575,14 @@ export default function OffertaEditorPage() {
           </div>
 
           <TemporaryProductCode disabled={locked} ral={validRal(offer.verniciatura_ral)?offer.verniciatura_ral:null} onApply={(code,ral)=>setOffer(previous=>({...previous,verniciatura_ral:ral,righe:previous.righe.map((r,i)=>({...r,verniciatura_ral:ral,...(i===index?{codice:code.code,codice_temporaneo:code}:{})}))}))}/>
+          {!offer.verniciatura_ral && <StandardBlackFinish value={row.nero_standard_goffrato} disabled={locked}
+            onChange={value=>editRow(index,"nero_standard_goffrato",value)}/>}
           <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
             <label className="flex w-44 shrink-0 flex-col gap-1 text-xs">
               <span>Codice articolo</span>
-              <input disabled={locked} className="h-8 w-full rounded border px-2 text-sm disabled:bg-slate-100" value={String(row.codice ?? "")} onChange={(event) => editRow(index, "codice", event.target.value)}/>
+              <ArticleCodeInput disabled={locked} className="h-8 w-full rounded border px-2 text-sm disabled:bg-slate-100" value={String(row.codice ?? "")}
+                protectedPrefix={!offer.verniciatura_ral?manualTemporaryCodePrefix(row.codice_temporaneo):null}
+                onChange={value=>editRow(index,"codice",value)}/>
             </label>
             <label className="flex min-w-0 max-w-[65ch] flex-[2_1_24rem] flex-col gap-1 text-xs">
               <span>Descrizione</span>

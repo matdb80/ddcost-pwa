@@ -1,5 +1,6 @@
 import type {Product, QuoteDocument} from "./quote-calculation";
 import {quoteDocumentNumber} from "./commercial-offer-number";
+import {documentPrintColor,documentPrintFinish} from "./document-print-color";
 
 const COMPANY = {
   name: "DIDIEFFE GROUP srl",
@@ -17,6 +18,8 @@ export function buildOneTimeQuotePrintHtml(
   logoUrl = "/images/ddf-logo.png",
   options: { hideDocumentTotal?: boolean } = {},
 ): string {
+  const colorLabel=documentPrintColor(quote);
+  const ral=quote.verniciatura_ral||quote.ral_consolidato?quote.ral_riepilogo:null;
   const products = Array.isArray(quote.prodotti) ? quote.prodotti as Product[] : [];
   const rows = products.map((product, index) => {
     const code = String(product.codice ?? "").trim();
@@ -25,7 +28,7 @@ export function buildOneTimeQuotePrintHtml(
     const quantity = number(product.quantita);
     const unitPrice = number(product.prezzo_netto_unitario_finale ?? product.prezzo_netto_unitario);
     const lineTotal = number(product.totale_finale ?? product.totale ?? unitPrice * quantity);
-    return `<tr><td class="num">${index + 1}</td><td>${productName || "Prodotto"}</td><td class="num">${formatNumber(quantity)} pz</td><td class="num">€ ${quote.ral_riepilogo?unitPrice.toLocaleString("it-IT",{minimumFractionDigits:4,maximumFractionDigits:4}):money(unitPrice)}</td><td class="num">€ ${money(lineTotal)}</td></tr>`;
+    return `<tr><td class="num">${index + 1}</td><td>${productName || "Prodotto"}<br><span>Colore: ${escapeHtml(documentPrintFinish(quote,product))}</span></td><td class="num">${formatNumber(quantity)} pz</td><td class="num">€ ${ral?unitPrice.toLocaleString("it-IT",{minimumFractionDigits:4,maximumFractionDigits:4}):money(unitPrice)}</td><td class="num">€ ${money(lineTotal)}</td></tr>`;
   }).join("");
   const storedTotal = quote.totale_finale ?? quote.totale;
   const total = storedTotal == null
@@ -74,10 +77,11 @@ export function buildOneTimeQuotePrintHtml(
   <div><b>Data</b>${new Date().toLocaleDateString("it-IT")}</div>
   <div><b>Cliente</b>${client || "—"}</div>
   <div><b>Riferimento</b>${reference || "—"}</div>
+  <div><b>Colore</b>${escapeHtml(colorLabel)}</div>
 </section>
 <h2>Prodotti e prezzi netti</h2>
 <table><thead><tr><th class="num">#</th><th>Prodotto</th><th class="num">Quantità</th><th class="num">Prezzo netto unitario</th><th class="num">Totale netto</th></tr></thead><tbody>${rows}</tbody></table>
-${quote.ral_riepilogo ? `<p>RAL ${escapeHtml(quote.ral_riepilogo.color)} · Cambio colore (una volta): € ${money(quote.ral_riepilogo.fixed)}. Prezzo verniciato indicativo, da confermare dall’ufficio.</p>` : ""}
+${ral ? `<p>RAL ${escapeHtml(ral.color)} · Cambio colore (una volta): € ${money(ral.fixed)}. Prezzo verniciato indicativo, da confermare dall’ufficio.</p>` : ""}
 ${totalBlock}
 ${noteBlock}
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>

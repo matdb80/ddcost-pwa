@@ -36,7 +36,7 @@ describe("RAL rules supplied on 2026-11-09", () => {
       expect(code.slice(3,10)).toBe("0000001"); expect(code[10]).toBe(material);
       expect(code.slice(11)).toBe("O9006"); expect(ralCodeInfo(code).paintable).toBe(false);
     }
-    expect(temporaryCode(9999999, family, "I")).toHaveLength(11);
+    expect(temporaryCode(9999999, family, "I")).toHaveLength(12);
   });
   it("uses the actual eleventh character, not a marketing group", () => {
     for (const material of ["1","2","3","6","X"]) expect(ralRate(`TFP0000001${material}`, false).percent).toBe(40);

@@ -4,7 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { temporaryProductSequence, temporaryProductCodes } from "@db/schema";
 import { getDb } from "./queries/connection";
 import { createRouter, authedQuery } from "./middleware";
-import { temporaryCode, TEMPORARY_FAMILIES } from "../src/lib/ral-pricing";
+import { temporaryCode, validTemporarySuffix, TEMPORARY_FAMILIES } from "../src/lib/ral-pricing";
 const family = z.enum(TEMPORARY_FAMILIES);
 const requestKey = z.string().uuid();
 export const temporaryProductRouter = createRouter({
@@ -24,11 +24,13 @@ export const temporaryProductRouter = createRouter({
       return { sequence, requestKey: input.requestKey };
     });
   }),
-  complete: authedQuery.input(z.object({ requestKey, family, material: z.enum(["I", "X", "6", "B", "A"]), color: z.string().regex(/^\d{4}$/).nullable() })).mutation(async ({ ctx, input }) => {
+  complete: authedQuery.input(z.object({ requestKey, family, material: z.enum(["I", "X", "6", "B", "A"]), color: z.string().regex(/^\d{4}$/).nullable(), suffix:z.string().refine(validTemporarySuffix,"Inserisci un solo carattere finale, senza spazi").optional() })).mutation(async ({ ctx, input }) => {
     return getDb().transaction(async tx => {
       const [reservation] = await tx.select().from(temporaryProductCodes).where(eq(temporaryProductCodes.requestKey, input.requestKey)).limit(1).for("update");
       if (!reservation || reservation.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND", message: "Prenotazione non trovata" });
-      const code = temporaryCode(reservation.sequence, input.family, input.material, input.color);
+      let code:string;
+      try{code=temporaryCode(reservation.sequence,input.family,input.material,input.color,input.suffix);}
+      catch(error){throw new TRPCError({code:"BAD_REQUEST",message:error instanceof Error?error.message:"Codice non valido"});}
       if (reservation.code && reservation.code !== code) throw new TRPCError({ code: "CONFLICT", message: "Progressivo già assegnato: genera un nuovo codice" });
       if (!reservation.code) await tx.update(temporaryProductCodes).set({ family: input.family, material: input.material, color: input.color, code }).where(eq(temporaryProductCodes.id, reservation.id));
       return { sequence: reservation.sequence, family: input.family, material: input.material, color: input.color, code };

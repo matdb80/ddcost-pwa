@@ -2,7 +2,8 @@ import { useRef, useState } from "react";
 import { trpc } from "@/providers/trpc";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { RalColorSelect } from "./RalSettings";
-import { TEMPORARY_FAMILIES, TEMPORARY_MATERIALS, temporaryCode, type RalOptions } from "@/lib/ral-pricing";
+import ArticleCodeInput from "./ArticleCodeInput";
+import { TEMPORARY_FAMILIES, TEMPORARY_MATERIALS, temporaryCode, temporaryCodePrefix, validTemporarySuffix, type RalOptions } from "@/lib/ral-pricing";
 export type GeneratedProductCode = { sequence: number; family: string; material: string; color: string | null; code: string };
 export default function TemporaryProductCode({ disabled, ral, onApply }: {
   disabled: boolean; ral: RalOptions | null; onApply: (code: GeneratedProductCode, ral: RalOptions | null) => void;
@@ -12,6 +13,8 @@ export default function TemporaryProductCode({ disabled, ral, onApply }: {
   const [material, setMaterial] = useState("I");
   const [color, setColor] = useState("9010");
   const [painted, setPainted] = useState(false);
+  const [suffix,setSuffix]=useState("");
+  const manualSuffix=!painted && !ral && (material==="B"||material==="A");
   const [sequence, setSequence] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -34,17 +37,20 @@ export default function TemporaryProductCode({ disabled, ral, onApply }: {
     saving.current = true; setBusy(true); setError("");
     try {
       if (painted && ral?.textured && (material === "X" || material === "6")) throw new Error("Inox e goffrato non sono compatibili");
-      const result = await complete.mutateAsync({ requestKey: request.current, family: family as typeof TEMPORARY_FAMILIES[number], material: material as keyof typeof TEMPORARY_MATERIALS, color: painted ? color : null });
+      const result = await complete.mutateAsync({ requestKey: request.current, family: family as typeof TEMPORARY_FAMILIES[number], material: material as keyof typeof TEMPORARY_MATERIALS, color: painted ? color : null, ...(manualSuffix?{suffix}:{} ) });
       onApply(result, painted ? { color, textured: ral?.textured ?? false } : ral);
       setOpen(false);
     } catch (e) { setError(e instanceof Error ? e.message : "Generazione non riuscita"); }
     finally { saving.current = false; setBusy(false); }
   }
-  let preview = "";
-  try { if (sequence) preview = temporaryCode(sequence, family, material, painted ? color : null); } catch { /* fields incomplete */ }
+  let preview = "",prefix="";
+  try { if (sequence){
+    prefix=temporaryCodePrefix(sequence,family,material);
+    preview=manualSuffix?prefix+suffix:temporaryCode(sequence, family, material, painted ? color : null);
+  }} catch { /* fields incomplete */ }
   return <>
     <button type="button" disabled={disabled} className="rounded border border-sky-600 px-2 py-1 text-xs text-sky-800 disabled:opacity-40" onClick={() => {
-      request.current = crypto.randomUUID(); setSequence(null); setFamily(""); setMaterial("I"); setError(""); setColor(ral?.color ?? "9010"); setPainted(Boolean(ral)); setOpen(true);
+      request.current = crypto.randomUUID(); setSequence(null); setFamily(""); setMaterial("I"); setSuffix(""); setError(""); setColor(ral?.color ?? "9010"); setPainted(Boolean(ral)); setOpen(true);
     }}>Genera codice temporaneo</button>
     <Dialog open={open} onOpenChange={value => { if (!busy) setOpen(value); }}>
       <DialogContent className="sm:max-w-3xl">
@@ -55,13 +61,19 @@ export default function TemporaryProductCode({ disabled, ral, onApply }: {
           <span className="rounded bg-slate-100 px-3 py-2 font-mono font-bold">T</span>
           <label className="flex flex-col gap-1">Famiglia<select disabled={busy} className="h-9 rounded border px-2" value={family} onChange={e => void chooseFamily(e.target.value)}><option value="">Seleziona</option>{TEMPORARY_FAMILIES.map(f => <option key={f}>{f}</option>)}</select></label>
           <label className="flex flex-col gap-1">Progressivo<input aria-label="Progressivo automatico" readOnly className="h-9 w-28 rounded border bg-slate-100 px-2 font-mono" value={sequence ? String(sequence).padStart(7, "0") : "—"}/></label>
-          <label className="flex flex-col gap-1">Materiale<select disabled={busy} className="h-9 rounded border px-2" value={material} onChange={e => setMaterial(e.target.value)}>{Object.entries(TEMPORARY_MATERIALS).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
+          <label className="flex flex-col gap-1">Materiale<select disabled={busy} className="h-9 rounded border px-2" value={material} onChange={e => {setMaterial(e.target.value);setSuffix("");}}>{Object.entries(TEMPORARY_MATERIALS).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
           {painted && <><span className="rounded bg-slate-100 px-3 py-2 font-mono font-bold">O</span><RalColorSelect value={color} disabled={busy || Boolean(ral)} onChange={setColor}/></>}
         </div>
-        {preview && <output aria-label="Codice temporaneo completo" className="break-all rounded bg-sky-50 p-3 font-mono text-lg font-bold">{preview}</output>}
+        {preview && (manualSuffix?<label className="flex min-w-0 flex-col gap-1 text-sm">
+          Codice temporaneo completo
+          <ArticleCodeInput aria-label="Codice temporaneo completo" value={preview} protectedPrefix={prefix} disabled={busy}
+            className="w-full rounded border border-sky-400 bg-sky-50 p-3 font-mono text-lg font-bold"
+            onChange={value=>setSuffix(value.slice(prefix.length))}/>
+          <span className="text-xs text-slate-600">Aggiungi il dodicesimo carattere. I primi 11 caratteri sono protetti.</span>
+        </label>:<output aria-label="Codice temporaneo completo" className="break-all rounded bg-sky-50 p-3 font-mono text-lg font-bold">{preview}</output>)}
         {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
         {error && !sequence && family && <button type="button" disabled={busy} onClick={() => void chooseFamily(family)}>Riprova prenotazione</button>}
-        <button type="button" disabled={busy || !preview} onClick={() => void apply()} className="rounded bg-emerald-700 px-4 py-2 font-semibold text-white disabled:opacity-40">{busy ? "Attendi…" : "Usa questo codice"}</button>
+        <button type="button" disabled={busy || !preview || (manualSuffix&&!validTemporarySuffix(suffix))} onClick={() => void apply()} className="rounded bg-emerald-700 px-4 py-2 font-semibold text-white disabled:opacity-40">{busy ? "Attendi…" : "Usa questo codice"}</button>
       </DialogContent>
     </Dialog>
   </>;

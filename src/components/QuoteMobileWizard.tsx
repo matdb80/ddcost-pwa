@@ -9,6 +9,10 @@ import {
 import TemporaryProductCode, {type GeneratedProductCode} from "./TemporaryProductCode";
 import type {RalOptions} from "@/lib/ral-pricing";
 import QuoteNumericInput from "@/components/QuoteNumericInput";
+import LaborCostField from "@/components/LaborCostField";
+import ArticleCodeInput from "@/components/ArticleCodeInput";
+import StandardBlackFinish from "@/components/StandardBlackFinish";
+import {manualTemporaryCodePrefix} from "@/lib/ral-pricing";
 import QuoteTotal from "@/components/QuoteTotal";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { QUOTE_MATERIAL_GEOMETRIES, QUOTE_MATERIAL_HELP, quoteMaterialGeometry } from "@/lib/quote-material-weight";
@@ -372,6 +376,10 @@ export default function QuoteMobileWizard(props:Props){
               ?"Conosco il costo del materiale"
               :"Sì, il prezzo può essere rettificato"}
           </label>
+        ):field==="costo_lavoro"?(
+          <LaborCostField key={current.id} id="wizard-input" value={value??0} disabled={locked}
+            inputClassName={inputClass} onChange={updateValue}
+            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();e.currentTarget.blur();next();}}}/>
         ):current.kind==="number" && current.numeric?(
           <QuoteNumericInput key={current.id} id="wizard-input"
             className={inputClass+(field==="quantita"&&(value===""||value===null||value===undefined)?" quote-quantity-attention":"")}
@@ -386,6 +394,11 @@ export default function QuoteMobileWizard(props:Props){
         ):current.kind==="textarea"?(
           <textarea id="wizard-input" rows={4} className={inputClass} disabled={locked}
             value={String(value??"")} onChange={e=>updateValue(e.target.value)}/>
+        ):field==="codice" && product?(
+          <ArticleCodeInput id="wizard-input" aria-label="Codice articolo" className={inputClass} disabled={locked}
+            value={String(value??"")} onChange={updateValue}
+            protectedPrefix={!doc.verniciatura_ral?manualTemporaryCodePrefix(product.codice_temporaneo):null}
+            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();next();}}}/>
         ):current.kind==="text"?(
           <input id="wizard-input" className={inputClass} disabled={locked}
             maxLength={current.maxLength}
@@ -394,6 +407,9 @@ export default function QuoteMobileWizard(props:Props){
             autoComplete="off" value={String(value??"")} onChange={e=>updateValue(e.target.value)}
             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();next();}}}/>
         ):null}
+        {field==="materiale_prodotto" && productIndex!==undefined && product && !doc.verniciatura_ral &&
+          <div className="mt-3"><StandardBlackFinish value={product.nero_standard_goffrato} disabled={locked}
+            onChange={checked=>onUpdateProduct(productIndex,"nero_standard_goffrato",checked)}/></div>}
         {field==="costo_materiale_noto" && value===false && <p className="mt-2 text-sm text-slate-600">{QUOTE_MATERIAL_HELP}</p>}
         {field==="costo_materiale_kg" && product && productIndex!==undefined && <div className="mt-3">
           <QuoteMaterialCostFields product={product} disabled={locked} mobile placement="cost" onChange={(key,value)=>onUpdateProduct(productIndex,key,value)}/>

@@ -1,4 +1,5 @@
 import {prepareRalOffer} from "./ral-documents";
+import {documentPrintColor,documentPrintFinish} from "./document-print-color";
 import {
   additionalDiscountPercent,
   calculateOfferLotPrice,
@@ -73,7 +74,8 @@ export function buildCommercialOfferPrintHtml(
   } = {},
 ): string {
   offer = prepareRalOffer(offer);
-  const ral = offer.ral_riepilogo as {color:string;fixed:number;onRequest?:boolean}|undefined;
+  const ral = (offer.verniciatura_ral||offer.ral_consolidato?offer.ral_riepilogo:undefined) as {color:string;fixed:number;onRequest?:boolean}|undefined;
+  const colorLabel=documentPrintColor(offer);
   const internal = mode === "internal";
   const title = internal ? "Analisi interna dell’offerta" : "Offerta commerciale";
   const client = escapeHtml(offer.cliente || "");
@@ -81,8 +83,8 @@ export function buildCommercialOfferPrintHtml(
   const offerName = escapeHtml(offer.nome || "Offerta commerciale");
   const rows = Array.isArray(offer.righe) ? offer.righe : [];
   const body = internal
-    ? rows.map((row, index) => internalProductSection(row, index)).join("")
-    : customerOfferTable(rows, pricePresentation, {...options,ral});
+    ? rows.map((row, index) => internalProductSection(row, index,documentPrintFinish(offer,row))).join("")
+    : customerOfferTable(rows, pricePresentation, {...options,ral,printFinish:row=>documentPrintFinish(offer,row)});
   const noteSection = (heading: string, raw: unknown) => {
     const note = String(raw ?? "").trim();
     return note ? `<section class="notes">${sectionHeading("notes", heading)}<p>${escapeHtml(note).replace(/\n/g, "<br>")}</p></section>` : "";
@@ -146,7 +148,7 @@ export function buildCommercialOfferPrintHtml(
 </style></head><body>
 <header><img src="${escapeAttribute(logoUrl)}" alt="DDF Didieffe Group"><div class="company"><strong>${COMPANY.name}</strong>${companyDetails}</div></header>
 <h1>${title}</h1>
-${sectionHeading("person", "Intestazione")}<section class="meta"><div><b>Numero offerta</b><span class="meta-value">${offerName}</span></div><div><b>Data</b><span class="meta-value">${new Date().toLocaleDateString("it-IT")}</span></div><div><b>Cliente</b><span class="meta-value">${client || "—"}</span></div><div><b>Riferimento</b><span class="meta-value">${reference || "—"}</span></div></section>
+${sectionHeading("person", "Intestazione")}<section class="meta"><div><b>Numero offerta</b><span class="meta-value">${offerName}</span></div><div><b>Data</b><span class="meta-value">${new Date().toLocaleDateString("it-IT")}</span></div><div><b>Cliente</b><span class="meta-value">${client || "—"}</span></div><div><b>Riferimento</b><span class="meta-value">${reference || "—"}</span></div><div><b>Colore</b><span class="meta-value">${escapeHtml(colorLabel)}</span></div></section>
 ${sectionHeading("products", "Prodotti")}${body}${internal && ral ? `<p>RAL ${escapeHtml(ral.color)} · Cambio colore una volta: € ${money(ral.fixed)}. Prezzo indicativo.</p>`:""}${paymentTransportBlock}${internalFootnote}${noteBlock}
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>
 </body></html>`;
@@ -160,12 +162,12 @@ export function openCommercialOfferPrintWindow(html: string): void {
   printWindow.document.close();
 }
 
-function internalProductSection(row: CommercialOfferRow, index: number): string {
+function internalProductSection(row: CommercialOfferRow, index: number, finishLabel:string): string {
   const cycle = cycleForOfferRow(row);
   const code = escapeHtml(String(row.codice ?? ""));
   const description = escapeHtml(String(row.descrizione ?? ""));
   const offeredLots = selectedOfferLots(row).map(formatNumber).join(" · ") || "nessuno";
-  const heading = `<div class="product-heading"><h2>${index + 1}. ${code || "Prodotto"} · ${description}</h2><span class="muted">Lotti offerti: ${offeredLots} pz · rev. ${escapeHtml(String(row.rev ?? "—"))}</span></div>`;
+  const heading = `<div class="product-heading"><h2>${index + 1}. ${code || "Prodotto"} · ${description}</h2><span>Colore: ${escapeHtml(finishLabel)}</span><br><span class="muted">Lotti offerti: ${offeredLots} pz · rev. ${escapeHtml(String(row.rev ?? "—"))}</span></div>`;
   if (!cycle) return `<section class="product">${heading}<p class="muted">Questa riga non contiene uno snapshot di un Ciclo Standard; sono riportati solo i dati commerciali salvati.</p>${storedOfferSummary(row)}</section>`;
 
   const simulations = simulationsForOfferRow(row);
@@ -265,6 +267,7 @@ function customerOfferTable(
     showFinalCustomerReferencePrice?: boolean;
     unitPriceFractionDigits?: number;
     ral?:{color:string;fixed:number;onRequest?:boolean};
+    printFinish:(row:CommercialOfferRow)=>string;
   },
 ): string {
   const hideDocumentTotal = options.hideDocumentTotal === true;
@@ -277,7 +280,8 @@ function customerOfferTable(
   });
   const lines = expanded.map(({ row, index, lot }) => {
     const code = escapeHtml(String(row.codice ?? ""));
-    if(row.ral_su_richiesta)return `<tr><td>${index+1}</td><td>${code}<br>${escapeHtml(row.descrizione)}</td><td>${formatNumber(lot)} pz</td><td>Su richiesta</td>${showFinalCustomerReferencePrice?"<td>—</td>":""}<td>Su richiesta</td></tr>`;
+    const finish=`<br><span>Colore: ${escapeHtml(options.printFinish(row))}</span>`;
+    if(row.ral_su_richiesta)return `<tr><td>${index+1}</td><td>${code}<br>${escapeHtml(row.descrizione)}${finish}</td><td>${formatNumber(lot)} pz</td><td>Su richiesta</td>${showFinalCustomerReferencePrice?"<td>—</td>":""}<td>Su richiesta</td></tr>`;
     const description = escapeHtml(String(row.descrizione ?? ""));
     const calculatedPrice = offerLotPrice(row, lot);
     const manualNet = calculatedPrice?.manualNetPrice;
@@ -316,7 +320,7 @@ function customerOfferTable(
     const finalPriceCell = showFinalCustomerReferencePrice
       ? `<td class="num">€ ${unitPriceMoney(referencePrice, 2)}</td>`
       : "";
-    return `<tr><td>${index + 1}</td><td><strong>${code}</strong><br>${description}</td><td class="num">${formatNumber(lot)} pz</td><td>${priceCell}</td>${finalPriceCell}<td class="num">€ ${money(unitNet * lot)}</td></tr>`;
+    return `<tr><td>${index + 1}</td><td><strong>${code}</strong><br>${description}${finish}</td><td class="num">${formatNumber(lot)} pz</td><td>${priceCell}</td>${finalPriceCell}<td class="num">€ ${money(unitNet * lot)}</td></tr>`;
   }).join("");
   const hasAlternativeQuantities = rows.some((row) => selectedOfferLots(row).length > 1);
   const total = hasAlternativeQuantities || options.ral?.onRequest ? null : expanded.reduce((sum, { row, lot }) => {

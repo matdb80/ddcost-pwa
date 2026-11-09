@@ -9,11 +9,42 @@ export function validRal(value: unknown): value is RalOptions {
   const r = value as RalOptions | null;
   return Boolean(r && knownColors.has(r.color) && typeof r.textured === "boolean");
 }
-export function temporaryCode(sequence: number, family: string, material: string, color?: string | null): string {
+export function temporaryCodePrefix(sequence: number, family: string, material: string): string {
   if (!Number.isInteger(sequence) || sequence < 1 || sequence > 9999999 ||
-    !TEMPORARY_FAMILIES.includes(family as typeof TEMPORARY_FAMILIES[number]) || !Object.hasOwn(TEMPORARY_MATERIALS, material) || (color && !knownColors.has(color)))
+    !TEMPORARY_FAMILIES.includes(family as typeof TEMPORARY_FAMILIES[number]) || !Object.hasOwn(TEMPORARY_MATERIALS, material))
     throw new Error("Famiglia, materiale, progressivo o RAL non valido");
-  return `T${family}${String(sequence).padStart(7, "0")}${material}${color ? "O" + color : ""}`;
+  return `T${family}${String(sequence).padStart(7, "0")}${material}`;
+}
+export function validTemporarySuffix(value: unknown): value is string {
+  return typeof value==="string" && Array.from(value).length===1 && !/[\s\p{C}]/u.test(value);
+}
+export function temporaryCode(sequence: number, family: string, material: string, color?: string | null, suffix?: string | null): string {
+  const prefix=temporaryCodePrefix(sequence,family,material);
+  if(color){
+    if(!knownColors.has(color)||suffix)throw new Error("Colore RAL non valido o carattere finale incompatibile con il RAL");
+    return prefix+"O"+color;
+  }
+  const fixed=material==="I"?"n":material==="X"||material==="6"?"P":null;
+  if(fixed){
+    if(suffix!=null&&suffix!==fixed)throw new Error("Il carattere finale è automatico per ferro e inox");
+    return prefix+fixed;
+  }
+  if(!validTemporarySuffix(suffix))throw new Error("Inserisci un solo carattere finale per ottone o alluminio");
+  return prefix+suffix;
+}
+/** Only newly completed unpainted brass/aluminium codes permit suffix edits.
+ * Legacy eleven-character codes and painted codes keep their prior behaviour. */
+export function manualTemporaryCodePrefix(metadata: unknown): string | null {
+  if(!metadata||typeof metadata!=="object")return null;
+  const t=metadata as Record<string,unknown>;
+  if(t.color!=null || (t.material!=="B"&&t.material!=="A") || typeof t.code!=="string")return null;
+  try{
+    const prefix=temporaryCodePrefix(Number(t.sequence),String(t.family),t.material);
+    return validManualTemporaryCode(t.code,prefix)?prefix:null;
+  }catch{return null;}
+}
+export function validManualTemporaryCode(code: string, prefix: string, allowEmpty=false): boolean {
+  return code.startsWith(prefix) && ((allowEmpty && code===prefix)||validTemporarySuffix(code.slice(prefix.length)));
 }
 export function ralCodeInfo(raw: string) {
   const code = raw.trim().toUpperCase();

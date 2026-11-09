@@ -53,6 +53,32 @@ let store:Store;
 beforeEach(()=>{store=new Store();connection.db=store.connect();});
 const attachments=(id=1)=>quoteAttachmentRouter.createCaller(ctx(id));
 const codes=(id=1)=>temporaryProductRouter.createCaller(ctx(id));
+it.each(["prodotti","righe"] as const)("validates custom finishes against the issued prefix in %s",async rowKey=>{
+  const requestKey=randomUUID();await codes().reserve({family:"FP",requestKey});
+  const input={requestKey,family:"FP" as const,material:"B" as const,color:null};
+  await expect(codes().complete(input)).rejects.toMatchObject({code:"BAD_REQUEST"});
+  const issued=await codes().complete({...input,suffix:"a"});
+  expect(issued.code).toBe("TFP0000001Ba");
+  expect(await codes().complete({...input,suffix:"a"})).toEqual(issued);
+  await expect(codes().complete({...input,suffix:"b"})).rejects.toMatchObject({code:"CONFLICT"});
+  const doc=(code:string)=>JSON.stringify({[rowKey]:[{codice:code,codice_temporaneo:issued}]});
+  await expect(validateTemporaryProductDocument(doc("TFP0000001Bz"),rowKey)).resolves.toBeUndefined();
+  for(const invalid of ["TFP0000002Bz","TFP0000001Az","TFP0000001B","TFP0000001Bzz"])
+    await expect(validateTemporaryProductDocument(doc(invalid),rowKey)).rejects.toThrow(/primi 11/);
+  await expect(validateTemporaryProductDocument(doc("TFP0000001B"),rowKey,true)).resolves.toBeUndefined();
+  expect(store.rows.temporary_product_codes[0].code).toBe("TFP0000001Ba");
+  expect(store.rows.temporary_product_sequence[0].lastNumber).toBe(1);
+});
+it("preserves legacy eleven-character issuance while new iron codes use lowercase n",async()=>{
+  const legacy={sequence:99,family:"FP",material:"B",color:null,code:"TFP0000099B"};
+  store.rows.temporary_product_codes.push({id:99,userId:1,requestKey:randomUUID(),...legacy});
+  await expect(validateTemporaryProductDocument(JSON.stringify({prodotti:[{codice:legacy.code,codice_temporaneo:legacy}]}),"prodotti")).resolves.toBeUndefined();
+  const requestKey=randomUUID();await codes().reserve({family:"FP",requestKey});
+  const issued=await codes().complete({requestKey,family:"FP",material:"I",color:null});
+  expect(issued.code).toBe("TFP0000001In");
+  await expect(validateTemporaryProductDocument(JSON.stringify({prodotti:[{codice:issued.code,codice_temporaneo:issued}]}),"prodotti")).resolves.toBeUndefined();
+  await expect(validateTemporaryProductDocument(JSON.stringify({prodotti:[{codice:"TFP0000001IP",codice_temporaneo:issued}]}),"prodotti")).rejects.toThrow(/non corrisponde/);
+});
 const file={quoteId:1,fileName:"../disegno.txt",dataBase64:Buffer.from("prova à").toString("base64")};
 it("stores exact bytes outside quote JSON, reopens from another revision and lists metadata only",async()=>{
   const before=structuredClone(store.rows.quotes);

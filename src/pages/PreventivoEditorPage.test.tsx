@@ -34,6 +34,49 @@ beforeEach(()=>{
   Element.prototype.scrollIntoView=vi.fn();
 });
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+it("protects a generated brass prefix when editing and saving its custom finish",async()=>{
+  const generated={sequence:42,family:"FP",material:"B",color:null,code:"TFP0000042Ba"};
+  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),materiale_prodotto:"ottone",codice:generated.code,codice_temporaneo:generated}]});
+  const input=await screen.findByLabelText("Codice articolo") as HTMLInputElement;
+  fireEvent.change(input,{target:{value:""}});expect(input.value).toBe(generated.code);
+  fireEvent.change(input,{target:{value:"TFP0000042Bz"}});
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
+  expect(saved.prodotti[0].codice).toBe("TFP0000042Bz");expect(saved.prodotti[0].codice_temporaneo).toEqual(generated);
+});
+it("saves the standard black finish separately for each product without changing prices",async()=>{
+  const doc=calculateQuote({...blankQuote(),stato_preventivo:"bozza",prodotti:[0,1].map(()=>({...blankProduct(),materiale_cad:10}))});
+  mount(doc);
+  const checkboxes=await screen.findAllByRole("checkbox",{name:"Nero standard RAL 9005 goffrato"});
+  fireEvent.click(checkboxes[1]);
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
+  expect(saved.prodotti.map((p:any)=>p.nero_standard_goffrato)).toEqual([false,true]);
+  expect(saved.totale_finale).toBe(doc.totale_finale);
+  expect(saved.verniciatura_ral).toBeFalsy();
+});
+it("shows each row's live minute equivalent but still saves its hourly rate",async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),costo_lavoro:24},{...blankProduct(),costo_lavoro:30}]});
+  const fields=await screen.findAllByRole("textbox",{name:"Costo €/h"});
+  expect(screen.getByText("(0,4000 €/min)")).toBeTruthy();
+  expect(screen.getByText("(0,5000 €/min)")).toBeTruthy();
+  fireEvent.focus(fields[0]);fireEvent.change(fields[0],{target:{value:"21,28"}});
+  expect(screen.getByText("(0,3547 €/min)")).toBeTruthy();
+  fireEvent.blur(fields[0]);fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
+  expect(saved.prodotti.map((p:any)=>p.costo_lavoro)).toEqual([21.28,30]);
+});
+it("updates the minute equivalent in the actual mobile labor step",async()=>{
+  mount({...blankQuote(),cliente:"Prova",stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Prova",gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",oggetto_modifica:["occhio"]}]},true);
+  fireEvent.click(await screen.findByRole("checkbox",{name:"Opzioni avanzate"}));
+  for(let i=0;i<30&&!screen.queryByRole("textbox",{name:"Costo €/h"});i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  const input=screen.getByRole("textbox",{name:"Costo €/h"});
+  fireEvent.focus(input);fireEvent.change(input,{target:{value:"30"}});
+  expect(screen.getByText("(0,5000 €/min)")).toBeTruthy();
+});
 it("asks for geometry after unchecking known material cost and preserves inactive inputs",async()=>{
   mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),materiale_prodotto:"ferro",materiale_cad:2.11}]});
   const known=await screen.findByRole("checkbox",{name:"Conosco il costo del materiale"});
