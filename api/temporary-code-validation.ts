@@ -1,3 +1,4 @@
+import {isForfait} from "../src/lib/quote-forfait";
 import { inArray } from "drizzle-orm";
 import { temporaryProductCodes } from "@db/schema";
 import { getDb } from "./queries/connection";
@@ -8,12 +9,12 @@ import { assertPaintedTemporaryCodes } from "../src/lib/ral-documents";
 export async function validateTemporaryProductDocument(raw: string | undefined, rowKey: "prodotti" | "righe", draft = false) {
   if (!raw) return;
   const doc = JSON.parse(raw);
-  const rows = doc[rowKey];
-  if (!Array.isArray(rows)) return;
+  if (!Array.isArray(doc[rowKey])) return;
+  const rows = rowKey === "prodotti" ? doc[rowKey].filter((r:any)=>!isForfait(r)) : doc[rowKey];
   if (!draft) {
     assertPaintedTemporaryCodes(rows, doc.verniciatura_ral);
     if(rows.some(r=>r.verniciatura_ral && JSON.stringify(r.verniciatura_ral)!==JSON.stringify(doc.verniciatura_ral)))throw new Error("Tutte le righe devono usare il RAL del documento");
-    if (doc.verniciatura_ral) {
+    if (rows.length && doc.verniciatura_ral) {
       if (!validRal(doc.verniciatura_ral)) throw new Error("Configurazione RAL non valida");
       calculateRal(rows.map(r => ({ code: ralSourceCode(r, doc.verniciatura_ral), net: 0, quantity: 1 })), doc.verniciatura_ral);
     }

@@ -18,6 +18,8 @@ import {manualTemporaryCodePrefix,validManualTemporaryCode} from "@/lib/ral-pric
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
 import QuoteMobileWizard from "@/components/QuoteMobileWizard";
+import QuoteForfaitFields from "@/components/QuoteForfaitFields";
+import {isForfait,forfaitProductError} from "@/lib/quote-forfait";
 import TemporaryProductCode from "@/components/TemporaryProductCode";
 import RalSettings from "@/components/RalSettings";
 import QuoteAttachments from "@/components/QuoteAttachments";
@@ -48,6 +50,7 @@ function factorFromDiscount(text: string): number {
 function buildListino(previous: Record<string, any>, quote: QuoteDocument, productIndex: number) {
   const chosen = quote.prodotti?.[productIndex] as Product | undefined;
   if (!chosen) throw Error("Selezionare un prodotto di riferimento");
+  if(isForfait(chosen))return undefined;
   const discount = String(previous.sconto_riferimento ?? "").trim();
   if (!discount) throw Error("Inserire lo sconto cliente");
   const factor = factorFromDiscount(discount);
@@ -138,6 +141,11 @@ export default function PreventivoEditorPage() {
   const [listinoModified, setListinoModified] = useState(false);
   const [hideDocumentTotalInPdf, setHideDocumentTotalInPdf] = useState(false);
   const [priceProductIndex, setPriceProductIndex] = useState(0);
+  const hasStandardProducts=(doc.prodotti as Product[]).some(p=>!isForfait(p));
+  useEffect(()=>{
+    if(isForfait(doc.prodotti[priceProductIndex]) && hasStandardProducts)
+      setPriceProductIndex(doc.prodotti.findIndex((p:Product)=>!isForfait(p)));
+  },[doc.prodotti,priceProductIndex,hasStandardProducts]);
   const [error, setError] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
   const [newGroupIndex, setNewGroupIndex] = useState<number | null>(null);
@@ -358,6 +366,11 @@ export default function PreventivoEditorPage() {
     if(descriptionError)return setError(descriptionError);
     for (let i = 0; i < doc.prodotti.length; i++) {
       const p = doc.prodotti[i];
+      if(isForfait(p)){
+        const error=forfaitProductError(p);
+        if(error)return setError(`Prodotto ${i+1}: ${error}`);
+        continue;
+      }
       if (!String(p.gruppo_merceologico ?? "").trim())
         return setError("Indicare un gruppo merceologico per il prodotto " + (i+1));
       if (!["ferro","ottone","inox","alluminio"].includes(String(p.materiale_prodotto ?? "")))
@@ -620,7 +633,7 @@ export default function PreventivoEditorPage() {
           <label className="flex min-w-0 flex-col gap-1 text-sm">
             <span className="font-medium">{doc.verniciatura_ral?"Totale desiderato prima RAL € (facoltativo)":"Totale desiderato € (quadratura, facoltativo)"}</span>
             <QuoteNumericInput kind="euro" optional className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100"
-              disabled={locked} value={doc.target_totale ?? null}
+              disabled={locked||!hasStandardProducts} value={doc.target_totale ?? null}
               onChange={value=>update("target_totale",value,true)}/>
           </label>
         </section>
@@ -633,7 +646,7 @@ export default function PreventivoEditorPage() {
           ? "BOZZA: puoi completare i campi mancanti oppure salvarla ancora. Solo «Completa preventivo» applica le verifiche obbligatorie e rende il documento definitivo."
           : "Puoi salvare una nuova versione oppure sovrascrivere quella visualizzata. La sovrascrittura mantiene numero e revisione. I calcoli storici sono preservati finché non modifichi i dati economici."}
       </div>}
-      {legacyCostModel ? (
+      {hasStandardProducts && (legacyCostModel ? (
         <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
           <h2 className="font-semibold text-amber-950">Preventivo con struttura costi storica</h2>
           <p className="text-sm text-amber-900">
@@ -654,7 +667,7 @@ export default function PreventivoEditorPage() {
             <p className="text-xs text-slate-600 mt-1">
               La progettazione si inserisce una sola volta. La quota €/pezzo è il totale diviso
               per la somma delle quantità di tutti i prodotti.
-              Nessun costo comune viene sommato due volte.
+              Le righe a forfait sono escluse dalla ripartizione. Nessun costo comune viene sommato due volte.
             </p>
           </div>
           <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
@@ -768,9 +781,9 @@ export default function PreventivoEditorPage() {
             conserva i valori della modalità inattiva per poterli ripristinare, ma non li conteggia.
           </p>
         </section>
-      )}
-      <RalSettings value={doc.verniciatura_ral??null} disabled={locked} onChange={value=>update("verniciatura_ral",value,true)} result={preview?.ral_riepilogo}/>
-      <section className="bg-white border rounded-xl p-3 md:p-4 space-y-2">
+      ))}
+      {hasStandardProducts && <RalSettings value={doc.verniciatura_ral??null} disabled={locked} onChange={value=>update("verniciatura_ral",value,true)} result={preview?.ral_riepilogo}/>}
+      {hasStandardProducts && <section className="bg-white border rounded-xl p-3 md:p-4 space-y-2">
         <h2 className="font-semibold text-lg">Prezzo di listino da sconto cliente</h2>
         <p className="text-xs text-slate-600">Il listino lordo viene ricavato dal prezzo netto finale dell'articolo selezionato, applicando gli sconti successivi (es. 40+10% = fattore 0,54). Il listino è arrotondato in eccesso al centesimo; il prezzo netto del preventivo non viene cambiato.</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -778,7 +791,7 @@ export default function PreventivoEditorPage() {
             <span>Prodotto di riferimento</span>
             <select disabled={locked} className="border rounded p-2 disabled:bg-slate-100" value={priceProductIndex}
               onChange={e=>{setPriceProductIndex(Number(e.target.value));setListinoModified(Boolean(String(doc.listino?.sconto_riferimento??"").trim()));}}>
-              {(doc.prodotti as Product[]).map((p,i)=><option key={i} value={i}>{i+1}. {p.descrizione||"(senza descrizione)"}</option>)}
+              {(doc.prodotti as Product[]).map((p,i)=>!isForfait(p)&&<option key={i} value={i}>{i+1}. {p.descrizione||"(senza descrizione)"}</option>)}
             </select>
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -802,7 +815,7 @@ export default function PreventivoEditorPage() {
             </div>;
           } catch (err) { return <p className="text-red-700 text-sm">{err instanceof Error?err.message:"Sconto non valido"}</p>; }
         })()}
-      </section>
+      </section>}
       <div className="flex justify-between items-center">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <h2 className="font-semibold text-xl">Prodotti ({doc.prodotti?.length ?? 0})</h2>
@@ -815,9 +828,16 @@ export default function PreventivoEditorPage() {
       {(doc.prodotti as Product[]).map((p,index)=>
         <section key={index} className="bg-white border rounded-xl p-3 md:p-4 space-y-2.5">
           <div className="-mx-3 -mt-3 md:-mx-4 md:-mt-4 flex justify-between items-center gap-3 rounded-t-xl bg-sky-500 px-3 py-3 md:px-4 text-slate-950">
-            <h3 className="text-base font-bold">Prodotto {index+1}</h3>
+            <div className="flex flex-wrap items-center gap-4">
+              <h3 className="text-base font-bold">Prodotto {index+1}</h3>
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isForfait(p)}
+                  onChange={e=>{if(newGroupIndex===index)setNewGroupIndex(null);updateProduct(index,"a_forfait",e.target.checked);}}/> A forfait
+              </label>
+            </div>
             {!locked && doc.prodotti.length > 1 && <button title="Rimuovi prodotto" className="rounded p-1 text-red-950 hover:bg-white/30" onClick={()=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}><Trash2 size={17}/></button>}
           </div>
+          {isForfait(p) ? <QuoteForfaitFields product={p} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : <>
           {!legacyCostModel && sharedTreatmentMode === "ore_lavoro" &&
             <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
               Costo trattamenti inglobati nel tempo di produzione. Includi il tempo dei trattamenti nelle ore
@@ -970,6 +990,7 @@ export default function PreventivoEditorPage() {
             </label>
             <span>Totale riga €: <b>{euro(preview?.prodotti?.[index]?.totale_finale)}<FormulaTooltip label="Totale riga prodotto" formula={CALCULATION_FORMULAS.quote.productTotal}/></b></span>
           </div></div>
+          </>}
         </section>)}
       <section className="bg-white border rounded-xl p-3 md:p-4 space-y-3">
         <h2 className="font-semibold">Note e riepilogo</h2>
@@ -978,6 +999,7 @@ export default function PreventivoEditorPage() {
           <textarea rows={2} disabled={locked} className="border rounded p-2 disabled:bg-slate-100" value={doc[key]??""} onChange={e=>update(key,e.target.value)}/>
         </label>)}
         {Array.isArray(doc.attachments)&&doc.attachments.length>0&&<p className="text-sm text-amber-700">{doc.attachments.length} allegati storici presenti: i riferimenti vengono mantenuti nelle revisioni, ma i file originali Windows non sono ospitati sul server.</p>}
+        {preview?.ha_righe_forfait && <p className="text-sm text-slate-600">Margine complessivo non disponibile: le righe a forfait non hanno un costo di produzione definito.</p>}
         <div className="border-t pt-3 text-right text-lg font-bold">Totale preventivo: € {euro(preview?.totale_finale)}<FormulaTooltip label="Totale preventivo" formula={CALCULATION_FORMULAS.quote.quoteTotal}/></div>
         {dirtyCalculation && <p className="text-amber-700 text-sm">Anteprima del ricalcolo; scegli se salvare una nuova versione o sovrascrivere quella attuale.</p>}
       </section>

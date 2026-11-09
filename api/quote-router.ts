@@ -1,3 +1,4 @@
+import {isForfait,forfaitProductError} from "../src/lib/quote-forfait";
 import {validateTemporaryProductDocument} from "./temporary-code-validation";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
@@ -28,6 +29,11 @@ async function validateQuoteClassifications(dataJson: string | undefined): Promi
   for (let i = 0; i < rows.length; i++) {
     const product = rows[i] as Record<string, unknown> | null;
     if (!product || typeof product !== "object") throw new Error("Prodotto " + (i+1) + " non valido");
+    if(isForfait(product)) {
+      const error=forfaitProductError(product);
+      if(error)throw new TRPCError({code:"BAD_REQUEST",message:`Prodotto ${i+1}: ${error}`});
+      continue;
+    }
     const group = String(product.gruppo_merceologico ?? "").trim();
     const material = String(product.materiale_prodotto ?? "").trim().toLocaleLowerCase("it-IT");
     if (!group) throw new Error("Selezionare il gruppo merceologico del prodotto " + (i+1));
@@ -41,6 +47,7 @@ async function validateQuoteClassifications(dataJson: string | undefined): Promi
   if(descriptionError)throw new TRPCError({code:"BAD_REQUEST",message:descriptionError});
   const materialError=quoteMaterialError(rows);
   if(materialError)throw new TRPCError({code:"BAD_REQUEST",message:materialError});
+  if(!usedGroups.size)return;
   const db = getDb();
   const exists = await db.select({ name: productGroups.name })
     .from(productGroups).where(inArray(productGroups.name, Array.from(usedGroups)));

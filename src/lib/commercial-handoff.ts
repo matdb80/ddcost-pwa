@@ -1,8 +1,9 @@
+import {isForfait,forfaitProductError} from "./quote-forfait";
 import {prepareRalOffer} from "./ral-documents";
 import {calculateOfferLotPrice,cycleForOfferRow,offerLotTerms,selectedOfferLots,type CommercialOfferRow} from './commercial-offer-pricing';
 import {quoteDocumentNumber} from './commercial-offer-number';
 import {listinoProductIndex} from './quote-copy';
-export type SalesRow={code:string;description:string;quantity:string;listPrice:string;discount:string;netPrice:string};
+export type SalesRow={forfait?:boolean;code:string;description:string;quantity:string;listPrice:string;discount:string;netPrice:string};
 export type SalesDocument={number?:string;client:string;reference:string;notes:string;payment:string;transport:string;rows:SalesRow[]};
 export function copyNumber(value:unknown):string {
   if(value==null||value==='')return '';
@@ -20,6 +21,10 @@ export function salesDocument(kind:'quote'|'offer',raw:string):SalesDocument{
   if(!Array.isArray(source)||!source.length)throw new Error('Nessun prodotto');
   const ref=kind==='quote'?listinoProductIndex(d):-1;
   const rows:SalesRow[]=source.flatMap((p:Record<string,any>,index:number)=>{
+    if(kind==='quote' && isForfait(p)){
+      const error=forfaitProductError(p);if(error)throw new Error(error);
+      return [{forfait:true,code:"",description:String(p.descrizione),quantity:"",listPrice:"",discount:"",netPrice:copyNumber(p.valore_forfait)}];
+    }
     const lots=kind==='quote'?[Number(p.quantita)]:selectedOfferLots(p as CommercialOfferRow);
     if(!lots.length)lots.push(Number(p.lotto));
     return lots.map(quantity=>{
@@ -43,7 +48,7 @@ export function salesDocument(kind:'quote'|'offer',raw:string):SalesDocument{
     notes:String(d.note_cliente??'')+(d.ral_riepilogo?'\nPrezzo verniciato indicativo, da confermare dall’ufficio.':''),payment:String(d.pagamento??''),transport:String(d.trasporto??''),rows};
 }
 export function salesText(d:SalesDocument):string{
-  return [...(d.number?['Numero: '+d.number]:[]),'Cliente: '+d.client,'Riferimento: '+d.reference,...d.rows.map(r=>[
+  return [...(d.number?['Numero: '+d.number]:[]),'Cliente: '+d.client,'Riferimento: '+d.reference,...d.rows.map(r=>r.forfait?["Descrizione: "+r.description,"a forfait/da definire","Totale riga: "+r.netPrice+" €"].join("\n"):[
     'Codice: '+r.code,'Descrizione: '+r.description,'Quantità: '+r.quantity,
     ...(r.listPrice?['Listino: '+r.listPrice+' €']:[]),...(r.discount?['Sconti: '+r.discount]:[]),'Netto: '+r.netPrice+' €'].join('\n')),
     ...(d.payment?['Pagamento: '+d.payment]:[]),...(d.transport?['Trasporto: '+d.transport]:[]),d.notes].filter(Boolean).join('\n\n');

@@ -1,3 +1,4 @@
+import {isForfait} from "@/lib/quote-forfait";
 import SalesHandoffPanel from "./SalesHandoffPanel";
 import { quoteDocumentNumber } from "@/lib/commercial-offer-number";
 import {useEffect, useMemo, useRef, useState, type ReactNode} from "react";
@@ -167,7 +168,7 @@ export default function QuoteMobileWizard(props:Props){
       </div>
       <div className="mt-2">{props.attachments}</div>
     </header>
-    {props.ralSettings}
+    {doc.prodotti.some((p:Product)=>!isForfait(p)) && props.ralSettings}
     <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
       <QuoteTotal value={preview?.totale_finale ?? preview?.totale}/>
     </div>
@@ -182,9 +183,15 @@ export default function QuoteMobileWizard(props:Props){
 
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className={productIndex===undefined
+        <div className={productIndex===undefined
           ? "min-w-0 text-xs font-semibold uppercase tracking-wide text-emerald-700"
-          : "min-w-0 flex-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-bold text-slate-950"}>{current.section}</p>
+          : "min-w-0 flex-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-bold text-slate-950"}>
+          <span>{current.section}</span>
+          {productIndex!==undefined && <label className="ml-3 inline-flex items-center gap-2 text-sm normal-case">
+            <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isForfait(product)}
+              onChange={e=>{onUpdateProduct(productIndex,"a_forfait",e.target.checked);setAddingGroup(false);goto(`p:${productIndex}:descrizione`);}}/> A forfait
+          </label>}
+        </div>
         <span className="shrink-0 text-xs tabular-nums text-slate-500">Passo {activeIndex+1} di {steps.length}</span>
       </div>
       <div className="h-1.5 w-full rounded-full bg-slate-100" role="progressbar" aria-label="Completamento preventivo"
@@ -194,7 +201,7 @@ export default function QuoteMobileWizard(props:Props){
 
       <h1 className="mt-6 text-xl font-bold leading-tight">{current.title}</h1>
       <p className="mt-2 text-sm leading-relaxed text-slate-600">{current.hint}</p>
-      {productIndex!==undefined && (field==="codice" || field==="descrizione") && props.onTemporaryCode && <TemporaryProductCode disabled={locked} ral={doc.verniciatura_ral??null} onApply={(code,ral)=>props.onTemporaryCode!(productIndex,code,ral)}/>}
+      {productIndex!==undefined && !isForfait(product) && (field==="codice" || field==="descrizione") && props.onTemporaryCode && <TemporaryProductCode disabled={locked} ral={doc.verniciatura_ral??null} onApply={(code,ral)=>props.onTemporaryCode!(productIndex,code,ral)}/>}
       <div className="mt-5">
         {current.id==="riepilogo" ? (
           <div className="space-y-4">
@@ -203,9 +210,10 @@ export default function QuoteMobileWizard(props:Props){
               <div><dt className="text-slate-500">Cliente</dt><dd className="break-words font-semibold">{doc.cliente||"—"}</dd></div>
               <div><dt className="text-slate-500">Prodotti / pezzi</dt><dd className="font-semibold">{doc.prodotti.length} / {preview?.quantita??"—"}</dd></div>
               <div><dt className="text-slate-500">Totale preventivo</dt><dd className="font-semibold">{hasPreview?"€ "+price:"Da calcolare"}{hasPreview&&<FormulaTooltip label="Totale preventivo" formula={CALCULATION_FORMULAS.quote.quoteTotal}/>}</dd></div>
-              <div><dt className="text-slate-500">Margine netto</dt><dd className="font-semibold">{hasPreview?cashMargin.toFixed(1).replace(".",",")+"%":"—"}{hasPreview&&<FormulaTooltip label="Margine netto complessivo" formula={CALCULATION_FORMULAS.quote.netMarginPercent}/>}</dd></div>
+              <div><dt className="text-slate-500">Margine netto</dt><dd className="font-semibold">{hasPreview && preview?.margine_netto_complessivo_perc!=null?cashMargin.toFixed(1).replace(".",",")+"%":"—"}{hasPreview&&<FormulaTooltip label="Margine netto complessivo" formula={CALCULATION_FORMULAS.quote.netMarginPercent}/>}</dd></div>
             </dl>
-            {costVersion>=2 && (
+            {preview?.ha_righe_forfait && <p className="text-xs text-slate-600">Margine complessivo non disponibile: le righe a forfait non hanno un costo di produzione definito.</p>}
+            {costVersion>=2 && doc.prodotti.some((p:Product)=>!isForfait(p)) && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Trattamenti applicati al preventivo</p>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -244,13 +252,13 @@ export default function QuoteMobileWizard(props:Props){
                   className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
                   <span className="min-w-0">
                     <span className="block break-words">{i+1}. {p.descrizione||"Prodotto da completare"}</span>
-                    <span className="mt-1 block text-xs text-slate-600">{p.quantita} pz · {hasPreview?"€ "+euro(preview?.prodotti?.[i]?.prezzo_netto_unitario_finale)+" /pz":"Da calcolare"}</span>
-                    {doc.trattamenti_modalita==="ore_lavoro" &&
+                    <span className="mt-1 block text-xs text-slate-600">{isForfait(p)?"a forfait/da definire":`${p.quantita} pz · ${hasPreview?"€ "+euro(preview?.prodotti?.[i]?.prezzo_netto_unitario_finale)+" /pz":"Da calcolare"}`}</span>
+                    {!isForfait(p) && doc.trattamenti_modalita==="ore_lavoro" &&
                       <span className="mt-1 block text-xs font-medium text-amber-800">Costo trattamenti inglobati nel tempo di produzione</span>}
                   </span>
                   <span className="shrink-0 font-semibold">{hasPreview?"€ "+euro(preview?.prodotti?.[i]?.totale_finale):"—"}</span>
                 </button>
-                <FormulaTooltip label={`Totale prodotto ${i+1}`} formula={CALCULATION_FORMULAS.quote.productTotal}/>
+                {!isForfait(p) && <FormulaTooltip label={`Totale prodotto ${i+1}`} formula={CALCULATION_FORMULAS.quote.productTotal}/>}
                 {!locked && doc.prodotti.length>1 && <button type="button"
                   aria-label={`Elimina prodotto ${i+1}`}
                   onClick={()=>{
@@ -298,7 +306,7 @@ export default function QuoteMobileWizard(props:Props){
         ):current.id==="listino_prodotto" ? (
           <select id="wizard-input" value={priceProductIndex} disabled={locked}
             onChange={e=>onPriceProductIndex(Number(e.target.value))} className={inputClass}>
-            {(doc.prodotti as Product[]).map((p,i)=><option value={i} key={i}>{i+1}. {p.descrizione||"Prodotto"}</option>)}
+            {(doc.prodotti as Product[]).map((p,i)=>!isForfait(p)&&<option value={i} key={i}>{i+1}. {p.descrizione||"Prodotto"}</option>)}
           </select>
         ):current.id==="listino_sconto" ? (
           <input id="wizard-input" className={inputClass} disabled={locked}
@@ -385,10 +393,10 @@ export default function QuoteMobileWizard(props:Props){
             className={inputClass+(field==="quantita"&&(value===""||value===null||value===undefined)?" quote-quantity-attention":"")}
             kind={current.numeric}
             fractionDigits={field==="lavoro_h" && (doc.lavoro_modalita==="per_pezzo" || doc.lavoro_modalita==="per_prodotto") ? 6 : undefined}
-            optional={field==="quantita"||field==="prezzo_manuale"||field==="target_totale"}
+            optional={field==="valore_forfait"||field==="quantita"||field==="prezzo_manuale"||field==="target_totale"}
             placeholder={field==="quantita"?"Inserisci la quantità":undefined}
             disabled={locked}
-            value={field==="quantita"?value??null:value??(field==="prezzo_manuale"||field==="target_totale"?null:0)}
+            value={field==="valore_forfait"||field==="quantita"?value??null:value??(field==="prezzo_manuale"||field==="target_totale"?null:0)}
             onChange={updateValue}
             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();e.currentTarget.blur();next();}}}/>
         ):current.kind==="textarea"?(

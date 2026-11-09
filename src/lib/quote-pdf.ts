@@ -1,3 +1,4 @@
+import {isForfait} from "./quote-forfait";
 import type {Product, QuoteDocument} from "./quote-calculation";
 import {quoteDocumentNumber} from "./commercial-offer-number";
 import {documentPrintColor,documentPrintFinish} from "./document-print-color";
@@ -19,9 +20,10 @@ export function buildOneTimeQuotePrintHtml(
   options: { hideDocumentTotal?: boolean } = {},
 ): string {
   const colorLabel=documentPrintColor(quote);
-  const ral=quote.verniciatura_ral||quote.ral_consolidato?quote.ral_riepilogo:null;
   const products = Array.isArray(quote.prodotti) ? quote.prodotti as Product[] : [];
+  const ral=products.some(p=>!isForfait(p)) && (quote.verniciatura_ral||quote.ral_consolidato)?quote.ral_riepilogo:null;
   const rows = products.map((product, index) => {
+    if(isForfait(product))return `<tr><td class="num">${index+1}</td><td colspan="3">${escapeHtml(product.descrizione)}<br><strong>a forfait/da definire</strong></td><td class="num">€ ${money(product.valore_forfait)}</td></tr>`;
     const code = String(product.codice ?? "").trim();
     const description = String(product.descrizione ?? "").trim();
     const productName = [code, description].filter(Boolean).map(escapeHtml).join(" · ");
@@ -77,7 +79,7 @@ export function buildOneTimeQuotePrintHtml(
   <div><b>Data</b>${new Date().toLocaleDateString("it-IT")}</div>
   <div><b>Cliente</b>${client || "—"}</div>
   <div><b>Riferimento</b>${reference || "—"}</div>
-  <div><b>Colore</b>${escapeHtml(colorLabel)}</div>
+  ${products.some(p=>!isForfait(p))?`<div><b>Colore</b>${escapeHtml(colorLabel)}</div>`:""}
 </section>
 <h2>Prodotti e prezzi netti</h2>
 <table><thead><tr><th class="num">#</th><th>Prodotto</th><th class="num">Quantità</th><th class="num">Prezzo netto unitario</th><th class="num">Totale netto</th></tr></thead><tbody>${rows}</tbody></table>

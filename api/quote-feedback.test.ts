@@ -270,3 +270,41 @@ describe("overwrite selected quote revision",()=>{
     expect(store.counter).toBe(0);
   });
 });
+
+describe("forfait completed writes",()=>{
+  const forfaitDoc=()=>({...doc(),prodotti:[{a_forfait:true,descrizione:"Lavorazione da definire",valore_forfait:125.5,
+    codice:"CODICE-INATTIVO",codice_temporaneo:{code:"CODICE-INATTIVO",color:"3000"},costo_materiale_noto:false,geometria_materiale:""}]});
+  it("saves, completes, reopens and revises a forfait without standard classification, quantity or generated-code requirements",async()=>{
+    const document=forfaitDoc();
+    const draft=await caller().saveDraft({dataJson:JSON.stringify(document)});
+    const p={client:"Cliente",numProducts:1,totalFinal:"125.5",targetTotal:null,dataJson:JSON.stringify(document)};
+    await caller().finalizeDraft({draftId:draft.id,...p});
+    const reopened=JSON.parse((await caller().get({id:draft.id}))!.dataJson!);
+    expect(reopened.prodotti).toEqual(document.prodotti);
+    document.prodotti[0].valore_forfait=250;
+    const revision=await caller().saveRevision({sourceId:draft.id,...p,totalFinal:"250",dataJson:JSON.stringify(document)});
+    expect(JSON.parse((await caller().get({id:revision.id}))!.dataJson!).prodotti[0].valore_forfait).toBe(250);
+  });
+  it("allows an incomplete draft but rejects missing descriptions or amounts on every completed write",async()=>{
+    const document=forfaitDoc();
+    const p={client:"Cliente",numProducts:1,totalFinal:"125.5",targetTotal:null,dataJson:JSON.stringify(document)};
+    const source=await caller().create({...p,targetTotal:undefined});
+    for(const invalid of [{...document.prodotti[0],descrizione:" "},{...document.prodotti[0],valore_forfait:null},{...document.prodotti[0],valore_forfait:-1}]){
+      const dataJson=JSON.stringify({...document,prodotti:[invalid]});
+      const draft=await caller().saveDraft({dataJson});
+      const before=structuredClone(store.quotes);
+      for(const write of [
+        ()=>caller().create({...p,targetTotal:undefined,dataJson}),
+        ()=>caller().finalizeDraft({draftId:draft.id,...p,dataJson}),
+        ()=>caller().update({id:source.id,expectedToken:quoteWriteToken(store.quotes[0]),...p,dataJson}),
+        ()=>caller().saveRevision({sourceId:source.id,...p,dataJson}),
+      ])await expect(write()).rejects.toMatchObject({code:"BAD_REQUEST",message:expect.stringContaining("forfait")});
+      expect(store.quotes).toEqual(before);
+    }
+  });
+  it("keeps standard validation active on the other rows of a mixed quote",async()=>{
+    const document={...doc(),prodotti:[...forfaitDoc().prodotti,{...doc().prodotti[0],oggetto_modifica:[]}]};
+    await expect(caller().create({client:"Cliente",numProducts:2,dataJson:JSON.stringify(document)})).rejects.toThrow("Prodotto 2: Seleziona almeno una voce");
+    expect(store.quotes).toHaveLength(0);
+  });
+});

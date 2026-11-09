@@ -1,3 +1,4 @@
+import {isForfait,forfaitProductError} from "./quote-forfait";
 import {quoteDocumentNumber} from "./commercial-offer-number";
 
 /** Pure customer-facing text; never contains internal costing or supplier notes. */
@@ -43,6 +44,13 @@ export function formatQuoteForCopy(doc: Data): string {
   lines.push("");
   let calculatedTotal = 0;
   doc.prodotti.forEach((p: Data, index: number) => {
+    if(isForfait(p)) {
+      const error=forfaitProductError(p);
+      if(error)throw new Error(error);
+      calculatedTotal+=Number(p.valore_forfait);
+      lines.push("Articolo "+(index+1),"Descrizione: "+asText(p.descrizione),"a forfait/da definire","Totale riga: "+money(Number(p.valore_forfait)),"");
+      return;
+    }
     const qty = asNumber(p.quantita);
     const net = asNumber(p.prezzo_netto_unitario_finale ?? p.prezzo_vendita_pre_quadratura ?? p.prezzo_netto_unitario);
     if (qty <= 0) throw new Error("Quantità non valida nel prodotto " + (index+1));

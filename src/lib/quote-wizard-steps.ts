@@ -1,3 +1,4 @@
+import {isForfait,forfaitAmountError} from "./quote-forfait";
 import { calculateQuoteMaterial, quoteMaterialDimensionFields, quoteMaterialGeometry, QUOTE_MATERIAL_GEOMETRIES, QUOTE_MATERIAL_HELP } from "./quote-material-weight";
 import type {QuoteDocument} from "./quote-calculation";
 import {modificationObjectError} from "./quote-modification-validation";
@@ -17,6 +18,7 @@ const step=(id:string,title:string,section:string,hint:string,more:Partial<Quote
 /** The mobile editor exposes the same fields/algorithms, only sequenced. */
 export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWizardStep[]{
   const version=Number(doc.costi_comuni_versione)||0;
+  const hasStandard=(doc.prodotti??[]).some((p:Record<string,any>)=>!isForfait(p));
   const steps:QuoteWizardStep[]=[
     step("cliente","Per quale cliente?","Intestazione","Indica il cliente del preventivo.",{field:"cliente",kind:"text",required:true}),
     ...(advanced?[
@@ -24,7 +26,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
       step("titolo_preventivo","Riferimento Cliente","Intestazione","Riferimento indicato dal cliente.",{field:"titolo_preventivo",kind:"text",advanced:true}),
     ]:[]),
   ];
-  if(version>=3){
+  if(hasStandard && version>=3){
     steps.push(step("lavoro_modalita","Come attribuire le ore di lavorazione?","Attribuzione dei costi comuni",
       "Scegli un monte ore per tutta l'offerta oppure le ore necessarie per realizzare la quantità indicata in ciascuna riga prodotto.",
       {field:"lavoro_modalita",kind:"select"}));
@@ -42,6 +44,10 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     const add=(key:string,title:string,hint:string,more:Partial<QuoteWizardStep>={})=>
       steps.push(step("p:"+i+":"+key,title,s,hint,{field:key,index:i,...more}));
     add("descrizione","Che prodotto vuoi preventivare?","Descrivi l'articolo o la lavorazione: massimo 60 caratteri, spazi inclusi.",{kind:"text",required:true,maxLength:QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH});
+    if(isForfait(product)){
+      add("valore_forfait","Valore di vendita a forfait (€)","Importo complessivo fisso della riga, senza costi, quantità, margini, quadratura o supplementi RAL.",{kind:"number",numeric:"euro",required:true});
+      return;
+    }
     add("oggetto_modifica","Oggetto della modifica","Seleziona almeno una voce per questo prodotto. Puoi indicare più voci o aggiungerne una personalizzata.",{kind:"multiselect",required:true});
     if(advanced)add("codice","Codice articolo","Codice interno, se già disponibile.",{kind:"text",advanced:true});
     add("gruppo_merceologico","Gruppo merceologico","Seleziona il gruppo di appartenenza.",{kind:"select",required:true});
@@ -78,7 +84,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
   // Current cost models ask for the treatment allocation exactly once. Global
   // mode has one quote-wide amount; split mode has one €/piece value per
   // product; in work-hours mode no separate treatment amounts are requested.
-  if(version>=2){
+  if(hasStandard && version>=2){
     steps.push(step("trattamenti_modalita","Come gestiamo i trattamenti?","Trattamenti dell'offerta",
       "Scegli una sola modalità per tutta l'offerta. La scelta determina i campi che seguono.",
       {field:"trattamenti_modalita",kind:"select"}));
@@ -87,7 +93,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
         "Inserisci una sola cifra per tutti i prodotti. Sarà ripartita sul totale dei pezzi; i costi dei singoli prodotti non verranno conteggiati.",
         {field:"trattamenti_totale_euro",kind:"number",numeric:"euro"}));
     }else if(doc.trattamenti_modalita!=="ore_lavoro"){
-      items.forEach((product,i)=>steps.push(step(
+      items.forEach((product,i)=>!isForfait(product)&&steps.push(step(
         "p:"+i+":trattamenti_cad",
         "Costo trattamento — prodotto "+(i+1)+" (€/pz)",
         "Trattamenti dell'offerta",
@@ -96,13 +102,13 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
       )));
     }
   }
-  if(version>=3){
+  if(hasStandard && version>=3){
     steps.push(step("progettazione_ore","Ore totali di progettazione","Costi comuni","Questo tempo riguarda l'intero preventivo.",{field:"progettazione_ore",kind:"number",numeric:"decimal"}));
     steps.push(step("costo_progettazione_ora","Costo orario progettazione","Costi comuni","Le ore vengono moltiplicate per questa tariffa, una sola volta.",{field:"costo_progettazione_ora",kind:"number",numeric:"euro"}));
-  }else if(version>=2){
+  }else if(hasStandard && version>=2){
     steps.push(step("progettazione_totale_euro","Progettazione totale (€)","Costi comuni","Importo totale del modello precedente, ripartito tra tutti i pezzi.",{field:"progettazione_totale_euro",kind:"number",numeric:"euro"}));
   }
-  items.forEach((_,i)=>steps.push(step(
+  items.forEach((p,i)=>!isForfait(p)&&steps.push(step(
     "p:"+i+":margine",
     "Margine netto desiderato (%) — prodotto "+(i+1),
     "Prezzo di vendita",
@@ -110,9 +116,9 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     {field:"margine",index:i,kind:"number",numeric:"percent"},
   )));
   if(advanced){
-    steps.push(step("target_totale",doc.verniciatura_ral?"Totale desiderato prima RAL (€)":"Totale desiderato (€)","Opzioni avanzate","Facoltativo: la quadratura adatta i prezzi delle righe non bloccate, prima dell’eventuale verniciatura RAL.",{field:"target_totale",kind:"number",numeric:"euro",advanced:true}));
-    steps.push(step("listino_prodotto","Prodotto di riferimento per il listino","Opzioni avanzate","Scegli il prodotto a cui riferire lo sconto del cliente.",{kind:"select",advanced:true}));
-    steps.push(step("listino_sconto","Sconto cliente","Opzioni avanzate","Ad esempio 40+10%. Il listino lordo viene ricavato dal prezzo netto.",{kind:"text",advanced:true}));
+    if(hasStandard)steps.push(step("target_totale",doc.verniciatura_ral?"Totale desiderato prima RAL (€)":"Totale desiderato (€)","Opzioni avanzate","Facoltativo: la quadratura adatta i prezzi delle righe non bloccate, prima dell’eventuale verniciatura RAL.",{field:"target_totale",kind:"number",numeric:"euro",advanced:true}));
+    if(hasStandard)steps.push(step("listino_prodotto","Prodotto di riferimento per il listino","Opzioni avanzate","Scegli il prodotto a cui riferire lo sconto del cliente.",{kind:"select",advanced:true}));
+    if(hasStandard)steps.push(step("listino_sconto","Sconto cliente","Opzioni avanzate","Ad esempio 40+10%. Il listino lordo viene ricavato dal prezzo netto.",{kind:"text",advanced:true}));
     for(const [key,title,hint] of [
       ["note_generali","Note generali","Informazioni interne sul preventivo."],
       ["note_cliente","Note cliente","Queste note possono comparire nella copia destinata al cliente."],
@@ -130,6 +136,7 @@ export function quoteWizardStepError(step:QuoteWizardStep,doc:QuoteDocument):str
   const value=obj?.[step.field||""];
   if(step.maxLength!==undefined && String(value??"").length>step.maxLength)
     return `Massimo ${step.maxLength} caratteri, spazi inclusi.`;
+  if(step.field==="valore_forfait")return forfaitAmountError(value);
   if(step.field==="geometria_materiale")return QUOTE_MATERIAL_GEOMETRIES.some(g=>g.id===quoteMaterialGeometry(obj??{}))
     ?null:"Seleziona la geometria del materiale.";
   if(step.field==="diametro_interno_mm" && Number(value)>=Number(obj?.diametro_mm))
