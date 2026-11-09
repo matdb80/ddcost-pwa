@@ -519,89 +519,92 @@ export default function PreventivoEditorPage() {
         />
       ) : (
         <>
-        <div className="flex items-center justify-end">
-          <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium">
-            <input type="checkbox" className="h-4 w-4 accent-emerald-600"
-              checked={wizardMode} onChange={e=>chooseMobileView(e.target.checked)}/>
-            Visualizzazione cellulare (Wizard)
-          </label>
-        </div>
-      {/* Sticky quote identity and actions share the same scroll container as the editor. */}
-      <div className="sticky top-0 z-30 -mx-2 mb-4 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-md space-y-2 max-h-[50vh] overflow-y-auto">
-      <div className="space-y-2">
-        <div className="flex min-w-0 items-center justify-between gap-2" data-testid="quote-primary-actions">
-        <div className="flex min-w-0 items-center gap-2">
-          <Link to="/preventivi" className="p-2 border rounded"><ArrowLeft size={16}/></Link>
-          <h1 className="min-w-0 truncate text-base font-bold md:text-lg">{isNew ? "Nuovo preventivo una tantum" : "Preventivo " + (quoteDocumentNumber(doc) ?? "#" + numericId) + " — rev. " + (data?.rev ?? 1)}</h1>
-        </div>
-        {!locked && (<button type="button" disabled={create.isPending || revise.isPending || overwrite.isPending || finalizeDraftMutation.isPending || draftSaving || (!isNew && !changed && !isSavedDraft)}
-                className="bg-emerald-600 disabled:opacity-40 text-white px-3 py-2 rounded inline-flex shrink-0 items-center gap-2 whitespace-nowrap text-sm" onClick={()=>void save()}>
-                <Save size={16}/> {isSavedDraft?"Completa preventivo":isNew?"Salva preventivo":"Salva nuova versione"}
-              </button>)}
-        </div>
-        <div className="flex items-start gap-2 overflow-x-auto pb-1 text-xs [&>button]:shrink-0 [&>button]:whitespace-nowrap [&>button]:px-2 [&>button]:py-1.5 [&>button]:items-center">
-          {!locked && <button type="button" onClick={()=>update("prodotti",[...doc.prodotti,blankProduct()],true)}
-            className="border border-emerald-600 text-emerald-700 px-4 py-2 rounded flex gap-2 items-center"
-            title="Aggiungi prodotto senza scorrere fino alla sezione prodotti">
-            <Plus size={16}/> Aggiungi prodotto
-          </button>}
-          {!locked && <button type="button"
-            onClick={()=>update("prodotti",duplicateLastProductForNewLot(doc.prodotti),true)}
-            className="border border-violet-500 text-violet-700 px-4 py-2 rounded flex gap-2 items-center"
-            title="Copia l’ultimo prodotto, lasciando vuota la quantità per il nuovo lotto">
-            <Copy size={16}/> Copia prodotto e scala su lotto
-          </button>}
-          <QuoteAttachments key={id??"new"} quoteId={isNew?null:numericId} ensureQuoteId={persistDraft} disabled={draftSaving}/>
-          <button type="button" onClick={copyQuote}
-            className="border border-emerald-600 text-emerald-700 px-4 py-2 rounded flex gap-2 items-center">
-            <Copy size={16}/> Copia per email / documento
-          </button>
-          <div className="flex w-52 shrink-0 flex-col gap-1">
-          <button type="button" onClick={exportCustomerPdf} disabled={!canExportPdf}
-            className="w-full border border-slate-300 text-slate-700 disabled:opacity-40 px-4 py-2 rounded flex gap-2 items-center justify-center"
-            title="Esporta il documento con i soli dati destinati al cliente">
-            <FileText size={16}/> Esporta PDF cliente
-          </button>
-          <label className="flex w-full min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium">
-            <input type="checkbox" className="h-4 w-4 shrink-0 accent-emerald-600"
-              checked={hideDocumentTotalInPdf} onChange={e=>setHideDocumentTotalInPdf(e.target.checked)}/>
-            Nascondi totale documento nel PDF cliente
-          </label>
+      {/* Keep the total, toolbar and identity fields in one compact sticky header. */}
+      <div className="quote-editor-header sticky top-0 z-30 -mx-2 mb-4 max-h-[50vh] overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-md space-y-2">
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <Link to="/preventivi" className="shrink-0 p-2 border rounded" aria-label="Torna ai preventivi"><ArrowLeft size={16}/></Link>
+              <h1 className="min-w-0 truncate text-base font-bold md:text-lg">{isNew ? "Nuovo preventivo una tantum" : "Preventivo " + (quoteDocumentNumber(doc) ?? "#" + numericId) + " — rev. " + (data?.rev ?? 1)}</h1>
+            </div>
+            <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-600">
+              <input type="checkbox" className="h-4 w-4 accent-emerald-600"
+                checked={wizardMode} onChange={e=>chooseMobileView(e.target.checked)}/>
+              Visualizzazione cellulare (Wizard)
+            </label>
           </div>
-          {locked ? <button className="bg-emerald-600 text-white px-4 py-2 rounded flex gap-2" onClick={() => setReadOnly(false)}><Pencil size={16}/> Modifica</button>
-          : <>
-              <button type="button" className="border px-4 py-2 rounded flex gap-2" onClick={() => { try { setDoc(calculateQuote(doc)); setDirtyCalculation(false); setError(""); } catch(e) { setError(e instanceof Error ? e.message : "Errore ricalcolo"); } }}><Calculator size={16}/> Ricalcola</button>
+          <div className="min-w-0 shrink-0 max-w-[50%]">
+            <QuoteTotal value={preview?.totale_finale ?? preview?.totale}/>
+          </div>
+        </div>
+        <div className="quote-header-toolbar">
+          <div className="quote-header-tools flex min-w-0 flex-wrap items-start content-start gap-2 text-xs [&_button]:h-9 [&_button]:items-center [&_button]:justify-center [&_button]:whitespace-nowrap [&_button]:px-2 [&_button]:py-1.5">
+            {!locked && <button type="button" onClick={()=>update("prodotti",[...doc.prodotti,blankProduct()],true)}
+              className="border border-emerald-600 text-emerald-700 rounded flex gap-2"
+              title="Aggiungi prodotto senza scorrere fino alla sezione prodotti">
+              <Plus size={16}/> Aggiungi prodotto
+            </button>}
+            {!locked && <button type="button"
+              onClick={()=>update("prodotti",duplicateLastProductForNewLot(doc.prodotti),true)}
+              className="border border-violet-500 text-violet-700 rounded flex gap-2"
+              title="Copia l’ultimo prodotto, lasciando vuota la quantità per il nuovo lotto">
+              <Copy size={16}/> Copia prodotto e scala su lotto
+            </button>}
+            <QuoteAttachments key={id??"new"} quoteId={isNew?null:numericId} ensureQuoteId={persistDraft} disabled={draftSaving}/>
+            <button type="button" onClick={copyQuote}
+              className="border border-emerald-600 text-emerald-700 rounded flex gap-2">
+              <Copy size={16}/> Copia per email / documento
+            </button>
+          </div>
+          <div className="flex min-w-0 flex-col gap-1">
+            <button type="button" onClick={exportCustomerPdf} disabled={!canExportPdf}
+              className="flex h-9 w-full items-center justify-center gap-2 rounded border border-slate-300 px-2 text-xs text-slate-700 disabled:opacity-40"
+              title="Esporta il documento con i soli dati destinati al cliente">
+              <FileText size={16}/> Esporta PDF cliente
+            </button>
+            <label className="flex h-9 w-full cursor-pointer items-center gap-2 rounded border border-slate-200 px-2 text-xs font-medium leading-4"
+              title="Nascondi totale documento nel PDF cliente">
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-emerald-600"
+                aria-label="Nascondi totale documento nel PDF cliente"
+                checked={hideDocumentTotalInPdf} onChange={e=>setHideDocumentTotalInPdf(e.target.checked)}/>
+              Nascondi totale nel PDF cliente
+            </label>
+          </div>
+          <div className="grid grid-cols-2 content-start gap-1 text-sm" data-testid="quote-primary-actions">
+            {locked ? <button type="button" className="col-span-2 flex h-9 items-center justify-center gap-2 rounded bg-emerald-600 px-3 text-white" onClick={() => setReadOnly(false)}><Pencil size={16}/> Modifica</button>
+            : <>
+              <button type="button" className="flex h-9 items-center justify-center gap-2 rounded border px-2" onClick={() => { try { setDoc(calculateQuote(doc)); setDirtyCalculation(false); setError(""); } catch(e) { setError(e instanceof Error ? e.message : "Errore ricalcolo"); } }}><Calculator size={16}/> Ricalcola</button>
               <button type="button" disabled={draftSaving || overwrite.isPending || revise.isPending || !unsavedChanges} onClick={()=>void saveDraftOnly()}
-                className="rounded border border-emerald-600 px-4 py-2 font-medium text-emerald-700 disabled:opacity-40">
+                className="h-9 rounded border border-emerald-600 px-2 font-medium text-emerald-700 disabled:opacity-40">
                 {draftSaving?"Salvataggio...":"Salva bozza"}
+              </button>
+              <button type="button" disabled={create.isPending || revise.isPending || overwrite.isPending || finalizeDraftMutation.isPending || draftSaving || (!isNew && !changed && !isSavedDraft)}
+                className="col-span-2 flex h-9 w-full items-center justify-center gap-2 rounded bg-emerald-600 px-3 text-white disabled:opacity-40" onClick={()=>void save()}>
+                <Save size={16}/> {isSavedDraft?"Completa preventivo":isNew?"Salva preventivo":"Salva nuova versione"}
               </button>
               {!isNew && !isSavedDraft && <button type="button"
                 disabled={overwrite.isPending || revise.isPending || draftSaving || !changed}
-                className="bg-sky-700 disabled:opacity-40 text-white px-4 py-2 rounded flex gap-2 items-center"
+                className="col-span-2 flex min-h-9 items-center justify-center gap-2 rounded bg-sky-700 px-2 py-1 text-xs text-white disabled:opacity-40"
                 onClick={()=>void save("overwrite")}>
-                <Save size={16}/> Salva e sovrascrivi versione attuale
+                <Save size={16} className="shrink-0"/> Salva e sovrascrivi versione attuale
               </button>}
-
             </>}
+          </div>
         </div>
-      </div>
-      <section className="grid grid-cols-2 xl:grid-cols-4 items-end gap-2">
-        {(["cliente","riferimento_preventivo","titolo_preventivo"] as const).map(key=>
-          <label key={key} className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">{key === "cliente" ? "Cliente *" : key === "riferimento_preventivo" ? "Riferimento Interno" : "Riferimento Cliente"}</span>
-            <input className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100" value={doc[key] ?? ""} disabled={locked}
-              onChange={e=>update(key,e.target.value)}/>
-          </label>)}
-        <div className="flex flex-col gap-2">
-        <QuoteTotal value={preview?.totale_finale ?? preview?.totale}/>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">{doc.verniciatura_ral?"Totale desiderato prima RAL € (facoltativo)":"Totale desiderato € (quadratura, facoltativo)"}</span>
-          <QuoteNumericInput kind="euro" optional className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100"
-            disabled={locked} value={doc.target_totale ?? null}
-            onChange={value=>update("target_totale",value,true)}/>
-        </label>
-        </div>
-      </section>
+        <section className="quote-header-fields grid items-end gap-2">
+          {(["cliente","riferimento_preventivo","titolo_preventivo"] as const).map(key=>
+            <label key={key} className="flex min-w-0 flex-col gap-1 text-sm">
+              <span className="font-medium">{key === "cliente" ? "Cliente *" : key === "riferimento_preventivo" ? "Riferimento Interno" : "Riferimento Cliente"}</span>
+              <input className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100" value={doc[key] ?? ""} disabled={locked}
+                onChange={e=>update(key,e.target.value)}/>
+            </label>)}
+          <label className="flex min-w-0 flex-col gap-1 text-sm">
+            <span className="font-medium">{doc.verniciatura_ral?"Totale desiderato prima RAL € (facoltativo)":"Totale desiderato € (quadratura, facoltativo)"}</span>
+            <QuoteNumericInput kind="euro" optional className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100"
+              disabled={locked} value={doc.target_totale ?? null}
+              onChange={value=>update("target_totale",value,true)}/>
+          </label>
+        </section>
       </div>
       {draftMessage && <div role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{draftMessage}</div>}
       {copyMessage && <div role="status" className="text-sm bg-emerald-50 border border-emerald-200 text-emerald-900 rounded p-3">{copyMessage}</div>}

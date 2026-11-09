@@ -95,3 +95,42 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Use the available editor width, including when the sidebar is expanded. */
+.quote-editor-header {
+  container: quote-header / inline-size;
+}
+
+.quote-header-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17rem;
+  align-items: start;
+  gap: 0.5rem;
+}
+
+.quote-header-tools {
+  grid-column: 1 / -1;
+}
+
+.quote-header-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@container quote-header (min-width: 60rem) {
+  .quote-header-toolbar {
+    grid-template-columns: minmax(0, 1fr) 13rem 17rem;
+  }
+  .quote-header-tools {
+    grid-column: auto;
+  }
+  .quote-header-fields {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@container quote-header (max-width: 35rem) {
+  .quote-header-toolbar,
+  .quote-header-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
