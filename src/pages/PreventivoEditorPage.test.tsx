@@ -34,6 +34,54 @@ beforeEach(()=>{
   Element.prototype.scrollIntoView=vi.fn();
 });
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+it("asks for geometry after unchecking known material cost and preserves inactive inputs",async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),materiale_prodotto:"ferro",materiale_cad:2.11}]});
+  const known=await screen.findByRole("checkbox",{name:"Conosco il costo del materiale"});
+  fireEvent.click(known);
+  expect(screen.getByText(/Seleziona la geometria e inserisci le dimensioni/)).toBeTruthy();
+  expect((screen.getByLabelText("Geometria del materiale") as HTMLSelectElement).value).toBe("");
+  expect(screen.queryByLabelText("Lunghezza (mm)")).toBeNull();
+  fireEvent.change(screen.getByLabelText("Geometria del materiale"),{target:{value:"tubo"}});
+  expect(screen.queryByLabelText("Larghezza (mm)")).toBeNull();
+  for(const [label,value] of [["Lunghezza (mm)","100"],["Diametro esterno (mm)","10"],["Diametro interno (mm)","6"],["Costo materiale (€/kg)","4"]])
+    fireEvent.change(screen.getByLabelText(label),{target:{value}});
+  await waitFor(()=>expect((screen.getByLabelText("Materiale calcolato €/pz") as HTMLInputElement).value).toBe("0,1578"));
+  fireEvent.click(known);
+  expect((screen.getByLabelText("Materiale €/pz") as HTMLInputElement).value).toBe("2,11");
+  fireEvent.click(known);
+  expect((screen.getByLabelText("Diametro interno (mm)") as HTMLInputElement).value).toBe("6");
+  fireEvent.change(screen.getByLabelText("Geometria del materiale"),{target:{value:"tondino"}});
+  expect(screen.queryByLabelText("Diametro interno (mm)")).toBeNull();
+  expect((screen.getByLabelText("Materiale calcolato €/pz") as HTMLInputElement).value).toBe("0,2466");
+});
+it("recalculates a reopened weighted quote when only its material changes",async()=>{
+  const saved=calculateQuote({...blankQuote(),prodotti:[{...blankProduct(),materiale_prodotto:"ferro",costo_materiale_noto:false,
+    geometria_materiale:"piatto",lunghezza_mm:100,larghezza_mm:50,spessore_mm:2,costo_materiale_kg:4,quantita:10}]});
+  mount(saved);
+  await waitFor(()=>expect(screen.getByLabelText("Totale preventivo").textContent).toContain("6,87"));
+  fireEvent.click(screen.getByRole("button",{name:"Modifica"}));
+  fireEvent.change(screen.getByLabelText("Materiale *"),{target:{value:"alluminio"}});
+  await waitFor(()=>expect(screen.getByLabelText("Totale preventivo").textContent).toContain("2,36"));
+});
+it("uses the geometry selection and tube dimensions in the mobile wizard",async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Tubo",gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",oggetto_modifica:["occhio"]}]},true);
+  await screen.findByTestId("quote-mobile-wizard");
+  for(let i=0;i<15 && !screen.queryByRole("checkbox",{name:"Conosco il costo del materiale"});i++)
+    fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  fireEvent.click(screen.getByRole("checkbox",{name:"Conosco il costo del materiale"}));
+  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(screen.getByRole("heading",{name:"Geometria del materiale"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(screen.getByRole("alert").textContent).toContain("Seleziona la geometria");
+  fireEvent.change(screen.getByRole("combobox"),{target:{value:"tubo"}});
+  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  for(const [title,value] of [["Lunghezza (mm)","100"],["Diametro esterno (mm)","10"],["Diametro interno (mm)","6"]]){
+    expect(screen.getByRole("heading",{name:title})).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox"),{target:{value}});
+    fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  }
+  expect(screen.getByRole("heading",{name:"Costo materiale al kg"})).toBeTruthy();
+});
 it("preserves a long historical description and PDF but blocks saving until it is shortened",async()=>{
   const long="A ".repeat(30)+"B";
   mount({...blankQuote(),cliente:"Cliente prova",totale_finale:100,prodotti:[{...blankProduct(),descrizione:long,gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",oggetto_modifica:["occhio"]}]});

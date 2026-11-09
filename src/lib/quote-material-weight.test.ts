@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {calculateMaterialByWeight,MATERIAL_DENSITY_G_CM3,MODIFICATION_OBJECTS,toggleModificationObject} from "./quote-material-weight";
+import {calculateMaterialByWeight,calculateQuoteMaterial,MATERIAL_DENSITY_G_CM3,MODIFICATION_OBJECTS,toggleModificationObject} from "./quote-material-weight";
 import {blankProduct,blankQuote,calculateQuote} from "./quote-calculation";
 
 describe("TKT-20261015-16060008: oggetto della modifica",()=>{
@@ -44,7 +44,7 @@ describe("TKT-20261015-18060001: preventivo una tantum, costo materiale per peso
   it("uses automatically computed cost, not stored inactive €/piece, for full cost and margin",()=>{
     const d=blankQuote();
     d.prodotti=[{...blankProduct(),materiale_prodotto:"ferro",quantita:10,
-      costo_materiale_noto:false,materiale_cad:100,
+      costo_materiale_noto:false,geometria_materiale:"piatto",materiale_cad:100,
       lunghezza_mm:100,larghezza_mm:50,spessore_mm:2,costo_materiale_kg:4}];
     const original=JSON.stringify(d);
     const q=calculateQuote(d);
@@ -58,7 +58,7 @@ describe("TKT-20261015-18060001: preventivo una tantum, costo materiale per peso
   });
   it("turning the checkbox back on restores manually entered €/piece without mixing alternatives",()=>{
     const p={...blankProduct(),materiale_prodotto:"inox",quantita:3,
-      costo_materiale_noto:false,materiale_cad:2.11,
+      costo_materiale_noto:false,geometria_materiale:"piatto",materiale_cad:2.11,
       lunghezza_mm:100,larghezza_mm:50,spessore_mm:2,costo_materiale_kg:10};
     const weight=calculateQuote({...blankQuote(),prodotti:[p]});
     const manual=calculateQuote({...blankQuote(),prodotti:[{...p,costo_materiale_noto:true}]});
@@ -75,12 +75,58 @@ describe("TKT-20261015-18060001: preventivo una tantum, costo materiale per peso
     expect(res.prodotti[0].materiale_tot).toBe(51);
   });
   it("requires valid selected material, nonzero dimensions and valid cost when unchecked",()=>{
-    const base={...blankProduct(),costo_materiale_noto:false,materiale_prodotto:"ferro",
+    const base={...blankProduct(),costo_materiale_noto:false,geometria_materiale:"piatto",materiale_prodotto:"ferro",
       lunghezza_mm:100,larghezza_mm:50,spessore_mm:2,costo_materiale_kg:4};
     for(const invalid of [{lunghezza_mm:0},{larghezza_mm:0},{spessore_mm:0},
       {costo_materiale_kg:-1},{costo_materiale_kg:Infinity}]){
       expect(()=>calculateQuote({...blankQuote(),prodotti:[{...base,...invalid}]})).toThrow();
     }
     expect(()=>calculateQuote({...blankQuote(),prodotti:[{...base,materiale_prodotto:""}]})).toThrow("Seleziona ferro");
+  });
+});
+
+describe("quote material geometries shared with standard cycles",()=>{
+  const base=():ReturnType<typeof blankProduct>=>({...blankProduct(),costo_materiale_noto:false,materiale_prodotto:"ferro",materiale_cad:99,
+    lunghezza_mm:100,larghezza_mm:50,spessore_mm:2,diametro_mm:10,diametro_interno_mm:6,costo_materiale_kg:4});
+  it.each([
+    ["piatto",0.0785],["nastro",0.0785],["tondino",0.06165375582669969],["tubo",0.0394584037290878],
+  ])("calculates %s independently of inactive dimensions and applies quantity once",(geometry,weight)=>{
+    const p={...base(),geometria_materiale:geometry,quantita:10};
+    const calculated=calculateQuote({...blankQuote(),prodotti:[p]}).prodotti[0];
+    expect(calculated.peso_teorico_kg).toBeCloseTo(Number(weight),12);
+    expect(calculated.materiale_calcolato_cad).toBeCloseTo(Number(weight)*4,12);
+    expect(calculated.materiale_tot).toBeCloseTo(Number(weight)*40,12);
+    expect(calculated.materiale_cad).toBe(99);
+    const reopened=calculateQuote(JSON.parse(JSON.stringify({...blankQuote(),prodotti:[calculated]}))).prodotti[0];
+    expect(reopened.peso_teorico_kg).toBe(calculated.peso_teorico_kg);
+    expect(reopened.materiale_tot).toBe(calculated.materiale_tot);
+  });
+  it.each([
+    {geometria_materiale:""},{geometria_materiale:"invalid"},{geometria_materiale:null},
+    {diametro_mm:0},{diametro_interno_mm:0},{diametro_interno_mm:10},{diametro_interno_mm:12},
+    {diametro_mm:Infinity},{costo_materiale_kg:-1},{costo_materiale_kg:Infinity},
+  ])("rejects incomplete or invalid geometry: %j",patch=>{
+    expect(()=>calculateQuoteMaterial({...base(),geometria_materiale:"tubo",...patch})).toThrow();
+  });
+  it("uses the existing aluminium density from the standard cycle material catalog",()=>{
+    const result=calculateQuoteMaterial({...base(),geometria_materiale:"piatto",materiale_prodotto:"alluminio"});
+    expect(result.theoreticalWeightKg).toBe(0.027);
+    expect(result.materialCostPerPiece).toBe(0.108);
+  });
+  it("does not rewrite an old rectangular blank or alter its exact calculation",()=>{
+    const legacy=base();delete legacy.geometria_materiale;
+    const saved=JSON.stringify(legacy);
+    const result=calculateQuoteMaterial(legacy);
+    expect(result.theoreticalWeightKg).toBe(100*50*2*7.85/1e6);
+    expect(JSON.stringify(legacy)).toBe(saved);
+  });
+  it("returns to the direct cost without losing the tube or applying both costs",()=>{
+    const product={...base(),geometria_materiale:"tubo",quantita:5};
+    const automatic=calculateQuote({...blankQuote(),prodotti:[product]}).prodotti[0];
+    const direct=calculateQuote({...blankQuote(),prodotti:[{...automatic,costo_materiale_noto:true}]}).prodotti[0];
+    expect(direct.materiale_tot).toBe(495);
+    expect(direct.geometria_materiale).toBe("tubo");
+    const again=calculateQuote({...blankQuote(),prodotti:[{...direct,costo_materiale_noto:false}]}).prodotti[0];
+    expect(again.materiale_tot).toBe(automatic.materiale_tot);
   });
 });

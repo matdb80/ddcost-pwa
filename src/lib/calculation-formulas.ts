@@ -100,9 +100,9 @@ export const CALCULATION_FORMULAS = {
   },
   material: {
     theoreticalWeight:
-      "Peso teorico kg/pezzo = lunghezza mm × larghezza mm × spessore mm × densità kg/mm³. Densità usata: ferro 7,85×10⁻⁶, inox 8,00×10⁻⁶, ottone 8,50×10⁻⁶ kg/mm³.",
+      "Peso teorico kg/pezzo = volume mm³ × densità kg/m³ ÷ 1.000.000.000. Piatto/nastro: L × larghezza × spessore; tondo pieno: π × Ø² ÷ 4 × L; tubo tondo: π × (Ø esterno² − Ø interno²) ÷ 4 × L. Densità nominali: ferro 7850, inox 8000, ottone 8500, alluminio 2700 kg/m³.",
     materialCost:
-      "Costo materiale €/pz = peso teorico kg/pezzo × costo materiale €/kg. Non comprende fori, sagome, sfridi o lavorazioni aggiuntive.",
+      "Costo materiale €/pz = peso teorico kg/pezzo × costo materiale €/kg. Il foro interno del tubo è già sottratto. Altri fori, sagome, sfridi e lavorazioni aggiuntive non sono compresi.",
   },
   bandelleVeneta: {
     basePrice:

@@ -208,11 +208,15 @@ export default function PreventivoEditorPage() {
   const updateProduct = (index: number, key: string, value: unknown) => {
     setDoc(prev => {
       const prodotti = [...(prev.prodotti as Product[])];
-      prodotti[index] = { ...prodotti[index], [key]: value };
+      const before=prodotti[index];
+      prodotti[index] = { ...before, [key]: value };
+      if(key==="costo_materiale_noto" && value===false && before.costo_materiale_noto!==false && before.geometria_materiale===undefined)
+        prodotti[index].geometria_materiale="";
       if(key==="codice")delete prodotti[index].codice_temporaneo;
       return { ...prev, prodotti };
     });
-    if (!["gruppo_merceologico","materiale_prodotto","codice","descrizione"].includes(key))
+    if (!["gruppo_merceologico","materiale_prodotto","codice","descrizione"].includes(key) ||
+        (key==="materiale_prodotto" && doc.prodotti[index]?.costo_materiale_noto===false))
       setDirtyCalculation(true);
   };
   // A draft is stored in MySQL even with missing client, product group or
@@ -861,7 +865,7 @@ export default function PreventivoEditorPage() {
                 <option value="ferro">Ferro</option>
                 <option value="ottone">Ottone</option>
                 <option value="inox">Inox</option>
-                <option value="alluminio">Alluminio (costo materiale noto)</option>
+                <option value="alluminio">Alluminio</option>
               </select>
             </label>
           </div>

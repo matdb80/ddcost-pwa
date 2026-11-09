@@ -254,11 +254,12 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
   it("weight costing is a separate guided path; a hidden known €/piece value cannot mislead",()=>{
     const q=blankQuote();
     q.prodotti[0].costo_materiale_noto=false;
+    q.prodotti[0].geometria_materiale="piatto";
     q.prodotti[0].materiale_prodotto="ferro";
     const steps=buildQuoteWizardSteps(q);
     expect(steps.some(s=>s.id==="p:0:materiale_cad")).toBe(false);
     const fields=steps.filter(s=>s.index===0).map(s=>s.field);
-    for(const key of ["costo_materiale_noto","lunghezza_mm","larghezza_mm","spessore_mm","costo_materiale_kg"])
+    for(const key of ["costo_materiale_noto","geometria_materiale","lunghezza_mm","larghezza_mm","spessore_mm","costo_materiale_kg"])
       expect(fields).toContain(key);
     const lengthStep=steps.find(s=>s.id==="p:0:lunghezza_mm")!;
     expect(quoteWizardStepError(lengthStep,q)).toMatch(/maggiore di zero/);
@@ -299,4 +300,21 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     q.prodotti[0].quantita=20;
     expect(quoteWizardStepError(qty,q)).toBe(null);
   });
+});
+
+it("asks for geometry first and only for dimensions of the chosen shape",()=>{
+  const product:ReturnType<typeof blankProduct>={...blankProduct(),costo_materiale_noto:false,materiale_prodotto:"ferro",lunghezza_mm:100,costo_materiale_kg:4};
+  const doc={...blankQuote(),prodotti:[product]};
+  let steps=buildQuoteWizardSteps(doc);
+  expect(quoteWizardStepError(steps.find(s=>s.field==="geometria_materiale")!,doc)).toContain("Seleziona");
+  expect(steps.some(s=>s.field==="lunghezza_mm")).toBe(false);
+  product.geometria_materiale="tubo";product.diametro_mm=20;product.diametro_interno_mm=16;
+  steps=buildQuoteWizardSteps(doc);
+  expect(steps.findIndex(s=>s.field==="geometria_materiale")).toBeLessThan(steps.findIndex(s=>s.field==="lunghezza_mm"));
+  expect(steps.some(s=>s.field==="larghezza_mm"||s.field==="spessore_mm")).toBe(false);
+  expect(quoteWizardStepError(steps.find(s=>s.field==="costo_materiale_kg")!,doc)).toBeNull();
+  product.diametro_interno_mm=25;
+  expect(quoteWizardStepError(steps.find(s=>s.field==="diametro_interno_mm")!,doc)).toContain("inferiore");
+  product.geometria_materiale="tondino";
+  expect(buildQuoteWizardSteps(doc).some(s=>s.field==="diametro_interno_mm")).toBe(false);
 });

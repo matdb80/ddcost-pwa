@@ -1,6 +1,6 @@
 import QuoteNumericInput from "@/components/QuoteNumericInput";
 import FormulaTooltip from "@/components/FormulaTooltip";
-import { calculateMaterialByWeight, type MaterialName } from "@/lib/quote-material-weight";
+import { calculateQuoteMaterial, quoteMaterialDimensionFields, quoteMaterialGeometry, QUOTE_MATERIAL_GEOMETRIES, QUOTE_MATERIAL_HELP } from "@/lib/quote-material-weight";
 import type { Product } from "@/lib/quote-calculation";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
 
@@ -11,27 +11,16 @@ type Props={
   mobile?:boolean;
   placement?:"all"|"dimensions"|"cost";
 };
-const fields=[
-  {key:"lunghezza_mm",label:"Lunghezza (mm)",kind:"decimal" as const},
-  {key:"larghezza_mm",label:"Larghezza (mm)",kind:"decimal" as const},
-  {key:"spessore_mm",label:"Spessore (mm)",kind:"decimal" as const},
-  {key:"costo_materiale_kg",label:"Costo materiale (€/kg)",kind:"euro" as const},
-];
-
 export default function QuoteMaterialCostFields({product,disabled,onChange,mobile=false,placement="all"}:Props){
   // Undefined on historic documents means the pre-existing cost-per-piece model.
   const known=product.costo_materiale_noto!==false;
-  let result:ReturnType<typeof calculateMaterialByWeight>|null=null;
+  const geometry=quoteMaterialGeometry(product);
+  const fields=quoteMaterialDimensionFields(product);
+  let result:ReturnType<typeof calculateQuoteMaterial>|null=null;
   let validationMessage="";
   if(!known){
     try {
-      result=calculateMaterialByWeight({
-        material:String(product.materiale_prodotto??"") as MaterialName,
-        lengthMm:Number(product.lunghezza_mm??0),
-        widthMm:Number(product.larghezza_mm??0),
-        thicknessMm:Number(product.spessore_mm??0),
-        euroPerKg:Number(product.costo_materiale_kg??0),
-      });
+      result=calculateQuoteMaterial(product);
     }catch(error){
       validationMessage=error instanceof Error?error.message:"Dimensioni o materiale non validi";
     }
@@ -52,17 +41,25 @@ export default function QuoteMaterialCostFields({product,disabled,onChange,mobil
     <label className="flex min-h-7 cursor-pointer items-center gap-2 text-sm font-medium text-slate-800">
       <input type="checkbox" className="h-4 w-4 accent-emerald-600" disabled={disabled}
         checked={known} onChange={e=>onChange("costo_materiale_noto",e.target.checked)}/>
-      Conosci il costo del materiale
+      Conosco il costo del materiale
     </label>
     {known? (placement==="all"?costField:null)
     :<>
-      <div className={mobile?"grid grid-cols-2 gap-3":"grid grid-cols-2 gap-2 sm:grid-cols-4"}>
-        {fields.map(f=><label key={f.key} className="flex min-w-0 flex-col gap-1 text-xs text-slate-700">
+      <p className="text-xs text-slate-600">{QUOTE_MATERIAL_HELP}</p>
+      <label className="flex w-full max-w-sm flex-col gap-1 text-xs text-slate-700">
+        <span className="font-medium">Geometria del materiale</span>
+        <select className={inputClass} disabled={disabled} value={geometry} onChange={e=>onChange("geometria_materiale",e.target.value)}>
+          <option value="">Seleziona geometria...</option>
+          {QUOTE_MATERIAL_GEOMETRIES.map(g=><option key={g.id} value={g.id}>{g.label}</option>)}
+        </select>
+      </label>
+      {fields.length>0 && <div className={mobile?"grid grid-cols-2 gap-3":"grid grid-cols-2 gap-2 sm:grid-cols-4"}>
+        {[...fields.map(f=>({...f,kind:"decimal" as const})),{key:"costo_materiale_kg",label:"Costo materiale (€/kg)",kind:"euro" as const}].map(f=><label key={f.key} className="flex min-w-0 flex-col gap-1 text-xs text-slate-700">
           <span className="font-medium">{f.label}</span>
           <QuoteNumericInput kind={f.kind} disabled={disabled} className={inputClass}
             value={product[f.key]??0} onChange={value=>onChange(f.key,value)}/>
         </label>)}
-      </div>
+      </div>}
       {result?
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-emerald-900" role="status">
           <span>Peso teorico: <strong>{amount(result.theoreticalWeightKg,4)} kg/pz<FormulaTooltip label="Peso teorico del materiale" formula={CALCULATION_FORMULAS.material.theoreticalWeight}/></strong></span>
@@ -70,9 +67,8 @@ export default function QuoteMaterialCostFields({product,disabled,onChange,mobil
         </div>
       : <p className="text-xs text-amber-800" role="status">{validationMessage}</p>}
       <p className="text-[11px] text-slate-500">
-        Stima di un grezzo rettangolare pieno. Peso specifico indicativo:
-        ferro 7,85 · inox 8,00 · ottone 8,50 g/cm³.
-        Fori, sagome, sfridi e altri costi non sono inclusi.
+        Dimensioni in mm per un pezzo. Densità nominali: ferro 7,85 · inox 8,00 · ottone 8,50 · alluminio 2,70 g/cm³.
+        Il tubo tondo sottrae il volume del foro interno. Altri fori, sagome, sfridi e lavorazioni non sono inclusi.
       </p>
     </>}
   </div>;

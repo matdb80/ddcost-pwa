@@ -11,6 +11,7 @@ import type {RalOptions} from "@/lib/ral-pricing";
 import QuoteNumericInput from "@/components/QuoteNumericInput";
 import QuoteTotal from "@/components/QuoteTotal";
 import FormulaTooltip from "@/components/FormulaTooltip";
+import { QUOTE_MATERIAL_GEOMETRIES, QUOTE_MATERIAL_HELP, quoteMaterialGeometry } from "@/lib/quote-material-weight";
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
@@ -323,10 +324,15 @@ export default function QuoteMobileWizard(props:Props){
           <select id="wizard-input" className={inputClass} disabled={locked}
             value={String(value??"")} onChange={e=>updateValue(e.target.value)}>
             <option value="">Seleziona materiale...</option>
-            <option value="ferro">Ferro</option><option value="ottone">Ottone</option><option value="inox">Inox</option><option value="alluminio">Alluminio (costo materiale noto)</option>
+            <option value="ferro">Ferro</option><option value="ottone">Ottone</option><option value="inox">Inox</option><option value="alluminio">Alluminio</option>
+          </select>
+        ):field==="geometria_materiale" && product?(
+          <select id="wizard-input" className={inputClass} disabled={locked} value={quoteMaterialGeometry(product)} onChange={e=>updateValue(e.target.value)}>
+            <option value="">Seleziona geometria...</option>
+            {QUOTE_MATERIAL_GEOMETRIES.map(g=><option key={g.id} value={g.id}>{g.label}</option>)}
           </select>
         ):field==="materiale_cad" && product && productIndex!==undefined?(
-          <QuoteMaterialCostFields product={product} disabled={locked} mobile
+          <QuoteMaterialCostFields product={product} disabled={locked} mobile placement="cost"
             onChange={(key,value)=>onUpdateProduct(productIndex,key,value)}/>
         ):field==="oggetto_modifica" && product && productIndex!==undefined?(
           <QuoteModificationObjectFields value={value} disabled={locked} compact idPrefix={`wizard-modification-${productIndex}`}
@@ -363,7 +369,7 @@ export default function QuoteMobileWizard(props:Props){
             <input type="checkbox" disabled={locked} checked={value!==false}
               onChange={e=>updateValue(e.target.checked)} className="h-5 w-5 accent-emerald-600"/>
             {field==="costo_materiale_noto"
-              ?"Sì, conosco il costo del materiale per pezzo"
+              ?"Conosco il costo del materiale"
               :"Sì, il prezzo può essere rettificato"}
           </label>
         ):current.kind==="number" && current.numeric?(
@@ -388,6 +394,11 @@ export default function QuoteMobileWizard(props:Props){
             autoComplete="off" value={String(value??"")} onChange={e=>updateValue(e.target.value)}
             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();next();}}}/>
         ):null}
+        {field==="costo_materiale_noto" && value===false && <p className="mt-2 text-sm text-slate-600">{QUOTE_MATERIAL_HELP}</p>}
+        {field==="costo_materiale_kg" && product && productIndex!==undefined && <div className="mt-3">
+          <QuoteMaterialCostFields product={product} disabled={locked} mobile placement="cost" onChange={(key,value)=>onUpdateProduct(productIndex,key,value)}/>
+          {preview?.prodotti?.[productIndex]?.peso_teorico_kg!=null && <p className="mt-1 text-sm text-slate-600">Peso teorico: {Number(preview.prodotti[productIndex].peso_teorico_kg).toLocaleString("it-IT",{maximumFractionDigits:6})} kg/pz</p>}
+        </div>}
         {current.maxLength!==undefined && <p id="wizard-description-count" className={"mt-1 text-xs "+(String(value??"").length>current.maxLength?"text-red-700":"text-slate-500")}>
           {String(value??"").length}/{current.maxLength} caratteri, spazi inclusi
         </p>}

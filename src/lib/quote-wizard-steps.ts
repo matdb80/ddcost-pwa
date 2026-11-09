@@ -1,3 +1,4 @@
+import { calculateQuoteMaterial, quoteMaterialDimensionFields, quoteMaterialGeometry, QUOTE_MATERIAL_GEOMETRIES, QUOTE_MATERIAL_HELP } from "./quote-material-weight";
 import type {QuoteDocument} from "./quote-calculation";
 import {modificationObjectError} from "./quote-modification-validation";
 import {QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH} from "./quote-product-description";
@@ -46,12 +47,12 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     add("gruppo_merceologico","Gruppo merceologico","Seleziona il gruppo di appartenenza.",{kind:"select",required:true});
     add("materiale_prodotto","Materiale del prodotto","Scegli il materiale principale.",{kind:"select",required:true});
     add("quantita","Quanti pezzi?","La quantità serve anche a ripartire i costi comuni.",{kind:"number",numeric:"decimal",required:true});
-    add("costo_materiale_noto","Conosci il costo del materiale?","Se conosci già il prezzo €/pezzo, seleziona Sì. Altrimenti lo stimiamo da peso teorico e €/kg.",{kind:"checkbox"});
+    add("costo_materiale_noto","Conosco il costo del materiale","Seleziona se conosci già il costo per pezzo. Altrimenti lo calcoliamo dalla geometria e dal prezzo al kg.",{kind:"checkbox"});
     if(product.costo_materiale_noto===false){
-      add("lunghezza_mm","Lunghezza del grezzo (mm)","Misura totale del rettangolo di materiale.",{kind:"number",numeric:"decimal",required:true});
-      add("larghezza_mm","Larghezza del grezzo (mm)","Misura totale del rettangolo di materiale.",{kind:"number",numeric:"decimal",required:true});
-      add("spessore_mm","Spessore del grezzo (mm)","Spessore del materiale prima delle lavorazioni.",{kind:"number",numeric:"decimal",required:true});
-      add("costo_materiale_kg","Costo materiale al kg","Prezzo di acquisto del materiale in €/kg.",{kind:"number",numeric:"euro",required:true});
+      add("geometria_materiale","Geometria del materiale",QUOTE_MATERIAL_HELP,{kind:"select",required:true});
+      for(const f of quoteMaterialDimensionFields(product))
+        add(f.key,f.label,"Dimensioni in millimetri del materiale necessario per un pezzo.",{kind:"number",numeric:"decimal",required:true});
+      add("costo_materiale_kg","Costo materiale al kg","Prezzo di acquisto del materiale in €/kg. Il peso è calcolato dalla geometria selezionata.",{kind:"number",numeric:"euro",required:true});
     }else{
       add("materiale_cad","Costo materiale per pezzo","Costo diretto del materiale in euro per singolo pezzo.",{kind:"number",numeric:"euro"});
     }
@@ -129,13 +130,18 @@ export function quoteWizardStepError(step:QuoteWizardStep,doc:QuoteDocument):str
   const value=obj?.[step.field||""];
   if(step.maxLength!==undefined && String(value??"").length>step.maxLength)
     return `Massimo ${step.maxLength} caratteri, spazi inclusi.`;
+  if(step.field==="geometria_materiale")return QUOTE_MATERIAL_GEOMETRIES.some(g=>g.id===quoteMaterialGeometry(obj??{}))
+    ?null:"Seleziona la geometria del materiale.";
+  if(step.field==="diametro_interno_mm" && Number(value)>=Number(obj?.diametro_mm))
+    return "Il diametro interno deve essere inferiore a quello esterno.";
   if(step.field==="oggetto_modifica")return modificationObjectError(value);
-  if(step.field==="quantita" || ["lunghezza_mm","larghezza_mm","spessore_mm"].includes(step.field??"")){
+  if(step.field==="quantita" || ["lunghezza_mm","larghezza_mm","spessore_mm","diametro_mm","diametro_interno_mm"].includes(step.field??"")){
     if(!Number.isFinite(Number(value)) || Number(value)<=0) return "Inserisci un numero maggiore di zero.";
   }else if(step.field==="lavoro_ore_totali"){
     if(value==="" || value==null || !Number.isFinite(Number(value)) || Number(value)<0)return "Inserisci un monte ore valido, maggiore o uguale a zero.";
   }else if(step.field==="costo_materiale_kg"){
     if(!Number.isFinite(Number(value)) || Number(value)<0) return "Inserisci un costo al kg valido, non negativo.";
+    try{calculateQuoteMaterial(obj??{});}catch(error){return error instanceof Error?error.message:"Materiale non valido";}
   }else if(!String(value??"").trim()){
     return "Questo campo è obbligatorio per completare il preventivo.";
   }

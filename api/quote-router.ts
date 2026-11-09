@@ -10,6 +10,7 @@ import { quotes, productGroups } from "@db/schema";
 import {parseIncompleteQuote,quoteIsDraft} from "../src/lib/quote-draft-state";
 import {latestCompletedQuotePerRoot,readQuoteOutcome,summarizeQuoteOutcomes} from "../src/lib/quote-outcomes";
 import {modificationObjectError} from "../src/lib/quote-modification-validation";
+import {quoteMaterialError} from "../src/lib/quote-material-weight";
 import {quoteProductDescriptionError} from "../src/lib/quote-product-description";
 
 const ALLOWED_MATERIALS = new Set(["ferro","ottone","inox","alluminio"]);
@@ -38,6 +39,8 @@ async function validateQuoteClassifications(dataJson: string | undefined): Promi
   }
   const descriptionError=quoteProductDescriptionError(rows);
   if(descriptionError)throw new TRPCError({code:"BAD_REQUEST",message:descriptionError});
+  const materialError=quoteMaterialError(rows);
+  if(materialError)throw new TRPCError({code:"BAD_REQUEST",message:materialError});
   const db = getDb();
   const exists = await db.select({ name: productGroups.name })
     .from(productGroups).where(inArray(productGroups.name, Array.from(usedGroups)));

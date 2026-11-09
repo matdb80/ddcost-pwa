@@ -88,6 +88,21 @@ const caller=()=>quoteRouter.createCaller(context());
 const offer=()=>offerRouter.createCaller(context());
 async function createQuote(){const p=payload();return caller().create({...p,targetTotal:undefined});}
 
+it("allows an incomplete geometry draft but rejects invalid material geometry on completed writes",async()=>{
+  const document=doc();Object.assign(document.prodotti[0],{costo_materiale_noto:false,geometria_materiale:"",lunghezza_mm:100,diametro_mm:10,diametro_interno_mm:6,costo_materiale_kg:4});
+  const draft=await caller().saveDraft({dataJson:JSON.stringify(document)});
+  await expect(caller().finalizeDraft({draftId:draft.id,...payload(document)})).rejects.toThrow("geometria");
+  Object.assign(document.prodotti[0],{geometria_materiale:"tubo"});
+  await caller().finalizeDraft({draftId:draft.id,...payload(document)});
+  expect(JSON.parse((await caller().get({id:draft.id}))!.dataJson!).prodotti[0]).toMatchObject({geometria_materiale:"tubo",diametro_mm:10,diametro_interno_mm:6});
+  Object.assign(document.prodotti[0],{diametro_interno_mm:12});
+  const before=structuredClone(store.quotes);
+  await expect(caller().create({...payload(document),targetTotal:undefined})).rejects.toThrow("diametro interno");
+  await expect(caller().update({id:draft.id,expectedToken:quoteWriteToken(store.quotes[0]),...payload(document)})).rejects.toThrow("diametro interno");
+  await expect(caller().saveRevision({sourceId:draft.id,...payload(document)})).rejects.toThrow("diametro interno");
+  expect(store.quotes).toEqual(before);
+});
+
 describe("quote product description limit",()=>{
   it("persists exactly 60 characters including spaces unchanged through draft and completion",async()=>{
     const document=doc();document.prodotti[0].descrizione="A ".repeat(30);

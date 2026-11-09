@@ -1,6 +1,6 @@
 import { calculateRal, validRal, ralSourceCode } from "./ral-pricing";
 import { assertPaintedTemporaryCodes } from "./ral-documents";
-import { calculateMaterialByWeight, type MaterialName } from "./quote-material-weight";
+import { calculateQuoteMaterial } from "./quote-material-weight";
 export type Product = Record<string, any>;
 export type QuoteDocument = Record<string, any>;
 const val = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
@@ -8,7 +8,7 @@ const euro = (v: unknown) => val(v).toLocaleString("it-IT", { minimumFractionDig
 export const blankProduct = (): Product => ({
   gruppo_merceologico: "", materiale_prodotto: "",
   codice: "", descrizione: "", quantita: 1, materiale_cad: 0,
-  costo_materiale_noto: true, lunghezza_mm: 0, larghezza_mm: 0, spessore_mm: 0,
+  costo_materiale_noto: true, geometria_materiale: "", diametro_mm: 0, diametro_interno_mm: 0, lunghezza_mm: 0, larghezza_mm: 0, spessore_mm: 0,
   costo_materiale_kg: 0, oggetto_modifica: [], lavoro_h: 0, costo_lavoro: 24,
   trattamenti_cad: 0, attrezzaggi_h: 0,
   ricarico_spese: 0.75, margine: 0.2, prezzo_manuale: null, quadrabile: true,
@@ -102,13 +102,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
     // Existing documents without the checkbox retain their saved €/piece.
     // When unchecked, geometry/€/kg becomes the sole active material cost.
     const weightCost = p.costo_materiale_noto === false
-      ? calculateMaterialByWeight({
-          material: String(p.materiale_prodotto) as MaterialName,
-          lengthMm: Number(p.lunghezza_mm),
-          widthMm: Number(p.larghezza_mm),
-          thicknessMm: Number(p.spessore_mm),
-          euroPerKg: Number(p.costo_materiale_kg),
-        })
+      ? calculateQuoteMaterial(p)
       : null;
     const m = weightCost?.materialCostPerPiece ?? val(p.materiale_cad);
     p.materiale_calcolato_cad = m;
