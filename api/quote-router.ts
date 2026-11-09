@@ -10,6 +10,7 @@ import { quotes, productGroups } from "@db/schema";
 import {parseIncompleteQuote,quoteIsDraft} from "../src/lib/quote-draft-state";
 import {latestCompletedQuotePerRoot,readQuoteOutcome,summarizeQuoteOutcomes} from "../src/lib/quote-outcomes";
 import {modificationObjectError} from "../src/lib/quote-modification-validation";
+import {quoteProductDescriptionError} from "../src/lib/quote-product-description";
 
 const ALLOWED_MATERIALS = new Set(["ferro","ottone","inox","alluminio"]);
 
@@ -35,6 +36,8 @@ async function validateQuoteClassifications(dataJson: string | undefined): Promi
     if(missingModification)throw new TRPCError({code:"BAD_REQUEST",message:`Prodotto ${i+1}: ${missingModification}`});
     usedGroups.add(group);
   }
+  const descriptionError=quoteProductDescriptionError(rows);
+  if(descriptionError)throw new TRPCError({code:"BAD_REQUEST",message:descriptionError});
   const db = getDb();
   const exists = await db.select({ name: productGroups.name })
     .from(productGroups).where(inArray(productGroups.name, Array.from(usedGroups)));
@@ -183,6 +186,8 @@ export const quoteRouter = createRouter({
     }))
     .mutation(async ({ctx,input})=>{
       const document=parseIncompleteQuote(input.dataJson);
+      const descriptionError=quoteProductDescriptionError(document.prodotti as Record<string,unknown>[]);
+      if(descriptionError)throw new TRPCError({code:"BAD_REQUEST",message:descriptionError});
       await validateTemporaryProductDocument(input.dataJson,"prodotti",true);
       const db=getDb();
       return db.transaction(async tx=>{
@@ -448,6 +453,11 @@ export const quoteRouter = createRouter({
       const latest = rows[0];
       if (!latest) throw new Error("Quote not found");
       if (!quoteIsDraft(latest.dataJson)) await validateQuoteClassifications(latest.dataJson ?? undefined);
+      else {
+        const draft=parseIncompleteQuote(latest.dataJson??"");
+        const descriptionError=quoteProductDescriptionError(draft.prodotti as Record<string,unknown>[]);
+        if(descriptionError)throw new TRPCError({code:"BAD_REQUEST",message:descriptionError});
+      }
 
       const newRev = (latest.rev ?? 1) + 1;
       const result = await db.insert(quotes).values({

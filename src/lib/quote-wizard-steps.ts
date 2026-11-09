@@ -1,5 +1,6 @@
 import type {QuoteDocument} from "./quote-calculation";
 import {modificationObjectError} from "./quote-modification-validation";
+import {QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH} from "./quote-product-description";
 
 export type QuoteWizardStep = {
   id:string; title:string; section:string; hint:string;
@@ -7,6 +8,7 @@ export type QuoteWizardStep = {
   kind?:"text"|"select"|"number"|"textarea"|"checkbox"|"multiselect";
   numeric?:"euro"|"decimal"|"percent";
   advanced?:boolean;
+  maxLength?:number;
 };
 const step=(id:string,title:string,section:string,hint:string,more:Partial<QuoteWizardStep>={}):QuoteWizardStep=>
   ({id,title,section,hint,...more});
@@ -38,7 +40,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     const s="Prodotto "+(i+1)+" di "+items.length;
     const add=(key:string,title:string,hint:string,more:Partial<QuoteWizardStep>={})=>
       steps.push(step("p:"+i+":"+key,title,s,hint,{field:key,index:i,...more}));
-    add("descrizione","Che prodotto vuoi preventivare?","Descrivi l'articolo o la lavorazione.",{kind:"text",required:true});
+    add("descrizione","Che prodotto vuoi preventivare?","Descrivi l'articolo o la lavorazione: massimo 60 caratteri, spazi inclusi.",{kind:"text",required:true,maxLength:QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH});
     add("oggetto_modifica","Oggetto della modifica","Seleziona almeno una voce per questo prodotto. Puoi indicare più voci o aggiungerne una personalizzata.",{kind:"multiselect",required:true});
     if(advanced)add("codice","Codice articolo","Codice interno, se già disponibile.",{kind:"text",advanced:true});
     add("gruppo_merceologico","Gruppo merceologico","Seleziona il gruppo di appartenenza.",{kind:"select",required:true});
@@ -125,6 +127,8 @@ export function quoteWizardStepError(step:QuoteWizardStep,doc:QuoteDocument):str
   if(!step.required)return null;
   const obj=step.index===undefined?doc:doc.prodotti?.[step.index];
   const value=obj?.[step.field||""];
+  if(step.maxLength!==undefined && String(value??"").length>step.maxLength)
+    return `Massimo ${step.maxLength} caratteri, spazi inclusi.`;
   if(step.field==="oggetto_modifica")return modificationObjectError(value);
   if(step.field==="quantita" || ["lunghezza_mm","larghezza_mm","spessore_mm"].includes(step.field??"")){
     if(!Number.isFinite(Number(value)) || Number(value)<=0) return "Inserisci un numero maggiore di zero.";

@@ -141,7 +141,8 @@ export default function QuoteMobileWizard(props:Props){
   const price=euro(preview?.totale_finale);
   const cashMargin=Number(preview?.margine_netto_complessivo_perc??0);
   const canShare=hasPreview && !isSavedDraft && !steps.some(s=>
-    (s.field!=="oggetto_modifica" || isNew || unsavedChanges) && quoteWizardStepError(s,doc));
+    (s.field!=="oggetto_modifica" || isNew || unsavedChanges) && quoteWizardStepError(
+      !isNew && !unsavedChanges ? {...s,maxLength:undefined} : s,doc));
   const costVersion=Number(doc.costi_comuni_versione)||0;
   return <div ref={top} className="mx-auto flex w-full max-w-xl flex-col gap-3 pb-40 text-slate-900" data-testid="quote-mobile-wizard">
     <header className="rounded-xl bg-slate-900 px-4 py-3 text-white shadow-sm">
@@ -381,9 +382,15 @@ export default function QuoteMobileWizard(props:Props){
             value={String(value??"")} onChange={e=>updateValue(e.target.value)}/>
         ):current.kind==="text"?(
           <input id="wizard-input" className={inputClass} disabled={locked}
+            maxLength={current.maxLength}
+            aria-describedby={current.maxLength!==undefined?"wizard-description-count":undefined}
+            aria-invalid={!locked && current.maxLength!==undefined && String(value??"").length>current.maxLength}
             autoComplete="off" value={String(value??"")} onChange={e=>updateValue(e.target.value)}
             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();next();}}}/>
         ):null}
+        {current.maxLength!==undefined && <p id="wizard-description-count" className={"mt-1 text-xs "+(String(value??"").length>current.maxLength?"text-red-700":"text-slate-500")}>
+          {String(value??"").length}/{current.maxLength} caratteri, spazi inclusi
+        </p>}
         {current.kind==="number" && field==="costo_progettazione_ora" &&
             <p className="mt-2 text-xs text-slate-500">Il costo di progettazione è unico per il preventivo. Sarà distribuito sul totale dei pezzi.<FormulaTooltip label="Progettazione per pezzo" formula={CALCULATION_FORMULAS.quote.engineeringPerPiece}/></p>}
         {field==="quantita"&&(value===""||value===null||value===undefined)&&

@@ -24,6 +24,7 @@ import {
 } from "@/lib/quote-calculation";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
 import { quoteModificationError } from "@/lib/quote-modification-validation";
+import { QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH, quoteProductDescriptionError } from "@/lib/quote-product-description";
 const val = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const euro = (v: unknown) => val(v).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const euroDetailed = (v: unknown) => val(v).toLocaleString("it-IT", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
@@ -222,6 +223,8 @@ export default function PreventivoEditorPage() {
     setDraftSaving(true);
     setError("");
     try{
+      const descriptionError=quoteProductDescriptionError(doc.prodotti);
+      if(descriptionError)throw new Error(descriptionError);
       const result=await saveDraftMutation.mutateAsync({
         sourceId:draftIdRef.current??(!isNew?numericId:undefined),
         client:String(doc.cliente??""),
@@ -293,6 +296,8 @@ export default function PreventivoEditorPage() {
     try {
       const missingModification=quoteModificationError(doc.prodotti);
       if((isNew || changed) && missingModification)throw new Error(missingModification);
+      const descriptionError=quoteProductDescriptionError(doc.prodotti);
+      if((isNew || changed) && descriptionError)throw new Error(descriptionError);
       const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
       if (listinoModified && String(doc.listino?.sconto_riferimento ?? "").trim())
         computed.listino = buildListino(computed.listino ?? {}, computed, priceProductIndex);
@@ -312,7 +317,8 @@ export default function PreventivoEditorPage() {
   const canExportPdf = preview !== null && !isSavedDraft &&
     !buildQuoteWizardSteps(doc).some(step =>
       // Reading/exporting an unchanged historical document must not rewrite it.
-      (step.field!=="oggetto_modifica" || isNew || changed) && quoteWizardStepError(step,doc));
+      (step.field!=="oggetto_modifica" || isNew || changed) && quoteWizardStepError(
+        !isNew && !changed ? {...step,maxLength:undefined} : step,doc));
   const exportCustomerPdf = () => {
     if (isSavedDraft) {
       setError("Prima completa il preventivo: una bozza incompleta non va inviata al cliente.");
@@ -337,6 +343,8 @@ export default function PreventivoEditorPage() {
     if(hasPendingLocalInput)return setError("Completa o annulla il nuovo gruppo prima di salvare il preventivo.");
     if (!doc.cliente?.trim()) return setError("Indicare il cliente");
     if (!Array.isArray(doc.prodotti) || doc.prodotti.length === 0) return setError("Inserire almeno un prodotto");
+    const descriptionError=quoteProductDescriptionError(doc.prodotti);
+    if(descriptionError)return setError(descriptionError);
     for (let i = 0; i < doc.prodotti.length; i++) {
       const p = doc.prodotti[i];
       if (!String(p.gruppo_merceologico ?? "").trim())
@@ -638,9 +646,9 @@ export default function PreventivoEditorPage() {
               Nessun costo comune viene sommato due volte.
             </p>
           </div>
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(14rem,0.45fr)] gap-3">
+          <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
             {legacyEngineeringModel ? (
-              <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div className="flex w-full max-w-[38rem] flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 <label className="flex flex-col gap-1 text-sm">
                   <span className="font-medium">Progettazione totale € (modello precedente)</span>
                   <QuoteNumericInput kind="euro" value={doc.progettazione_totale_euro ?? 0}
@@ -657,7 +665,7 @@ export default function PreventivoEditorPage() {
                 </button>}
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="flex w-full max-w-[38rem] flex-col gap-2">
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="flex min-w-0 flex-col gap-1 text-xs">
                     <span className="font-medium" title="Ore complessive di progettazione">Ore<br/>progettazione</span>
@@ -676,8 +684,8 @@ export default function PreventivoEditorPage() {
                       className={compactInputClass+" "+(Number(doc.costo_progettazione_ora??50)===50?suggestedInputClass:normalInputClass)}
                       title={Number(doc.costo_progettazione_ora??50)===50?suggestedHint:undefined}/>
                   </label>
-                  <div className="flex min-w-0 flex-1 basis-96 items-end gap-2">
-                  <label className="flex min-w-0 flex-1 basis-64 flex-col gap-1 text-xs">
+                  <div className="flex min-w-0 max-w-full items-end gap-2">
+                  <label className="flex w-[23rem] min-w-0 flex-col gap-1 text-xs">
                     <span className="font-medium">Imputazione ore di lavorazione</span>
                     <select value={doc.lavoro_modalita ?? "per_prodotto"} disabled={locked}
                       onChange={e=>update("lavoro_modalita",e.target.value,true)}
@@ -709,12 +717,12 @@ export default function PreventivoEditorPage() {
                 </p>
               </div>
             )}
-            <div className="space-y-2">
-              <label className="flex flex-col gap-1 text-sm" htmlFor="trattamenti-modalita">
-                <span className="font-medium">Come attribuire i trattamenti?</span>
+            <div className="w-full max-w-[23rem] space-y-2">
+              <label className="flex flex-col gap-1 text-xs" htmlFor="trattamenti-modalita">
+                <span className="flex min-h-8 items-end font-medium">Come attribuire i trattamenti?</span>
                 <select id="trattamenti-modalita" value={sharedTreatmentMode}
                   disabled={locked} onChange={e=>update("trattamenti_modalita",e.target.value,true)}
-                  className="w-full min-w-0 rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-100">
+                  className={compactInputClass+" "+normalInputClass}>
                   <option value="per_prodotto">Separati per prodotto (€/pz)</option>
                   <option value="globale">Un costo complessivo per l'offerta (€)</option>
                   <option value="ore_lavoro">Considera i trattamenti nelle ore di lavoro totali</option>
@@ -725,7 +733,7 @@ export default function PreventivoEditorPage() {
                   <span className="font-medium">Costo totale trattamenti dell'offerta (€)</span>
                   <QuoteNumericInput kind="euro" value={doc.trattamenti_totale_euro ?? 0}
                     disabled={locked} onChange={value=>update("trattamenti_totale_euro",value,true)}
-                    className="w-full min-w-0 rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-100"/>
+                    className={compactInputClass+" "+normalInputClass}/>
                   <span className="text-xs text-slate-500">
                     Quota ripartita: € {euroDetailed(preview?.costi_comuni_riepilogo?.trattamenti_globali_cad)}<FormulaTooltip label="Trattamenti comuni per pezzo" formula={CALCULATION_FORMULAS.quote.globalTreatmentPerPiece}/> /pz.
                   </span>
@@ -811,8 +819,17 @@ export default function PreventivoEditorPage() {
                 onChange={e=>updateProduct(index,"codice",e.target.value)}/>
             </label>
             <label className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-5">
-              <span className="font-medium">Descrizione *</span>
+              <span className="flex items-center justify-between gap-2">
+                <span className="font-medium">Descrizione *</span>
+                <span id={"description-count-"+index} className={String(p.descrizione??"").length>QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH?"text-red-700":"text-slate-500"}>
+                  {String(p.descrizione??"").length}/{QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH}
+                </span>
+              </span>
               <input className={compactInputClass+" "+normalInputClass} disabled={locked} value={p.descrizione??""}
+                aria-label="Descrizione *" maxLength={QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH}
+                aria-describedby={"description-count-"+index}
+                aria-invalid={!locked && String(p.descrizione??"").length>QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH}
+                title="Massimo 60 caratteri, spazi inclusi"
                 onChange={e=>updateProduct(index,"descrizione",e.target.value)}/>
             </label>
             <div className="flex min-w-0 flex-col gap-1 text-xs lg:col-span-3">

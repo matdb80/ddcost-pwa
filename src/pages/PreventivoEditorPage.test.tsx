@@ -34,6 +34,37 @@ beforeEach(()=>{
   Element.prototype.scrollIntoView=vi.fn();
 });
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+it("preserves a long historical description and PDF but blocks saving until it is shortened",async()=>{
+  const long="A ".repeat(30)+"B";
+  mount({...blankQuote(),cliente:"Cliente prova",totale_finale:100,prodotti:[{...blankProduct(),descrizione:long,gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",oggetto_modifica:["occhio"]}]});
+  const description=await screen.findByLabelText("Descrizione *") as HTMLInputElement;
+  await waitFor(()=>expect(description.value).toBe(long));
+  expect(description.maxLength).toBe(60);
+  expect((screen.getByRole("button",{name:"Esporta PDF cliente"}) as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(screen.getByRole("button",{name:"Modifica"}));
+  fireEvent.change(screen.getByLabelText("Cliente *"),{target:{value:"Cliente modificato"}});
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await screen.findByRole("alert");
+  expect(screen.getByRole("alert").textContent).toContain("60 caratteri, spazi inclusi");
+  expect(state.calls).toHaveLength(0);
+  fireEvent.change(description,{target:{value:"A ".repeat(30)}});
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  expect(JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson).prodotti[0].descrizione).toBe("A ".repeat(30));
+});
+it("limits the mobile description and blocks advancing an overlength saved value",async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"A".repeat(61)}]},true);
+  await screen.findByTestId("quote-mobile-wizard");
+  for(let i=0;i<3;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  const input=screen.getByRole("textbox") as HTMLInputElement;
+  expect(input.maxLength).toBe(60);
+  expect(input.value).toHaveLength(61);
+  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(screen.getByRole("alert").textContent).toBe("Massimo 60 caratteri, spazi inclusi.");
+  fireEvent.change(input,{target:{value:"A ".repeat(30)}});
+  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(screen.getByRole("heading",{name:"Oggetto della modifica"})).toBeTruthy();
+});
 it("blocks completion until each product has a modification selection",async()=>{
   mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[0,1].map(i=>({...blankProduct(),
     descrizione:"Prodotto "+(i+1),gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",oggetto_modifica:i===0?["occhio"]:[]}))});
@@ -163,4 +194,12 @@ it("shows the reopened saved total also in the actual mobile wizard",async()=>{
   mount({...blankQuote(),totale_finale:321.45},true);
   await waitFor(()=>expect(screen.getByLabelText("Totale preventivo").textContent).toContain("321,45"));
   expect(screen.getByTestId("quote-mobile-wizard")).toBeTruthy();
+});
+it("keeps the original mobile PDF available for an unchanged long historical description",async()=>{
+  mount({...blankQuote(),totale_finale:100,prodotti:[{...blankProduct(),descrizione:"A".repeat(61),gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro"}]},true);
+  await waitFor(()=>expect(screen.getByLabelText("Totale preventivo").textContent).toContain("100,00"));
+  for(let i=0;i<40 && !screen.queryByRole("button",{name:"Esporta PDF cliente"});i++)
+    fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect((screen.getByRole("button",{name:"Esporta PDF cliente"}) as HTMLButtonElement).disabled).toBe(false);
+  expect(state.calls).toHaveLength(0);
 });

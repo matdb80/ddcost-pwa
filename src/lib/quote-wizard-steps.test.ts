@@ -3,6 +3,14 @@ import {blankProduct,blankQuote,calculateQuote} from "./quote-calculation";
 import {buildQuoteWizardSteps,quoteWizardStepError} from "./quote-wizard-steps";
 
 describe("Una Tantum mobile wizard step sequencing",()=>{
+  it("counts spaces in the 60-character description limit",()=>{
+    const quote={...blankQuote(),prodotti:[{...blankProduct(),descrizione:"A ".repeat(30)}]};
+    const step=buildQuoteWizardSteps(quote).find(s=>s.id==="p:0:descrizione")!;
+    expect(step.maxLength).toBe(60);
+    expect(quoteWizardStepError(step,quote)).toBeNull();
+    quote.prodotti[0].descrizione+=" ";
+    expect(quoteWizardStepError(step,quote)).toBe("Massimo 60 caratteri, spazi inclusi.");
+  });
   it("requires at least one nonempty modification on each product, including custom entries",()=>{
     const quote={...blankQuote(),prodotti:[{...blankProduct(),oggetto_modifica:["occhio"]},blankProduct()]};
     const steps=buildQuoteWizardSteps(quote);

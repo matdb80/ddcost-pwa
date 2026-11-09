@@ -88,6 +88,38 @@ const caller=()=>quoteRouter.createCaller(context());
 const offer=()=>offerRouter.createCaller(context());
 async function createQuote(){const p=payload();return caller().create({...p,targetTotal:undefined});}
 
+describe("quote product description limit",()=>{
+  it("persists exactly 60 characters including spaces unchanged through draft and completion",async()=>{
+    const document=doc();document.prodotti[0].descrizione="A ".repeat(30);
+    const draft=await caller().saveDraft({dataJson:JSON.stringify(document)});
+    await caller().finalizeDraft({draftId:draft.id,...payload(document)});
+    const loaded=await caller().get({id:draft.id});
+    expect(JSON.parse(loaded!.dataJson!).prodotti[0].descrizione).toBe("A ".repeat(30));
+  });
+  it("rejects 61 characters on all writes without modifying or truncating saved history",async()=>{
+    const source=await createQuote();
+    const draft=await caller().saveDraft({dataJson:JSON.stringify(doc())});
+    const invalid=doc();invalid.prodotti[0].descrizione="A ".repeat(30)+" ";
+    const before=structuredClone(store.quotes);
+    for(const write of [
+      ()=>caller().create({...payload(invalid),targetTotal:undefined}),
+      ()=>caller().saveDraft({dataJson:JSON.stringify(invalid)}),
+      ()=>caller().saveDraft({sourceId:draft.id,dataJson:JSON.stringify(invalid)}),
+      ()=>caller().finalizeDraft({draftId:draft.id,...payload(invalid)}),
+      ()=>caller().update({id:source.id,expectedToken:quoteWriteToken(store.quotes[0]),...payload(invalid)}),
+      ()=>caller().saveRevision({sourceId:source.id,...payload(invalid)}),
+    ])await expect(write()).rejects.toMatchObject({code:"BAD_REQUEST",message:expect.stringContaining("60 caratteri, spazi inclusi")});
+    expect(store.quotes).toEqual(before);
+    for(const row of store.quotes){
+      row.dataJson=JSON.stringify({...invalid,stato_preventivo:row.id===draft.id?"bozza":"completo"});
+      expect(JSON.parse((await caller().get({id:row.id}))!.dataJson!).prodotti[0].descrizione).toBe(invalid.prodotti[0].descrizione);
+      await expect(caller().createRevision({rootId:row.id})).rejects.toMatchObject({code:"BAD_REQUEST"});
+    }
+    expect(store.quotes).toHaveLength(2);
+    expect(store.counter).toBe(2);
+  });
+});
+
 describe("mandatory modification selection",()=>{
   it("rejects missing, empty and malformed selections before reserving a number",async()=>{
     for(const oggetto_modifica of [undefined,null,[],"occhio",["","  "],[1,null]]){
