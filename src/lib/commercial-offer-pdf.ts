@@ -118,7 +118,7 @@ export function buildCommercialOfferPrintHtml(
   .product { page-break-before: auto; margin: 14px 0 18px; }
   .product + .product { page-break-before: always; }
   .product-heading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; border-bottom: 1px solid #ccd2d6; padding-bottom: 5px; }
-  .product-heading h2 { margin: 0; font-size: 13pt; }
+  .product-heading h2 { margin: 0; font-size: 13pt; font-weight: 400; }
   .muted { color: #647078; }
   table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; table-layout: auto; }
   th, td { border: 1px solid #cbd1d5; padding: 4px 5px; vertical-align: top; }
@@ -149,8 +149,8 @@ export function buildCommercialOfferPrintHtml(
 </style></head><body>
 <header><img src="${escapeAttribute(logoUrl)}" alt="DDF Didieffe Group"><div class="company"><strong>${COMPANY.name}</strong>${companyDetails}</div></header>
 <h1>${title}</h1>
-${sectionHeading("person", "Intestazione")}<section class="meta"><div><b>Numero offerta</b><span class="meta-value">${offerName}</span></div><div><b>Data</b><span class="meta-value">${new Date().toLocaleDateString("it-IT")}</span></div><div><b>Cliente</b><span class="meta-value">${client || "—"}</span></div><div><b>Riferimento</b><span class="meta-value">${reference || "—"}</span></div><div><b>Colore</b><span class="meta-value">${escapeHtml(colorLabel)}</span></div></section>
-${sectionHeading("products", "Prodotti")}${body}${internal && ral ? `<p>RAL ${escapeHtml(ral.color)} · Cambio colore una volta: € ${money(ral.fixed)}. Prezzo indicativo.</p>`:""}${paymentTransportBlock}${internalFootnote}${noteBlock}
+${sectionHeading("person", "Intestazione")}<section class="meta"><div><b>Numero offerta</b><span class="meta-value">${offerName}</span></div><div><b>Data</b><span class="meta-value">${new Date().toLocaleDateString("it-IT")}</span></div><div><b>Cliente</b><span class="meta-value">${client || "—"}</span></div><div><b>Riferimento</b><span class="meta-value">${reference || "—"}</span></div><div><b>Colore</b><strong class="meta-value">${escapeHtml(colorLabel)}</strong></div></section>
+${sectionHeading("products", "Prodotti")}${body}${internal && ral ? `<p><strong>RAL ${escapeHtml(ral.color)}</strong> · Cambio colore una volta: € ${money(ral.fixed)}. Prezzo indicativo.</p>`:""}${paymentTransportBlock}${internalFootnote}${noteBlock}
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>
 </body></html>`;
 }
@@ -168,7 +168,7 @@ function internalProductSection(row: CommercialOfferRow, index: number, finishLa
   const code = escapeHtml(String(row.codice ?? ""));
   const description = escapeHtml(documentProductDescription(row));
   const offeredLots = selectedOfferLots(row).map(formatNumber).join(" · ") || "nessuno";
-  const heading = `<div class="product-heading"><h2>${index + 1}. ${code || "Prodotto"} · ${description}</h2><span>Colore: ${escapeHtml(finishLabel)}</span><br><span class="muted">Lotti offerti: ${offeredLots} pz · rev. ${escapeHtml(String(row.rev ?? "—"))}</span></div>`;
+  const heading = `<div class="product-heading"><h2>${index + 1}. <strong>${code || "Prodotto"}</strong> · ${description}</h2><strong>Colore: ${escapeHtml(finishLabel)}</strong><br><span class="muted">Lotti offerti: ${offeredLots} pz · rev. ${escapeHtml(String(row.rev ?? "—"))}</span></div>`;
   if (!cycle) return `<section class="product">${heading}<p class="muted">Questa riga non contiene uno snapshot di un Ciclo Standard; sono riportati solo i dati commerciali salvati.</p>${storedOfferSummary(row)}</section>`;
 
   const simulations = simulationsForOfferRow(row);
@@ -281,8 +281,8 @@ function customerOfferTable(
   });
   const lines = expanded.map(({ row, index, lot }) => {
     const code = escapeHtml(String(row.codice ?? ""));
-    const finish=`<br><span>Colore: ${escapeHtml(options.printFinish(row))}</span>`;
-    if(row.ral_su_richiesta)return `<tr><td>${index+1}</td><td>${code}<br>${escapeHtml(documentProductDescription(row))}${finish}</td><td>${formatNumber(lot)} pz</td><td>Su richiesta</td>${showFinalCustomerReferencePrice?"<td>—</td>":""}<td>Su richiesta</td></tr>`;
+    const finish=`<br><strong>Colore: ${escapeHtml(options.printFinish(row))}</strong>`;
+    if(row.ral_su_richiesta)return `<tr><td>${index+1}</td><td><strong>${code}</strong><br>${escapeHtml(documentProductDescription(row))}${finish}</td><td>${formatNumber(lot)} pz</td><td>Su richiesta</td>${showFinalCustomerReferencePrice?"<td>—</td>":""}<td>Su richiesta</td></tr>`;
     const description = escapeHtml(documentProductDescription(row));
     const calculatedPrice = offerLotPrice(row, lot);
     const manualNet = calculatedPrice?.manualNetPrice;
@@ -316,7 +316,7 @@ function customerOfferTable(
         : `<strong>€ ${unitPriceMoney(unitNet, unitPriceFractionDigits)}</strong>`;
       priceCell = `<div>Prezzo netto unitario: ${netDisplay}</div>`;
     }
-    if(row.verniciatura_ral)priceCell += `<div class="muted">RAL ${escapeHtml(options.ral?.color)} incluso nel netto</div>`;
+    if(row.verniciatura_ral)priceCell += `<div class="muted"><strong>RAL ${escapeHtml(options.ral?.color)}</strong> incluso nel netto</div>`;
     const referencePrice = number(offerLotTerms(row, lot).prezzo_finale_riferimento);
     const finalPriceCell = showFinalCustomerReferencePrice
       ? `<td class="num">€ ${unitPriceMoney(referencePrice, 2)}</td>`
@@ -336,7 +336,7 @@ function customerOfferTable(
   const priceHeading = showFinalCustomerReferencePrice
     ? `<th>Prezzo al distributore</th><th class="num">Prezzo finale cliente €/pz</th>`
     : `<th>${presentation === "netto" ? "Prezzo" : "Listino e sconto"}</th>`;
-  return `<table class="customer-lines"><thead><tr><th>#</th><th>Prodotto</th><th class="num">Lotto</th>${priceHeading}<th class="num">${showFinalCustomerReferencePrice ? "Totale al distributore" : "Totale netto"}</th></tr></thead><tbody>${lines}</tbody></table>${options.ral?`<p>RAL ${escapeHtml(options.ral.color)} · Cambio colore (una volta per ordine): € ${money(options.ral.fixed)}. Prezzo verniciato indicativo, da confermare dall’ufficio.</p>`:""}${totalBlock}`;
+  return `<table class="customer-lines"><thead><tr><th>#</th><th>Prodotto</th><th class="num">Lotto</th>${priceHeading}<th class="num">${showFinalCustomerReferencePrice ? "Totale al distributore" : "Totale netto"}</th></tr></thead><tbody>${lines}</tbody></table>${options.ral?`<p><strong>RAL ${escapeHtml(options.ral.color)}</strong> · Cambio colore (una volta per ordine): € ${money(options.ral.fixed)}. Prezzo verniciato indicativo, da confermare dall’ufficio.</p>`:""}${totalBlock}`;
 }
 
 function offerLotPrice(row: CommercialOfferRow, lot: number): ReturnType<typeof calculateOfferLotPrice> | null {

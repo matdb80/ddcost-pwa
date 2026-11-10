@@ -31,20 +31,20 @@ it("prints the standard black finish on every quote position with no price surch
   const smooth=calculateQuote({...original,prodotti:original.prodotti.map(p=>({...p,nero_standard_goffrato:false}))});
   expect(saved.totale_finale).toBe(smooth.totale_finale);
   const html=buildOneTimeQuotePrintHtml(JSON.parse(JSON.stringify(saved)));
-  expect(html.match(/Colore: NERO RAL 9005 · LISCIO/g)).toHaveLength(1);
-  expect(html.match(/Colore: NERO RAL 9005 · GOFFRATO/g)).toHaveLength(1);
+  expect(html.match(/<strong>Colore: NERO RAL 9005 · LISCIO<\/strong>/g)).toHaveLength(1);
+  expect(html.match(/<strong>Colore: NERO RAL 9005 · GOFFRATO<\/strong>/g)).toHaveLength(1);
   expect(html).not.toContain("Cambio colore");
 });
 it.each(["customer","internal"] as const)("prints each standard-offer position's black finish in %s mode",mode=>{
   const offer={righe:[false,true].map(nero_standard_goffrato=>({...rows[0],nero_standard_goffrato}))};
   expect(prepareRalOffer(offer)).toEqual(offer);
   const html=buildCommercialOfferPrintHtml(offer,mode);
-  expect(html.match(/Colore: NERO RAL 9005 · LISCIO/g)).toHaveLength(1);
-  expect(html.match(/Colore: NERO RAL 9005 · GOFFRATO/g)).toHaveLength(1);
+  expect(html.match(/<strong>Colore: NERO RAL 9005 · LISCIO<\/strong>/g)).toHaveLength(1);
+  expect(html.match(/<strong>Colore: NERO RAL 9005 · GOFFRATO<\/strong>/g)).toHaveLength(1);
   expect(html).not.toContain("Cambio colore");
 });
 it("prints the selected RAL finish instead of an inactive black finish on every position",()=>{
   const offer={verniciatura_ral:{color:"9010",textured:false},righe:[{...rows[0],nero_standard_goffrato:true}]};
-  expect(buildCommercialOfferPrintHtml(offer,"customer")).toContain("Colore: RAL 9010 · LISCIO");
-  expect(buildCommercialOfferPrintHtml({...offer,verniciatura_ral:{color:"9010",textured:true}},"customer")).toContain("Colore: RAL 9010 · GOFFRATO");
+  expect(buildCommercialOfferPrintHtml(offer,"customer")).toContain("<strong>Colore: RAL 9010 · LISCIO</strong>");
+  expect(buildCommercialOfferPrintHtml({...offer,verniciatura_ral:{color:"9010",textured:true}},"customer")).toContain("<strong>Colore: RAL 9010 · GOFFRATO</strong>");
 });

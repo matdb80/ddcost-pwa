@@ -48,7 +48,7 @@ it("exports the reported old quote with P and material while preserving exact sa
   const input={cliente:"Prova",totale_finale:3113.44,prodotti:[row(),{...row(),codice:legacy("6",6).code,codice_temporaneo:legacy("6",6),nero_standard_goffrato:true}]};
   const before=JSON.stringify(input);
   const pdf=buildOneTimeQuotePrintHtml(input);
-  expect(pdf).toContain("TBC00000056P · ANGOLARE INFERIORE SX — INOX AISI 316");
+  expect(pdf).toContain("<strong>TBC00000056P</strong> · ANGOLARE INFERIORE SX — INOX AISI 316");
   expect(pdf).toContain("TBC00000066P");expect(pdf).toContain("€ 1546,16");expect(pdf).toContain("3113,44");
   expect(pdf).toContain("NERO RAL 9005 · LISCIO");expect(pdf).toContain("NERO RAL 9005 · GOFFRATO");
   const text=formatQuoteForCopy(input);expect(text).toContain("TBC00000056P");expect(text).toContain("INOX AISI 316");

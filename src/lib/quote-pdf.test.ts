@@ -31,7 +31,7 @@ describe("customer PDF for one-time quotes",()=>{
 
     expect(html).toContain("Cliente Uno");
     expect(html).toContain("RIF-123");
-    expect(html).toContain("A-101 · Maniglia");
+    expect(html).toContain("<strong>A-101</strong> · Maniglia");
     expect(html).toContain("€ 12,34");
     expect(html).toContain("€ 123,40");
     expect(html).toContain("Consegna da concordare");
