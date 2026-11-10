@@ -1,3 +1,5 @@
+import {normalizeDocumentTemporaryCodes} from "@/lib/document-product-fields";
+import StandardBlackFinishGroup, {allStandardBlackTextured,withStandardBlackFinish} from "@/components/StandardBlackFinishGroup";
 import SalesHandoffPanel from "@/components/SalesHandoffPanel";
 import { useEffect, useRef, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router";
@@ -165,7 +167,7 @@ export default function OffertaEditorPage() {
   useEffect(() => {
     if (!data || isNew) return;
     try {
-      const original = JSON.parse(data.dataJson ?? "{}") as OfferDocument;
+      const original = normalizeDocumentTemporaryCodes(JSON.parse(data.dataJson ?? "{}"),"righe") as OfferDocument;
       if (!original || !Array.isArray(original.righe)) throw Error("Manca la lista righe");
       const merged: OfferDocument = {
         ...original,
@@ -540,12 +542,12 @@ export default function OffertaEditorPage() {
         </div>
       </section>
 
-      <RalSettings value={validRal(offer.verniciatura_ral)?offer.verniciatura_ral:null} disabled={locked} onChange={value=>edit("verniciatura_ral",value)} result={(()=>{try{return prepareRalOffer(offer).ral_riepilogo as any;}catch{return null;}})()}/>
+      <RalSettings value={validRal(offer.verniciatura_ral)?offer.verniciatura_ral:null} disabled={locked} onChange={value=>edit("verniciatura_ral",value)} result={(()=>{try{return prepareRalOffer(offer).ral_riepilogo as any;}catch{return null;}})()} standardFinish={<StandardBlackFinishGroup rows={offer.righe} disabled={locked} onChange={value=>edit("righe",withStandardBlackFinish(offer.righe,value))}/>}/>
       {Boolean(offer.verniciatura_ral) && (()=>{try{const r=prepareRalOffer(offer).ral_riepilogo as any;return <p className="rounded border bg-sky-50 p-3 text-sm">Totale indicativo con RAL e cambio colore: <b>{r?.total==null?"Su richiesta":"€ "+money(r.total)}</b></p>;}catch(e){return <p role="alert" className="text-sm text-red-700">{errorMessage(e,"Verifica RAL")}</p>;}})()}
       <div className="sticky top-0 z-30 -mx-3 md:-mx-6 px-3 md:px-6 py-2 border-y border-slate-200 bg-slate-50/95 shadow-sm backdrop-blur">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="flex items-center gap-2 text-xl font-semibold"><ShoppingCart size={20} aria-hidden="true"/>Prodotti ({offer.righe.length})</h2>
-          {!locked && <button type="button" className="flex gap-2 px-3 py-2 border border-emerald-600 text-emerald-700 rounded bg-white hover:bg-emerald-50" onClick={() => edit("righe", [...offer.righe, blankRow()])}><Plus size={16}/>Aggiungi prodotto</button>}
+          {!locked && <button type="button" className="flex gap-2 px-3 py-2 border border-emerald-600 text-emerald-700 rounded bg-white hover:bg-emerald-50" onClick={() => edit("righe", [...offer.righe, {...blankRow(),nero_standard_goffrato:allStandardBlackTextured(offer.righe)}])}><Plus size={16}/>Aggiungi prodotto</button>}
         </div>
       </div>
 

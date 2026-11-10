@@ -1,3 +1,4 @@
+import {documentProductCode,documentProductDescription} from "./document-product-fields";
 import {isForfait,forfaitProductError} from "./quote-forfait";
 import {prepareRalOffer} from "./ral-documents";
 import {calculateOfferLotPrice,cycleForOfferRow,offerLotTerms,selectedOfferLots,type CommercialOfferRow} from './commercial-offer-pricing';
@@ -37,7 +38,7 @@ export function salesDocument(kind:'quote'|'offer',raw:string):SalesDocument{
       const extra=Number(p.extra??0);
       const discount=kind==='quote'?(index===ref?String(d.listino?.sconto_riferimento??''):''):
         String(p.sconto_base??'')+(extra>0?'+'+String(extra).replace('.',',')+'%':'');
-      return {code:String(p.codice??''),description:String(p.descrizione??''),quantity:String(quantity).replace('.',','),
+      return {code:documentProductCode(p,d),description:documentProductDescription(p),quantity:String(quantity).replace('.',','),
         listPrice:copyNumber(kind==='quote'?(index===ref?d.listino?.prezzo_listino_generato:null):terms.listino??p.listino),
         discount,netPrice:copyNumber(net)};
     });

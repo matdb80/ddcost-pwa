@@ -1,3 +1,4 @@
+import {documentProductCode,documentProductDescription} from "./document-product-fields";
 import {isForfait,forfaitProductError} from "./quote-forfait";
 import {quoteDocumentNumber} from "./commercial-offer-number";
 
@@ -21,7 +22,7 @@ export function listinoProductIndex(doc: Data): number {
   if (Number.isInteger(idx) && idx >= 0 && idx < rows.length) return idx;
   const code = asText(reference.codice_riferimento);
   if (code) {
-    const matching = rows.map((p,i) => asText(p.codice) === code ? i : -1).filter(i=>i>=0);
+    const matching = rows.map((p,i) => asText(p.codice) === code || documentProductCode({...p,codice:code},doc) === documentProductCode(p,doc) ? i : -1).filter(i=>i>=0);
     if (matching.length === 1) return matching[0];
   }
   const description = asText(reference.descrizione_riferimento);
@@ -57,8 +58,8 @@ export function formatQuoteForCopy(doc: Data): string {
     const lineTotal = qty * net;
     calculatedTotal += lineTotal;
     lines.push("Articolo " + (index+1));
-    if (asText(p.codice)) lines.push("Codice articolo: " + asText(p.codice));
-    lines.push("Descrizione: " + asText(p.descrizione));
+    if (asText(p.codice)) lines.push("Codice articolo: " + documentProductCode(p,doc));
+    lines.push("Descrizione: " + documentProductDescription(p));
     if (index === listinoIndex && doc.listino) {
       const listino = doc.listino.prezzo_listino_generato;
       if (listino !== undefined && listino !== null && listino !== "")

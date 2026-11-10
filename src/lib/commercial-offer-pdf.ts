@@ -1,3 +1,4 @@
+import {documentProductDescription,normalizeDocumentTemporaryCodes} from "./document-product-fields";
 import {prepareRalOffer} from "./ral-documents";
 import {documentPrintColor,documentPrintFinish} from "./document-print-color";
 import {
@@ -73,7 +74,7 @@ export function buildCommercialOfferPrintHtml(
     unitPriceFractionDigits?: number;
   } = {},
 ): string {
-  offer = prepareRalOffer(offer);
+  offer = prepareRalOffer(normalizeDocumentTemporaryCodes(offer,"righe"));
   const ral = (offer.verniciatura_ral||offer.ral_consolidato?offer.ral_riepilogo:undefined) as {color:string;fixed:number;onRequest?:boolean}|undefined;
   const colorLabel=documentPrintColor(offer);
   const internal = mode === "internal";
@@ -165,7 +166,7 @@ export function openCommercialOfferPrintWindow(html: string): void {
 function internalProductSection(row: CommercialOfferRow, index: number, finishLabel:string): string {
   const cycle = cycleForOfferRow(row);
   const code = escapeHtml(String(row.codice ?? ""));
-  const description = escapeHtml(String(row.descrizione ?? ""));
+  const description = escapeHtml(documentProductDescription(row));
   const offeredLots = selectedOfferLots(row).map(formatNumber).join(" · ") || "nessuno";
   const heading = `<div class="product-heading"><h2>${index + 1}. ${code || "Prodotto"} · ${description}</h2><span>Colore: ${escapeHtml(finishLabel)}</span><br><span class="muted">Lotti offerti: ${offeredLots} pz · rev. ${escapeHtml(String(row.rev ?? "—"))}</span></div>`;
   if (!cycle) return `<section class="product">${heading}<p class="muted">Questa riga non contiene uno snapshot di un Ciclo Standard; sono riportati solo i dati commerciali salvati.</p>${storedOfferSummary(row)}</section>`;
@@ -281,8 +282,8 @@ function customerOfferTable(
   const lines = expanded.map(({ row, index, lot }) => {
     const code = escapeHtml(String(row.codice ?? ""));
     const finish=`<br><span>Colore: ${escapeHtml(options.printFinish(row))}</span>`;
-    if(row.ral_su_richiesta)return `<tr><td>${index+1}</td><td>${code}<br>${escapeHtml(row.descrizione)}${finish}</td><td>${formatNumber(lot)} pz</td><td>Su richiesta</td>${showFinalCustomerReferencePrice?"<td>—</td>":""}<td>Su richiesta</td></tr>`;
-    const description = escapeHtml(String(row.descrizione ?? ""));
+    if(row.ral_su_richiesta)return `<tr><td>${index+1}</td><td>${code}<br>${escapeHtml(documentProductDescription(row))}${finish}</td><td>${formatNumber(lot)} pz</td><td>Su richiesta</td>${showFinalCustomerReferencePrice?"<td>—</td>":""}<td>Su richiesta</td></tr>`;
+    const description = escapeHtml(documentProductDescription(row));
     const calculatedPrice = offerLotPrice(row, lot);
     const manualNet = calculatedPrice?.manualNetPrice;
     const unitNet = customerUnitNet(row, lot, presentation, calculatedPrice, unitPriceFractionDigits);

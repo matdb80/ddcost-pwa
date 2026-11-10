@@ -1,11 +1,12 @@
+import type {ReactNode} from "react";
 import { ralColors, type RalOptions, type calculateRal } from "@/lib/ral-pricing";
 export function RalColorSelect({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
   return <select aria-label="Colore RAL" disabled={disabled} value={value} onChange={e => onChange(e.target.value)} className="h-9 max-w-full rounded border bg-white px-2 text-sm text-slate-900 disabled:bg-slate-100">
     {ralColors.map(c => <option key={c.code} value={c.code}>RAL {c.code} · {c.name}</option>)}
   </select>;
 }
-export default function RalSettings({ value, disabled, onChange, result }: {
-  value: RalOptions | null; disabled: boolean; onChange: (v: RalOptions | null) => void; result?: ReturnType<typeof calculateRal> | null;
+export default function RalSettings({ value, disabled, onChange, result, standardFinish }: {
+  value: RalOptions | null; disabled: boolean; onChange: (v: RalOptions | null) => void; result?: ReturnType<typeof calculateRal> | null; standardFinish?:ReactNode;
 }) {
   const color = ralColors.find(c => c.code === value?.color);
   return <section className="overflow-hidden rounded-xl border border-slate-200 bg-white text-sm shadow-sm">
@@ -15,6 +16,7 @@ export default function RalSettings({ value, disabled, onChange, result }: {
         <span>Verniciatura RAL sul netto cliente</span>
       </span>
     </label>
+    {!value && standardFinish}
     {value && <div className="space-y-2 p-3">
       <div className="flex flex-wrap items-center gap-3">
         <RalColorSelect value={value.color} disabled={disabled} onChange={color => onChange({ ...value, color })}/>

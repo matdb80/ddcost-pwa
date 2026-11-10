@@ -1,3 +1,4 @@
+import {documentProductCode,documentProductDescription} from "./document-product-fields";
 import {isForfait} from "./quote-forfait";
 import type {Product, QuoteDocument} from "./quote-calculation";
 import {quoteDocumentNumber} from "./commercial-offer-number";
@@ -24,8 +25,8 @@ export function buildOneTimeQuotePrintHtml(
   const ral=products.some(p=>!isForfait(p)) && (quote.verniciatura_ral||quote.ral_consolidato)?quote.ral_riepilogo:null;
   const rows = products.map((product, index) => {
     if(isForfait(product))return `<tr><td class="num">${index+1}</td><td colspan="3">${escapeHtml(product.descrizione)}<br><strong>a forfait/da definire</strong></td><td class="num">€ ${money(product.valore_forfait)}</td></tr>`;
-    const code = String(product.codice ?? "").trim();
-    const description = String(product.descrizione ?? "").trim();
+    const code = documentProductCode(product,quote);
+    const description = documentProductDescription(product);
     const productName = [code, description].filter(Boolean).map(escapeHtml).join(" · ");
     const quantity = number(product.quantita);
     const unitPrice = number(product.prezzo_netto_unitario_finale ?? product.prezzo_netto_unitario);

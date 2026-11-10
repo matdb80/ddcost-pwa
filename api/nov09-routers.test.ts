@@ -147,3 +147,18 @@ it("refuses schema activation outside the exact staging identity",()=>{
   expect(()=>assertNov09Staging(vars)).not.toThrow();
   expect(()=>assertNov09Staging({...vars,DATABASE_URL:vars.DATABASE_URL.replace("9ovJ2FwEUzJE8ck.root","production")})).toThrow(/identity/);
 });
+
+it.each(["prodotti","righe"] as const)("accepts the completed old inox suffix in %s without reserving or rewriting any issuance",async rowKey=>{
+  const legacy={sequence:5,family:"BC",material:"6",color:null,code:"TBC00000056"};
+  store.rows.temporary_product_codes.push({id:5,userId:1,requestKey:randomUUID(),...legacy});
+  const before=structuredClone(store.rows);
+  const doc=(code:string)=>JSON.stringify({[rowKey]:[{codice:code,materiale_prodotto:"inox",codice_temporaneo:legacy}]});
+  await expect(validateTemporaryProductDocument(doc("TBC00000056P"),rowKey)).resolves.toBeUndefined();
+  await expect(validateTemporaryProductDocument(doc("TBC00000056P"),rowKey,true)).resolves.toBeUndefined();
+  await expect(validateTemporaryProductDocument(doc(legacy.code),rowKey)).resolves.toBeUndefined();
+  for(const invalid of ["TBC00000056n","TBC00000066P","TBC0000005XP","TBC00000056PP"])
+    await expect(validateTemporaryProductDocument(doc(invalid),rowKey)).rejects.toThrow("non corrisponde");
+  const forged=JSON.stringify({[rowKey]:[{codice:"TBC00000056P",codice_temporaneo:{...legacy,sequence:6}}]});
+  await expect(validateTemporaryProductDocument(forged,rowKey)).rejects.toThrow("non emesso");
+  expect(store.rows).toEqual(before);
+});

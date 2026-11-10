@@ -1,3 +1,4 @@
+import {normalizeDocumentTemporaryCodes} from "./document-product-fields";
 import { isForfait, forfaitProductError } from "./quote-forfait";
 import { calculateRal, validRal, ralSourceCode } from "./ral-pricing";
 import { assertPaintedTemporaryCodes } from "./ral-documents";
@@ -65,7 +66,7 @@ export function changeQuoteLaborMode(document: QuoteDocument, mode: "complessivo
   return next;
 }
 export function calculateQuote(document: QuoteDocument): QuoteDocument {
-  const d = structuredClone(document);
+  const d = normalizeDocumentTemporaryCodes(structuredClone(document),"prodotti");
   if (!Array.isArray(d.prodotti) || !d.prodotti.length) throw new Error("Inserire almeno un prodotto");
   const standardProducts = (d.prodotti as Product[]).filter(p=>!isForfait(p));
   const hasStandard = standardProducts.length > 0;

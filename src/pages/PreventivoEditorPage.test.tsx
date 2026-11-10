@@ -15,7 +15,7 @@ vi.mock("@/providers/trpc",()=>{
     if(key==="useQuery")return ()=>({data:path.join(".")==="quote.get"?state.data:[],isLoading:false});
     if(key==="useMutation")return ()=>({isPending:false,mutateAsync:async(input:any)=>{
       state.calls.push({path:path.join("."),input:structuredClone(input)});
-      return {id:123};
+      return {id:123,...(path.join(".")==="quote.update"?{dataJson:input.dataJson}:{})};
     }});
     return proxy([...path,String(key)]);
   }});
@@ -23,7 +23,7 @@ vi.mock("@/providers/trpc",()=>{
 });
 import Editor from "./PreventivoEditorPage";
 function mount(doc:Record<string,any>,mobile=false){
-  state.data={id:123,rev:1,dataJson:JSON.stringify(doc),client:"Cliente prova",reference:"Test"};
+  state.data={id:123,rev:1,editToken:"test-version",dataJson:JSON.stringify(doc),client:"Cliente prova",reference:"Test"};
   window.localStorage.setItem("ddcost.quote.mobile-view",mobile?"1":"0");
   const router=createMemoryRouter([{path:"/preventivi/:id",element:<Editor/>}],{initialEntries:["/preventivi/123"]});
   return render(<RouterProvider router={router}/>);
@@ -352,4 +352,55 @@ it("switches the mobile product header to forfait, validates its amount and reac
   await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.finalizeDraft")).toBe(true));
   const saved=JSON.parse(state.calls.find(c=>c.path==="quote.finalizeDraft")!.input.dataJson);
   expect(saved.totale_finale).toBe(250);
+});
+
+it("reopens an old inox code with P, preserves its recorded prices and saves the original issuance metadata",async()=>{
+  const issued={sequence:5,family:"BC",material:"6",color:null,code:"TBC00000056"};
+  const doc={...blankQuote(),cliente:"Cliente",totale_finale:3113.44,prodotti:[{...blankProduct(),descrizione:"Angolare",
+    materiale_prodotto:"inox",gruppo_merceologico:"Bandelle",oggetto_modifica:["occhio"],codice:issued.code,codice_temporaneo:issued,
+    prezzo_netto_unitario_finale:61.8464,totale_finale:1546.16}]};
+  mount(doc);
+  const code=await screen.findByLabelText("Codice articolo") as HTMLInputElement;
+  expect(code.value).toBe("TBC00000056P");
+  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("3.113,44");
+  fireEvent.click(screen.getByRole("button",{name:"Modifica"}));
+  fireEvent.click(screen.getByRole("checkbox",{name:"Goffrato — nero standard RAL 9005 (tutti i prodotti)"}));
+  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("3.113,44");
+  fireEvent.click(screen.getByRole("button",{name:"Salva e sovrascrivi versione attuale"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.update")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.update")!.input.dataJson);
+  expect(saved.prodotti[0].codice).toBe("TBC00000056P");expect(saved.prodotti[0].codice_temporaneo).toEqual(issued);
+  expect(saved.prodotti[0].nero_standard_goffrato).toBe(true);expect(saved.totale_finale).toBe(3113.44);
+});
+it("offers the no-surcharge black textured flag beside RAL, supports mixed finishes and preserves the selection after RAL toggles",async()=>{
+  const d=calculateQuote({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),materiale_cad:2},{...blankProduct(),materiale_cad:3},
+    {...blankProduct(),a_forfait:true,descrizione:"Forfait",valore_forfait:40}]});
+  mount(d);
+  const bulk=await screen.findByRole("checkbox",{name:"Goffrato — nero standard RAL 9005 (tutti i prodotti)"}) as HTMLInputElement;
+  fireEvent.click(bulk);
+  const rows=screen.getAllByRole("checkbox",{name:"Nero standard RAL 9005 goffrato"}) as HTMLInputElement[];
+  expect(rows).toHaveLength(2);expect(rows.every(c=>c.checked)).toBe(true);
+  fireEvent.click(rows[1]);expect(bulk.indeterminate).toBe(true);
+  expect(screen.getByText(/Finiture diverse/)).toBeTruthy();
+  const ral=screen.getByRole("checkbox",{name:"Verniciatura RAL sul netto cliente"});
+  fireEvent.click(ral);expect(screen.queryByRole("checkbox",{name:"Goffrato — nero standard RAL 9005 (tutti i prodotti)"})).toBeNull();
+  fireEvent.click(ral);
+  expect((screen.getByRole("checkbox",{name:"Goffrato — nero standard RAL 9005 (tutti i prodotti)"}) as HTMLInputElement).indeterminate).toBe(true);
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
+  expect(saved.prodotti.map((p:any)=>p.nero_standard_goffrato)).toEqual([true,false,false]);
+  expect(calculateQuote(saved).totale_finale).toBe(d.totale_finale);
+});
+it("exposes the black textured bulk choice in the mobile wizard without enabling RAL",async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Bandella",gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",oggetto_modifica:["occhio"]}]},true);
+  const bulk=await screen.findByRole("checkbox",{name:"Goffrato — nero standard RAL 9005 (tutti i prodotti)"});
+  fireEvent.click(bulk);
+  expect((screen.getByRole("checkbox",{name:"Verniciatura RAL sul netto cliente"}) as HTMLInputElement).checked).toBe(false);
+  for(let i=0;i<30 && !screen.queryByRole("heading",{name:"Riepilogo finale"});i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(screen.getByRole("heading",{name:"Riepilogo finale"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
+  expect(saved.prodotti[0].nero_standard_goffrato).toBe(true);expect(saved.verniciatura_ral).toBeFalsy();
 });

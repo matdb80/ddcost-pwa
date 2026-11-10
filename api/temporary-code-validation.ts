@@ -1,3 +1,4 @@
+import {documentProductCode} from "../src/lib/document-product-fields";
 import {isForfait} from "../src/lib/quote-forfait";
 import { inArray } from "drizzle-orm";
 import { temporaryProductCodes } from "@db/schema";
@@ -35,6 +36,6 @@ export async function validateTemporaryProductDocument(raw: string | undefined, 
     if(prefix){
       if(!validManualTemporaryCode(String(row.codice??""),prefix,draft))
         throw new Error("Mantieni i primi 11 caratteri del codice temporaneo e inserisci un solo carattere finale");
-    }else if(row.codice!==record.code)throw new Error("Il codice non corrisponde al codice temporaneo emesso");
+    }else if(row.codice!==record.code && row.codice!==documentProductCode({...row,codice:record.code,codice_temporaneo:record},doc))throw new Error("Il codice non corrisponde al codice temporaneo emesso");
   }
 }

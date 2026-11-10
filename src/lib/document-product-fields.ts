@@ -1,0 +1,52 @@
+import {temporaryCodePrefix,temporaryCode,TEMPORARY_FAMILIES,TEMPORARY_MATERIALS} from "./ral-pricing";
+import {isForfait} from "./quote-forfait";
+type Data=Record<string,any>;
+const materialNames:Record<string,string>={ferro:"FERRO",inox:"INOX",ottone:"OTTONE",alluminio:"ALLUMINIO"};
+const materialTypes:Record<string,string>={I:"ferro",X:"inox","6":"inox",B:"ottone",A:"alluminio"};
+function legacyParts(code:string){
+  const match=/^T([A-Z]{2})(\d{7})([IX6])$/.exec(code);
+  if(!match || !TEMPORARY_FAMILIES.includes(match[1] as any) || Number(match[2])===0)return null;
+  return {family:match[1],sequence:Number(match[2]),material:match[3]};
+}
+/** Complete only the missing fixed finish of the old temporary-code format.
+ * Keep the original issuance metadata and sequence; never reserve a new code. */
+export function documentProductCode(row:Data,document:Data):string {
+  const code=String(row.codice??"").trim();
+  if(document.verniciatura_ral || document.ral_consolidato || isForfait(row))return code;
+  const parts=legacyParts(code);
+  if(!parts)return code;
+  const selected=String(row.materiale_prodotto??"").trim().toLowerCase();
+  if(selected && selected!==materialTypes[parts.material])return code;
+  const metadata=row.codice_temporaneo;
+  if(metadata){
+    if(metadata.code!==code || metadata.color!=null || metadata.family!==parts.family ||
+      metadata.sequence!==parts.sequence || metadata.material!==parts.material)return code;
+  }else if(!selected)return code; // No inference for an unclassified, manually entered SKU.
+  return temporaryCode(parts.sequence,parts.family,parts.material,null);
+}
+export function normalizeDocumentTemporaryCodes<T extends Data>(document:T,rowKey:"prodotti"|"righe"):T {
+  if(!Array.isArray(document[rowKey]))return document;
+  return {...document,[rowKey]:document[rowKey].map((row:Data)=>{
+    const code=documentProductCode(row,document);
+    return code===String(row.codice??"").trim()?row:{...row,codice:code};
+  })};
+}
+/** Material is appended for presentation only, outside the editable 60 characters. */
+export function documentProductDescription(row:Data):string {
+  const description=String(row.descrizione??"").trim();
+  if(isForfait(row))return description;
+  const selected=String(row.materiale_prodotto??"").trim().toLowerCase();
+  let material=materialNames[selected]??"";
+  const metadata=row.codice_temporaneo;
+  if(metadata && (!selected || selected===materialTypes[metadata.material])){
+    try{
+      const prefix=temporaryCodePrefix(metadata.sequence,metadata.family,metadata.material);
+      const code=String(row.codice??"").trim();
+      if(typeof metadata.code==="string" && metadata.code.startsWith(prefix) &&
+        (metadata.code===code || documentProductCode({...row,codice:metadata.code},{})===code))
+        material=TEMPORARY_MATERIALS[metadata.material as keyof typeof TEMPORARY_MATERIALS].toUpperCase();
+    }catch{/* Retain the explicitly selected generic material. */}
+  }
+  if(!material || description.toUpperCase().endsWith(material))return description;
+  return [description,material].filter(Boolean).join(" — ");
+}

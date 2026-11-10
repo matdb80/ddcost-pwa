@@ -18,6 +18,8 @@ import {manualTemporaryCodePrefix,validManualTemporaryCode} from "@/lib/ral-pric
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
 import QuoteMobileWizard from "@/components/QuoteMobileWizard";
+import {normalizeDocumentTemporaryCodes} from "@/lib/document-product-fields";
+import StandardBlackFinishGroup, {allStandardBlackTextured,withStandardBlackFinish} from "@/components/StandardBlackFinishGroup";
 import QuoteForfaitFields from "@/components/QuoteForfaitFields";
 import {isForfait,forfaitProductError} from "@/lib/quote-forfait";
 import TemporaryProductCode from "@/components/TemporaryProductCode";
@@ -169,7 +171,7 @@ export default function PreventivoEditorPage() {
   useEffect(() => {
     if (!data || isNew) return;
     try {
-      const parsed: QuoteDocument = JSON.parse(data.dataJson || "{}");
+      const parsed: QuoteDocument = normalizeDocumentTemporaryCodes(JSON.parse(data.dataJson || "{}"),"prodotti");
       if (!Array.isArray(parsed.prodotti)) throw new Error("Formato storico non riconosciuto");
       parsed.cliente = data.client ?? parsed.cliente ?? "";
       parsed.riferimento_preventivo = data.reference ?? parsed.riferimento_preventivo ?? "";
@@ -230,7 +232,7 @@ export default function PreventivoEditorPage() {
       }
       return { ...prev, prodotti };
     });
-    if (!["gruppo_merceologico","materiale_prodotto","codice","descrizione"].includes(key) ||
+    if (!["gruppo_merceologico","materiale_prodotto","codice","descrizione","nero_standard_goffrato"].includes(key) ||
         (key==="materiale_prodotto" && doc.prodotti[index]?.costo_materiale_noto===false))
       setDirtyCalculation(true);
   };
@@ -521,7 +523,7 @@ export default function PreventivoEditorPage() {
           onHideDocumentTotalInPdfChange={setHideDocumentTotalInPdf}
           priceProductIndex={priceProductIndex}
           onUpdate={update} onUpdateProduct={updateProduct}
-          onAddProduct={()=>update("prodotti",[...doc.prodotti,blankProduct()],true)}
+          onAddProduct={()=>update("prodotti",[...doc.prodotti,{...blankProduct(),nero_standard_goffrato:allStandardBlackTextured(doc.prodotti)}],true)}
           onCopyProductAndScaleLot={()=>update("prodotti",duplicateLastProductForNewLot(doc.prodotti),true)}
           onRemoveProduct={index=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}
           onCreateGroup={async(index,name)=>{
@@ -535,7 +537,7 @@ export default function PreventivoEditorPage() {
             }
           }}
           onTemporaryCode={(index, code, ral)=>{ updateProduct(index,"codice",code.code); updateProduct(index,"codice_temporaneo",code); updateProduct(index,"materiale_prodotto",({I:"ferro",X:"inox","6":"inox",B:"ottone",A:"alluminio"} as Record<string,string>)[code.material]); update("verniciatura_ral",ral,true); }}
-          ralSettings={<RalSettings value={doc.verniciatura_ral??null} disabled={locked} onChange={value=>update("verniciatura_ral",value,true)} result={preview?.ral_riepilogo}/> }
+          ralSettings={<RalSettings value={doc.verniciatura_ral??null} disabled={locked} onChange={value=>update("verniciatura_ral",value,true)} result={preview?.ral_riepilogo} standardFinish={<StandardBlackFinishGroup rows={doc.prodotti} disabled={locked} onChange={value=>update("prodotti",withStandardBlackFinish(doc.prodotti,value))}/>}/> }
           attachments={<QuoteAttachments key={id??"new"} quoteId={isNew?null:numericId} ensureQuoteId={persistDraft} disabled={draftSaving}/> }
           onPriceProductIndex={index=>{
             setPriceProductIndex(index);
@@ -571,7 +573,7 @@ export default function PreventivoEditorPage() {
         </div>
         <div className="quote-header-toolbar">
           <div className="quote-header-tools flex min-w-0 flex-wrap items-start content-start gap-2 text-xs [&_button]:h-9 [&_button]:items-center [&_button]:justify-center [&_button]:whitespace-nowrap [&_button]:px-2 [&_button]:py-1.5">
-            {!locked && <button type="button" onClick={()=>update("prodotti",[...doc.prodotti,blankProduct()],true)}
+            {!locked && <button type="button" onClick={()=>update("prodotti",[...doc.prodotti,{...blankProduct(),nero_standard_goffrato:allStandardBlackTextured(doc.prodotti)}],true)}
               className="border border-emerald-600 text-emerald-700 rounded flex gap-2"
               title="Aggiungi prodotto senza scorrere fino alla sezione prodotti">
               <Plus size={16}/> Aggiungi prodotto
@@ -782,7 +784,7 @@ export default function PreventivoEditorPage() {
           </p>
         </section>
       ))}
-      {hasStandardProducts && <RalSettings value={doc.verniciatura_ral??null} disabled={locked} onChange={value=>update("verniciatura_ral",value,true)} result={preview?.ral_riepilogo}/>}
+      {hasStandardProducts && <RalSettings value={doc.verniciatura_ral??null} disabled={locked} onChange={value=>update("verniciatura_ral",value,true)} result={preview?.ral_riepilogo} standardFinish={<StandardBlackFinishGroup rows={doc.prodotti} disabled={locked} onChange={value=>update("prodotti",withStandardBlackFinish(doc.prodotti,value))}/>}/>}
       {hasStandardProducts && <section className="bg-white border rounded-xl p-3 md:p-4 space-y-2">
         <h2 className="font-semibold text-lg">Prezzo di listino da sconto cliente</h2>
         <p className="text-xs text-slate-600">Il listino lordo viene ricavato dal prezzo netto finale dell'articolo selezionato, applicando gli sconti successivi (es. 40+10% = fattore 0,54). Il listino è arrotondato in eccesso al centesimo; il prezzo netto del preventivo non viene cambiato.</p>
