@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { readWorkbookEvidence } from "../lib/excel-workbook-reader";
 
-import { extractF3Letters } from "../lib/excel-f3-letters";
+import { extractCycleWorkbook } from "../lib/excel-cycle-extractor";
 type Request = { id: string; file: File; mode?: "workbook" | "f3" };
 type Response =
   | {
@@ -15,7 +15,7 @@ self.addEventListener("message", async (event: MessageEvent<Request>) => {
   try {
     const workbook = await readWorkbookEvidence(file);
     if (mode === "f3")
-      self.postMessage({ id, ok: true, draft: extractF3Letters(workbook) });
+      self.postMessage({ id, ok: true, draft: extractCycleWorkbook(workbook) });
     else self.postMessage({ id, ok: true, workbook } satisfies Response);
   } catch (error) {
     self.postMessage({

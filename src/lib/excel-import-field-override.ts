@@ -26,7 +26,7 @@ export function applyF3FieldOverride(product:ProductDraft,rowKey:string,field:st
  const target=product.rows.find(row=>row.key===rowKey);
  if(!target)return product;
  const rule=rules[field];
- const ids=new Set(target.problems.filter(problem=>rule&&problem.code===`${rule.prefix}${target.excelRow}`).map(problem=>problem.id));
+ const ids=new Set(target.problems.filter(problem=>rule&&[`${rule.prefix}${target.excelRow}`,`${rule.prefix.replace('F3_', 'KGMIN_')}${target.excelRow}`].includes(problem.code)).map(problem=>problem.id));
  const resolve=(problem:ImportProblem):ImportProblem=>ids.has(problem.id)?{...problem,resolved:rule!.valid(value)}:problem;
  return {
   ...product,

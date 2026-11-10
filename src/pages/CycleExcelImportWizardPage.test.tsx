@@ -16,6 +16,11 @@ import { act } from "@testing-library/react";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { f3Workbook } from "../test-fixtures/f3-workbook";
 import { extractF3Letters } from "../lib/excel-f3-letters";
+import { extractCycleWorkbook } from "../lib/excel-cycle-extractor";
+import { legacyKgMinWorkbook } from "../test-fixtures/legacy-kg-min-workbook";
+import { readWorkbookEvidence } from "../lib/excel-workbook-reader";
+import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
 import {
   loadImportDraft,
   saveImportDraft,
@@ -219,6 +224,95 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe("Actual React wizard/editor flow in simulated DOM, services simulated", () => {
+  async function runKgMinFlow() {
+    const router = mount();
+    fireEvent.change(screen.getByLabelText("Workbook Excel"), {
+      target: {
+        files: [
+          new File(
+            ["worker response simulated"],
+            state.draft.workbook.fileName
+          ),
+        ],
+      },
+    });
+    await screen.findByRole("heading", { name: "Fogli e prodotti rilevati" });
+    expect(
+      screen.getAllByText(/layout storico kg\/min riconosciuto/).length
+    ).toBeGreaterThan(0);
+    const selected = state.draft.products[0];
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: new RegExp(`Codice da confermare.*${selected.label}`),
+      })
+    );
+    const code = screen.getByTestId("mapping-cycle.code");
+    fireEvent.change(within(code).getByLabelText("Valore Codice prodotto"), {
+      target: { value: "LOCAL-UI-TEST" },
+    });
+    fireEvent.click(
+      within(code).getByRole("button", { name: "Applica valore" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Continua" }));
+    fillPolicy();
+    await screen.findByRole("heading", {
+      name: "Anteprima calcolata da DDCost",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Conferma anteprima" }));
+    fireEvent.click(screen.getByLabelText(/Confermo prodotto/));
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Copia nel nuovo ciclo",
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    fireEvent.click(screen.getByLabelText(/Il setup non è disponibile/));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copia nel nuovo ciclo" })
+    );
+    await screen.findByRole("button", { name: "Salva" });
+    expect(state.cycles).toHaveLength(0);
+    const id = new URLSearchParams(router.state.location.search).get(
+      "importDraft"
+    )!;
+    const copied = loadImportDraft(id);
+    expect(copied.righe).toHaveLength(selected.rows.length);
+    expect(copied.righe[0].peso_kg).toBe(selected.rows[0].row.peso_kg);
+    fireEvent.click(screen.getByRole("button", { name: "Salva" }));
+    await screen.findByRole("heading", { name: "Archivio cicli di prova" });
+    const data = JSON.parse(state.cycles[0].dataJson);
+    expect(data.provenienza_import_excel.setupState.status).toBe("missing");
+    expect(data.provenienza_import_excel.decisions).toContain("LEGACY-KG-MIN");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Riapri ciclo salvato" })
+    );
+    await screen.findByDisplayValue("LOCAL-UI-TEST");
+  }
+  it("takes a kg/min draft through mapping, missing-setup acknowledgement, editor, explicit save and reopening", async () => {
+    const w = legacyKgMinWorkbook();
+    delete w.sheets[0].cells.A3;
+    state.draft = extractCycleWorkbook(w);
+    await runKgMinFlow();
+  }, 20000);
+  it.skipIf(!process.env.DDCOST_IMPORT_WORKBOOK)(
+    "takes the supplied real XLS through the React wizard and editor with simulated services",
+    async () => {
+      const path = process.env.DDCOST_IMPORT_WORKBOOK!;
+      const bytes = await readFile(path);
+      const file = new File([Uint8Array.from(bytes)], basename(path));
+      // jsdom File has no arrayBuffer(): provide bytes in the DOM realm,
+      // as a browser File would, rather than a Node-realm ArrayBuffer.
+      Object.defineProperty(file, "arrayBuffer", {
+        value: async () => Uint8Array.from(bytes).buffer,
+      });
+      const w = await readWorkbookEvidence(file);
+      expect(w.sheets.length).toBeGreaterThan(1);
+      state.draft = extractCycleWorkbook(w);
+      await runKgMinFlow();
+    },
+    20000
+  );
   it("maps, saves draft/tested/approved, transfers to editor, explicitly saves and reopens", async () => {
     const router = mount();
     await upload();

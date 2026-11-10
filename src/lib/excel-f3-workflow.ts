@@ -19,7 +19,10 @@ import {
   applyMappingDecision,
 } from "./excel-mapping-draft";
 import { applyF3FieldOverride } from "./excel-import-field-override";
-import { extractF3Letters, findF3Header } from "./excel-f3-letters";
+import {
+  extractCycleWorkbook,
+  findCycleImportHeader,
+} from "./excel-cycle-extractor";
 import { asValidatedDraft } from "./excel-import-validation";
 import { buildValidatedPreview } from "./excel-import-to-cycle";
 import { parseExcelNumber } from "./excel-import-values";
@@ -149,7 +152,13 @@ export function createProductMapping(
       id: `$product:${target}`,
       rowKey: "$product",
       target,
-      source: { sheet: s.name, addresses: [], original: [] },
+      source: structuredClone(
+        (target === "cycle.code"
+          ? p.identitySources?.code
+          : target === "cycle.description"
+            ? p.identitySources?.description
+            : undefined) ?? { sheet: s.name, addresses: [], original: [] }
+      ),
       proposed: fieldValue(p, "$product", target, d),
       transform: "text",
       decision: "proposed",
@@ -219,11 +228,22 @@ export function editMapping(
     const address = input.address.trim().toUpperCase(),
       cell = s.cells[address];
     if (!cell) throw Error("Cella non presente nel foglio");
-    const historic = p.rows.flatMap(
-      r => r.sources.costo_storico?.addresses ?? []
-    );
-    if (f.target === "costo_unitario" && historic.includes(address))
-      throw Error("La colonna dei costi storici non è una tariffa unitaria");
+    const historic = p.rows.flatMap(r => [
+      ...(r.sources.costo_storico?.addresses ?? []),
+      ...(r.sources.incidenza_storica?.addresses ?? []),
+    ]);
+    const header = findCycleImportHeader(s);
+    if (
+      f.target === "costo_unitario" &&
+      (historic.includes(address) ||
+        (header?.layout === "LEGACY-KG-MIN" &&
+          [header.columns.cost, header.columns.incidence].includes(
+            cell.column
+          )))
+    )
+      throw Error(
+        "La colonna dei costi storici o delle incidenze non è una tariffa unitaria"
+      );
     if (cell.error || (cell.formula && cell.cached == null))
       throw Error(
         "La cella contiene un errore o una formula senza risultato: usare una correzione esplicita"
@@ -260,6 +280,14 @@ export function editMapping(
       value = parseMappedValue(input.value, "number");
   }
   if (value === undefined) throw Error("Valore mancante");
+  if (
+    p.layout === "LEGACY-KG-MIN" &&
+    f.target === "cycle.code" &&
+    /\s/.test(String(value).trim())
+  )
+    throw Error(
+      "Scegliere un solo codice articolo, senza spazi, oppure usare il nome del foglio"
+    );
   if (f.target === "categoria" && !CATEGORIE_RIGA.includes(value as never))
     throw Error("Categoria non valida");
   let updated = applyMappingDecision(m, f.id, value);
@@ -326,7 +354,7 @@ export function editMapping(
       ...p,
       code: String(value),
       problems: p.problems.map(x =>
-        x.code.startsWith("F3_CODE_") ? { ...x, resolved: true } : x
+        /^(F3|KGMIN)_CODE_/.test(x.code) ? { ...x, resolved: true } : x
       ),
     };
   else if (f.target === "cycle.description")
@@ -361,12 +389,13 @@ export function setReusable(d: ImportDraft, id: string, reusable: boolean) {
 }
 function structure(d: ImportDraft, p: ProductDraft) {
   const s = productSheet(d, p),
-    h = findF3Header(s);
-  if (!h) throw Error("Firma F3 mancante");
+    h = findCycleImportHeader(s);
+  if (!h) throw Error("Layout Excel non riconosciuto");
   const at = new Map(
     Object.values(s.cells).map(c => [`${c.row}:${c.column}`, c])
   );
   return JSON.stringify({
+    ...(h.layout === "LEGACY-KG-MIN" ? { layout: h.layout } : {}),
     columns: Object.fromEntries(
       Object.entries(h.columns)
         .sort()
@@ -376,10 +405,19 @@ function structure(d: ImportDraft, p: ProductDraft) {
     rows: p.rows.map(r => ({
       offset: r.excelRow - h.row,
       kind: r.kind,
-      category: norm(
-        at.get(`${r.excelRow}:${h.columns.kind}`)?.displayText ?? ""
-      ),
+      category:
+        h.layout === "LEGACY-KG-MIN"
+          ? norm(at.get(`${r.excelRow}:${h.columns.unit}`)?.displayText ?? "")
+          : norm(at.get(`${r.excelRow}:${h.columns.kind}`)?.displayText ?? ""),
       unit: norm(at.get(`${r.excelRow}:${h.columns.unit}`)?.displayText ?? ""),
+      ...(h.layout === "LEGACY-KG-MIN"
+        ? {
+            description: norm(
+              at.get(`${r.excelRow}:${h.columns.description}`)?.displayText ??
+                ""
+            ),
+          }
+        : {}),
       option: p.options?.find(o => o.rowKeys.includes(r.key))?.label ?? null,
     })),
   });
@@ -390,7 +428,7 @@ export function buildF3Template(
 ): TemplateDefinition {
   const p = selectedProduct(d),
     s = productSheet(d, p),
-    h = findF3Header(s)!;
+    h = findCycleImportHeader(s)!;
   const m = mappingFor(d, p);
   const bindings: F3Binding[] = [];
   for (const f of m.fields.filter(x => x.reusable)) {
@@ -459,13 +497,16 @@ export function buildF3Template(
   });
   return templateDefinitionSchema.parse({
     schemaVersion: 2,
-    family: "F3-LETTERS",
+    family: h.layout,
     name: name.trim(),
     signature,
     products: [
       {
         key: "selected",
-        label: "Prodotto F3",
+        label:
+          h.layout === "LEGACY-KG-MIN"
+            ? "Prodotto storico kg/min"
+            : "Prodotto F3",
         startAnchor: signature.map(x => x.normalized).slice(0, 2),
         optional: false,
         rowRules: p.rows.map(r => ({
@@ -502,6 +543,11 @@ export function compatibleF3(
         compatible: false,
         reason: "Template privo di regole F3 eseguibili",
       };
+    if (def.family !== findCycleImportHeader(productSheet(d, p))?.layout)
+      return {
+        compatible: false,
+        reason: "Il template appartiene a un layout diverso",
+      };
     const match = matchTemplate(productSheet(d, p), { ...t, definition: def });
     if (match.conflicts.length)
       return {
@@ -527,7 +573,7 @@ function applyDefinition(
   definition: TemplateDefinition
 ): ImportDraft {
   const s = productSheet(d, p),
-    h = findF3Header(s)!;
+    h = findCycleImportHeader(s)!;
   let next = {
     ...d,
     products: d.products.map(x => ({ ...x, selected: x.key === p.key })),
@@ -594,7 +640,7 @@ export function testF3Definition(
 ) {
   buildValidatedPreview(asValidatedDraft(d));
   const p = selectedProduct(d),
-    source = extractF3Letters(d.workbook),
+    source = extractCycleWorkbook(d.workbook),
     original = source.products.find(x => x.key === p.key);
   if (!original) throw Error("Prodotto non riproducibile");
   if (definition.f3Profile?.structure !== structure(source, original))

@@ -410,7 +410,8 @@ export default function CycleExcelImportWizardPage() {
     <main className="mx-auto max-w-6xl p-4 pb-16 space-y-4">
       <h1 className="text-2xl font-semibold">Importa ciclo da Excel</h1>
       <p>
-        F3-LETTERE · i cicli vengono creati solo con il salvataggio nell’editor.
+        Layout F3-LETTERE e storico kg/min · i cicli vengono creati solo con il
+        salvataggio nell’editor.
       </p>
       <ol className="grid grid-cols-2 md:grid-cols-7 gap-2">
         {STEPS.map((label, i) => (
@@ -509,11 +510,25 @@ export default function CycleExcelImportWizardPage() {
                 : draft.products.some(
                       p => productSheet(draft, p).name === s.name
                     )
-                  ? "F3 riconosciuto"
-                  : "nessun prodotto F3: non verrà importato"}
+                  ? draft.products.some(
+                      p =>
+                        p.layout === "LEGACY-KG-MIN" &&
+                        productSheet(draft, p).name === s.name
+                    )
+                    ? "layout storico kg/min riconosciuto"
+                    : "F3 riconosciuto"
+                  : "nessuna tabella di costi compatibile: non verrà importato"}
             </div>
           ))}
           {approved.isFetching && <p>Verifica dei template approvati…</p>}
+          {draft.products.some(p => p.layout === "LEGACY-KG-MIN") && (
+            <p className="rounded border border-sky-200 bg-sky-50 p-3 text-sm">
+              Ogni scheda viene importata separatamente. I fogli di riepilogo
+              prezzi restano esclusi; gli eventuali supplementi non vengono
+              aggiunti automaticamente agli altri prodotti. Confermare i codici
+              mancanti o multipli e i dati economici prima di salvare.
+            </p>
+          )}
           {approved.isError && (
             <p role="alert">
               Archivio template non leggibile: procedere con mapping manuale o
@@ -637,9 +652,9 @@ export default function CycleExcelImportWizardPage() {
         <section className="space-y-3">
           <h2 className="font-semibold">Template condiviso</h2>
           <p>
-            Le regole del layout F3 e le correzioni marcate come riutilizzabili
-            valgono per i file futuri. Valori economici, codice e scelte del
-            singolo file restano da verificare.
+            Le regole del layout riconosciuto e le correzioni marcate come
+            riutilizzabili valgono per i file futuri. Valori economici, codice e
+            scelte del singolo file restano da verificare.
           </p>
           <label className="block">
             Nome
@@ -808,8 +823,11 @@ export default function CycleExcelImportWizardPage() {
           <p className="text-sm">
             Il motore usa un’unica tariffa lavoro anche per i setup. Tariffe
             storiche diverse restano evidenze; non vengono forzati tempi o
-            quantità. La colonna O resta costo storico. Valuta supportata in
-            questo percorso: EUR.
+            quantità.{" "}
+            {product.layout === "LEGACY-KG-MIN"
+              ? "Nel layout storico kg/min la colonna N contiene il costo storico e O l’incidenza percentuale: non sono tariffe unitarie."
+              : "La colonna O resta costo storico."}{" "}
+            Valuta supportata in questo percorso: EUR.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             {(

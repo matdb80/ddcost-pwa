@@ -130,6 +130,7 @@ export const templateDefinitionSchema = z
       "F3-EXTENDED",
       "F4-A-M",
       "F4-C-O",
+      "LEGACY-KG-MIN",
     ]),
     name: text(255),
     signature: z
@@ -150,7 +151,7 @@ export const templateDefinitionSchema = z
   })
   .superRefine((v, ctx) => {
     if (v.f3Profile) {
-      if (v.family !== "F3-LETTERS")
+      if (!["F3-LETTERS", "LEGACY-KG-MIN"].includes(v.family))
         ctx.addIssue({
           code: "custom",
           message: "Profilo F3 su famiglia diversa",

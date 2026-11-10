@@ -141,7 +141,8 @@ export interface TemplateDefinition {
     | "F3-LETTERS"
     | "F3-EXTENDED"
     | "F4-A-M"
-    | "F4-C-O";
+    | "F4-C-O"
+    | "LEGACY-KG-MIN";
   name: string;
   signature: Array<{
     normalized: string;
@@ -176,6 +177,8 @@ export interface DraftRow {
   validationIds?: string[];
 }
 export interface ProductDraft {
+  layout?: "F3-LETTERS" | "LEGACY-KG-MIN";
+  identitySources?: Partial<Record<"code" | "description", SourceRef>>;
   key: string;
   code?: string;
   label: string;
