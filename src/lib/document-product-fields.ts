@@ -1,5 +1,5 @@
 import {temporaryCodePrefix,temporaryCode,TEMPORARY_FAMILIES,TEMPORARY_MATERIALS} from "./ral-pricing";
-import {isForfait} from "./quote-forfait";
+import {isFixedPrice} from "./quote-series";
 type Data=Record<string,any>;
 const materialNames:Record<string,string>={ferro:"FERRO",inox:"INOX",ottone:"OTTONE",alluminio:"ALLUMINIO"};
 const materialTypes:Record<string,string>={I:"ferro",X:"inox","6":"inox",B:"ottone",A:"alluminio"};
@@ -12,7 +12,7 @@ function legacyParts(code:string){
  * Keep the original issuance metadata and sequence; never reserve a new code. */
 export function documentProductCode(row:Data,document:Data):string {
   const code=String(row.codice??"").trim();
-  if(document.verniciatura_ral || document.ral_consolidato || isForfait(row))return code;
+  if(document.verniciatura_ral || document.ral_consolidato || isFixedPrice(row))return code;
   const parts=legacyParts(code);
   if(!parts)return code;
   const selected=String(row.materiale_prodotto??"").trim().toLowerCase();
@@ -34,7 +34,7 @@ export function normalizeDocumentTemporaryCodes<T extends Data>(document:T,rowKe
 /** Material is appended for presentation only, outside the editable 60 characters. */
 export function documentProductDescription(row:Data):string {
   const description=String(row.descrizione??"").trim();
-  if(isForfait(row))return description;
+  if(isFixedPrice(row))return description;
   const selected=String(row.materiale_prodotto??"").trim().toLowerCase();
   let material=materialNames[selected]??"";
   const metadata=row.codice_temporaneo;

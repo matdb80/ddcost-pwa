@@ -1,3 +1,5 @@
+import QuoteSeriesFields from "@/components/QuoteSeriesFields";
+import {isSeries,isFixedPrice,seriesProductError} from "@/lib/quote-series";
 import SalesHandoffPanel from "@/components/SalesHandoffPanel";
 import { quoteDocumentNumber } from "@/lib/commercial-offer-number";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -52,7 +54,7 @@ function factorFromDiscount(text: string): number {
 function buildListino(previous: Record<string, any>, quote: QuoteDocument, productIndex: number) {
   const chosen = quote.prodotti?.[productIndex] as Product | undefined;
   if (!chosen) throw Error("Selezionare un prodotto di riferimento");
-  if(isForfait(chosen))return undefined;
+  if(isFixedPrice(chosen))return undefined;
   const discount = String(previous.sconto_riferimento ?? "").trim();
   if (!discount) throw Error("Inserire lo sconto cliente");
   const factor = factorFromDiscount(discount);
@@ -143,10 +145,10 @@ export default function PreventivoEditorPage() {
   const [listinoModified, setListinoModified] = useState(false);
   const [hideDocumentTotalInPdf, setHideDocumentTotalInPdf] = useState(false);
   const [priceProductIndex, setPriceProductIndex] = useState(0);
-  const hasStandardProducts=(doc.prodotti as Product[]).some(p=>!isForfait(p));
+  const hasStandardProducts=(doc.prodotti as Product[]).some(p=>!isFixedPrice(p));
   useEffect(()=>{
-    if(isForfait(doc.prodotti[priceProductIndex]) && hasStandardProducts)
-      setPriceProductIndex(doc.prodotti.findIndex((p:Product)=>!isForfait(p)));
+    if(isFixedPrice(doc.prodotti[priceProductIndex]) && hasStandardProducts)
+      setPriceProductIndex(doc.prodotti.findIndex((p:Product)=>!isFixedPrice(p)));
   },[doc.prodotti,priceProductIndex,hasStandardProducts]);
   const [error, setError] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
@@ -224,6 +226,8 @@ export default function PreventivoEditorPage() {
       const prodotti = [...(prev.prodotti as Product[])];
       const before=prodotti[index];
       prodotti[index] = { ...before, [key]: value };
+      if(key==="prodotto_di_serie" && value===true)prodotti[index].a_forfait=false;
+      if(key==="a_forfait" && value===true)prodotti[index].prodotto_di_serie=false;
       if(key==="costo_materiale_noto" && value===false && before.costo_materiale_noto!==false && before.geometria_materiale===undefined)
         prodotti[index].geometria_materiale="";
       if(key==="codice"){
@@ -368,6 +372,11 @@ export default function PreventivoEditorPage() {
     if(descriptionError)return setError(descriptionError);
     for (let i = 0; i < doc.prodotti.length; i++) {
       const p = doc.prodotti[i];
+      if(isSeries(p)){
+        const error=seriesProductError(p);
+        if(error)return setError(`Prodotto ${i+1}: ${error}`);
+        continue;
+      }
       if(isForfait(p)){
         const error=forfaitProductError(p);
         if(error)return setError(`Prodotto ${i+1}: ${error}`);
@@ -669,7 +678,7 @@ export default function PreventivoEditorPage() {
             <p className="text-xs text-slate-600 mt-1">
               La progettazione si inserisce una sola volta. La quota €/pezzo è il totale diviso
               per la somma delle quantità di tutti i prodotti.
-              Le righe a forfait sono escluse dalla ripartizione. Nessun costo comune viene sommato due volte.
+              Le righe a forfait e di serie sono escluse dalla ripartizione. Nessun costo comune viene sommato due volte.
             </p>
           </div>
           <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
@@ -793,7 +802,7 @@ export default function PreventivoEditorPage() {
             <span>Prodotto di riferimento</span>
             <select disabled={locked} className="border rounded p-2 disabled:bg-slate-100" value={priceProductIndex}
               onChange={e=>{setPriceProductIndex(Number(e.target.value));setListinoModified(Boolean(String(doc.listino?.sconto_riferimento??"").trim()));}}>
-              {(doc.prodotti as Product[]).map((p,i)=>!isForfait(p)&&<option key={i} value={i}>{i+1}. {p.descrizione||"(senza descrizione)"}</option>)}
+              {(doc.prodotti as Product[]).map((p,i)=>!isFixedPrice(p)&&<option key={i} value={i}>{i+1}. {p.descrizione||"(senza descrizione)"}</option>)}
             </select>
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -836,10 +845,14 @@ export default function PreventivoEditorPage() {
                 <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isForfait(p)}
                   onChange={e=>{if(newGroupIndex===index)setNewGroupIndex(null);updateProduct(index,"a_forfait",e.target.checked);}}/> A forfait
               </label>
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isSeries(p)}
+                  onChange={e=>{if(newGroupIndex===index)setNewGroupIndex(null);updateProduct(index,"prodotto_di_serie",e.target.checked);}}/> Prodotto di serie
+              </label>
             </div>
             {!locked && doc.prodotti.length > 1 && <button title="Rimuovi prodotto" className="rounded p-1 text-red-950 hover:bg-white/30" onClick={()=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}><Trash2 size={17}/></button>}
           </div>
-          {isForfait(p) ? <QuoteForfaitFields product={p} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : <>
+          {isSeries(p) ? <QuoteSeriesFields product={p} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : isForfait(p) ? <QuoteForfaitFields product={p} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : <>
           {!legacyCostModel && sharedTreatmentMode === "ore_lavoro" &&
             <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
               Costo trattamenti inglobati nel tempo di produzione. Includi il tempo dei trattamenti nelle ore
@@ -1001,7 +1014,7 @@ export default function PreventivoEditorPage() {
           <textarea rows={2} disabled={locked} className="border rounded p-2 disabled:bg-slate-100" value={doc[key]??""} onChange={e=>update(key,e.target.value)}/>
         </label>)}
         {Array.isArray(doc.attachments)&&doc.attachments.length>0&&<p className="text-sm text-amber-700">{doc.attachments.length} allegati storici presenti: i riferimenti vengono mantenuti nelle revisioni, ma i file originali Windows non sono ospitati sul server.</p>}
-        {preview?.ha_righe_forfait && <p className="text-sm text-slate-600">Margine complessivo non disponibile: le righe a forfait non hanno un costo di produzione definito.</p>}
+        {(preview?.ha_righe_forfait || preview?.ha_righe_serie) && <p className="text-sm text-slate-600">Margine complessivo non disponibile: le righe a forfait o di serie non hanno un costo di produzione definito.</p>}
         <div className="border-t pt-3 text-right text-lg font-bold">Totale preventivo: € {euro(preview?.totale_finale)}<FormulaTooltip label="Totale preventivo" formula={CALCULATION_FORMULAS.quote.quoteTotal}/></div>
         {dirtyCalculation && <p className="text-amber-700 text-sm">Anteprima del ricalcolo; scegli se salvare una nuova versione o sovrascrivere quella attuale.</p>}
       </section>

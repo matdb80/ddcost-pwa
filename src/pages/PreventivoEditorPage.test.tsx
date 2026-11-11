@@ -404,3 +404,50 @@ it("exposes the black textured bulk choice in the mobile wizard without enabling
   const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
   expect(saved.prodotti[0].nero_standard_goffrato).toBe(true);expect(saved.verniciatura_ral).toBeFalsy();
 });
+
+it("completes, reopens and edits a series product with only code, description, quantity and price",async()=>{
+ mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),materiale_cad:12.34,lavoro_h:16}]});
+ fireEvent.click(await screen.findByRole("checkbox",{name:"Prodotto di serie"}));
+ expect(screen.queryByLabelText("Materiale *")).toBeNull();
+ expect(screen.queryByRole("group",{name:"Oggetto della modifica *"})).toBeNull();
+ expect(screen.queryByText("Attribuzione dei costi comuni")).toBeNull();
+ expect(screen.queryByRole("button",{name:"Genera codice temporaneo"})).toBeNull();
+ fireEvent.click(screen.getByRole("button",{name:"Completa preventivo"}));
+ expect(screen.getByRole("alert").textContent).toContain("codice articolo");
+ fireEvent.change(screen.getByLabelText("Codice articolo *"),{target:{value:"STD-123"}});
+ fireEvent.change(screen.getByLabelText("Descrizione *"),{target:{value:"Articolo di serie"}});
+ fireEvent.click(screen.getByRole("button",{name:"Completa preventivo"}));
+ expect(screen.getByRole("alert").textContent).toContain("prezzo unitario");
+ for(const [name,value] of [["Quantità *","10"],["Prezzo unitario €/pz *","12,50"]]){
+  const input=screen.getByLabelText(name);fireEvent.focus(input);fireEvent.change(input,{target:{value}});fireEvent.blur(input);
+ }
+ fireEvent.click(screen.getByRole("button",{name:"Completa preventivo"}));
+ await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.finalizeDraft")).toBe(true));
+ const saved=JSON.parse(state.calls.find(c=>c.path==="quote.finalizeDraft")!.input.dataJson);
+ expect(saved.totale_finale).toBe(125);expect(saved.prodotti[0]).toMatchObject({prodotto_di_serie:true,prezzo_serie:12.5,quantita:10,materiale_cad:12.34,lavoro_h:16});
+ cleanup();mount(saved);
+ const toggle=await screen.findByRole("checkbox",{name:"Prodotto di serie"}) as HTMLInputElement;
+ expect(toggle.checked).toBe(true);expect(toggle.disabled).toBe(true);
+ expect((screen.getByLabelText("Prezzo unitario €/pz *") as HTMLInputElement).value).toBe("12,50");
+ fireEvent.click(screen.getByRole("button",{name:"Modifica"}));fireEvent.click(toggle);
+ expect((screen.getByLabelText("Materiale €/pz") as HTMLInputElement).value).toBe("12,34");
+ fireEvent.click(screen.getByRole("checkbox",{name:"A forfait"}));
+ fireEvent.click(toggle);
+ expect((screen.getByRole("checkbox",{name:"A forfait"}) as HTMLInputElement).checked).toBe(false);
+ expect((screen.getByLabelText("Prezzo unitario €/pz *") as HTMLInputElement).value).toBe("12,50");
+ fireEvent.click(screen.getByRole("checkbox",{name:"A forfait"}));expect(toggle.checked).toBe(false);
+});
+it("offers the four series fields in the mobile wizard and keeps price required",async()=>{
+ mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Serie",codice:"STD-1",quantita:10}]},true);
+ await screen.findByTestId("quote-mobile-wizard");
+ for(let i=0;i<3;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+ fireEvent.click(screen.getByRole("checkbox",{name:"Prodotto di serie"}));
+ expect(screen.queryByRole("button",{name:"Genera codice temporaneo"})).toBeNull();
+ for(let i=0;i<3;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+ expect(screen.getByRole("heading",{name:"Prezzo unitario di vendita (€/pz)"})).toBeTruthy();
+ fireEvent.click(screen.getByRole("button",{name:"Avanti"}));expect(screen.getByRole("alert").textContent).toContain("prezzo unitario");
+ const price=screen.getByRole("textbox");fireEvent.change(price,{target:{value:"12,50"}});fireEvent.blur(price);
+ fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+ expect(screen.getByRole("heading",{name:"Riepilogo finale"})).toBeTruthy();
+ expect(screen.getByLabelText("Totale preventivo").textContent).toContain("125,00");
+});

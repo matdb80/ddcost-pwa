@@ -1,5 +1,5 @@
 import {documentProductCode} from "../src/lib/document-product-fields";
-import {isForfait} from "../src/lib/quote-forfait";
+import {isFixedPrice} from "../src/lib/quote-series";
 import { inArray } from "drizzle-orm";
 import { temporaryProductCodes } from "@db/schema";
 import { getDb } from "./queries/connection";
@@ -11,7 +11,7 @@ export async function validateTemporaryProductDocument(raw: string | undefined, 
   if (!raw) return;
   const doc = JSON.parse(raw);
   if (!Array.isArray(doc[rowKey])) return;
-  const rows = rowKey === "prodotti" ? doc[rowKey].filter((r:any)=>!isForfait(r)) : doc[rowKey];
+  const rows = rowKey === "prodotti" ? doc[rowKey].filter((r:any)=>!isFixedPrice(r)) : doc[rowKey];
   if (!draft) {
     assertPaintedTemporaryCodes(rows, doc.verniciatura_ral);
     if(rows.some(r=>r.verniciatura_ral && JSON.stringify(r.verniciatura_ral)!==JSON.stringify(doc.verniciatura_ral)))throw new Error("Tutte le righe devono usare il RAL del documento");

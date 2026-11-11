@@ -1,3 +1,4 @@
+import {isSeries,isFixedPrice,seriesPriceError} from "./quote-series";
 import {isForfait,forfaitAmountError} from "./quote-forfait";
 import { calculateQuoteMaterial, quoteMaterialDimensionFields, quoteMaterialGeometry, QUOTE_MATERIAL_GEOMETRIES, QUOTE_MATERIAL_HELP } from "./quote-material-weight";
 import type {QuoteDocument} from "./quote-calculation";
@@ -18,7 +19,7 @@ const step=(id:string,title:string,section:string,hint:string,more:Partial<Quote
 /** The mobile editor exposes the same fields/algorithms, only sequenced. */
 export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWizardStep[]{
   const version=Number(doc.costi_comuni_versione)||0;
-  const hasStandard=(doc.prodotti??[]).some((p:Record<string,any>)=>!isForfait(p));
+  const hasStandard=(doc.prodotti??[]).some((p:Record<string,any>)=>!isFixedPrice(p));
   const steps:QuoteWizardStep[]=[
     step("cliente","Per quale cliente?","Intestazione","Indica il cliente del preventivo.",{field:"cliente",kind:"text",required:true}),
     ...(advanced?[
@@ -44,6 +45,12 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     const add=(key:string,title:string,hint:string,more:Partial<QuoteWizardStep>={})=>
       steps.push(step("p:"+i+":"+key,title,s,hint,{field:key,index:i,...more}));
     add("descrizione","Che prodotto vuoi preventivare?","Descrivi l'articolo o la lavorazione: massimo 60 caratteri, spazi inclusi.",{kind:"text",required:true,maxLength:QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH});
+    if(isSeries(product)){
+      add("codice","Codice articolo","Codice dell’articolo di serie, obbligatorio.",{kind:"text",required:true});
+      add("quantita","Quanti pezzi?","Quantità dell’articolo di serie.",{kind:"number",numeric:"decimal",required:true});
+      add("prezzo_serie","Prezzo unitario di vendita (€/pz)","Prezzo netto inserito direttamente. Il totale è quantità × prezzo, senza costificazione o supplementi.",{kind:"number",numeric:"euro",required:true});
+      return;
+    }
     if(isForfait(product)){
       add("valore_forfait","Valore di vendita a forfait (€)","Importo complessivo fisso della riga, senza costi, quantità, margini, quadratura o supplementi RAL.",{kind:"number",numeric:"euro",required:true});
       return;
@@ -93,7 +100,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
         "Inserisci una sola cifra per tutti i prodotti. Sarà ripartita sul totale dei pezzi; i costi dei singoli prodotti non verranno conteggiati.",
         {field:"trattamenti_totale_euro",kind:"number",numeric:"euro"}));
     }else if(doc.trattamenti_modalita!=="ore_lavoro"){
-      items.forEach((product,i)=>!isForfait(product)&&steps.push(step(
+      items.forEach((product,i)=>!isFixedPrice(product)&&steps.push(step(
         "p:"+i+":trattamenti_cad",
         "Costo trattamento — prodotto "+(i+1)+" (€/pz)",
         "Trattamenti dell'offerta",
@@ -108,7 +115,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
   }else if(hasStandard && version>=2){
     steps.push(step("progettazione_totale_euro","Progettazione totale (€)","Costi comuni","Importo totale del modello precedente, ripartito tra tutti i pezzi.",{field:"progettazione_totale_euro",kind:"number",numeric:"euro"}));
   }
-  items.forEach((p,i)=>!isForfait(p)&&steps.push(step(
+  items.forEach((p,i)=>!isFixedPrice(p)&&steps.push(step(
     "p:"+i+":margine",
     "Margine netto desiderato (%) — prodotto "+(i+1),
     "Prezzo di vendita",
@@ -136,6 +143,7 @@ export function quoteWizardStepError(step:QuoteWizardStep,doc:QuoteDocument):str
   const value=obj?.[step.field||""];
   if(step.maxLength!==undefined && String(value??"").length>step.maxLength)
     return `Massimo ${step.maxLength} caratteri, spazi inclusi.`;
+  if(step.field==="prezzo_serie")return seriesPriceError(value);
   if(step.field==="valore_forfait")return forfaitAmountError(value);
   if(step.field==="geometria_materiale")return QUOTE_MATERIAL_GEOMETRIES.some(g=>g.id===quoteMaterialGeometry(obj??{}))
     ?null:"Seleziona la geometria del materiale.";

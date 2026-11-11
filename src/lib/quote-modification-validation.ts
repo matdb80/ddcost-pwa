@@ -1,4 +1,4 @@
-import {isForfait} from "./quote-forfait";
+import {isFixedPrice} from "./quote-series";
 /** Drafts may be incomplete; completed writes require a real selection on every row. */
 export function modificationObjectError(value:unknown):string|null {
   return Array.isArray(value) && value.some(item=>typeof item==="string" && item.trim().length>0)
@@ -8,7 +8,7 @@ export function modificationObjectError(value:unknown):string|null {
 
 export function quoteModificationError(products:readonly Record<string,unknown>[]):string|null {
   for(let i=0;i<products.length;i++){
-    if(isForfait(products[i]))continue;
+    if(isFixedPrice(products[i]))continue;
     const error=modificationObjectError(products[i]?.oggetto_modifica);
     if(error)return `Prodotto ${i+1}: ${error}`;
   }

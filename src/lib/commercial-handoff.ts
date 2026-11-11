@@ -1,3 +1,4 @@
+import {isSeries} from "./quote-series";
 import {documentProductCode,documentProductDescription} from "./document-product-fields";
 import {isForfait,forfaitProductError} from "./quote-forfait";
 import {prepareRalOffer} from "./ral-documents";
@@ -20,7 +21,8 @@ export function salesDocument(kind:'quote'|'offer',raw:string):SalesDocument{
   if(d.stato_preventivo==='bozza')throw new Error('Completa il preventivo prima di condividerlo');
   const source=kind==='quote'?d.prodotti:d.righe;
   if(!Array.isArray(source)||!source.length)throw new Error('Nessun prodotto');
-  const ref=kind==='quote'?listinoProductIndex(d):-1;
+  const selectedRef=kind==='quote'?listinoProductIndex(d):-1;
+  const ref=selectedRef>=0 && isSeries(source[selectedRef])?-1:selectedRef;
   const rows:SalesRow[]=source.flatMap((p:Record<string,any>,index:number)=>{
     if(kind==='quote' && isForfait(p)){
       const error=forfaitProductError(p);if(error)throw new Error(error);

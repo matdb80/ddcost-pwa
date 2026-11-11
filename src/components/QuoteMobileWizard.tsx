@@ -1,3 +1,4 @@
+import {isSeries,isFixedPrice} from "@/lib/quote-series";
 import {isForfait} from "@/lib/quote-forfait";
 import SalesHandoffPanel from "./SalesHandoffPanel";
 import { quoteDocumentNumber } from "@/lib/commercial-offer-number";
@@ -168,7 +169,7 @@ export default function QuoteMobileWizard(props:Props){
       </div>
       <div className="mt-2">{props.attachments}</div>
     </header>
-    {doc.prodotti.some((p:Product)=>!isForfait(p)) && props.ralSettings}
+    {doc.prodotti.some((p:Product)=>!isFixedPrice(p)) && props.ralSettings}
     <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
       <QuoteTotal value={preview?.totale_finale ?? preview?.totale}/>
     </div>
@@ -191,6 +192,10 @@ export default function QuoteMobileWizard(props:Props){
             <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isForfait(product)}
               onChange={e=>{onUpdateProduct(productIndex,"a_forfait",e.target.checked);setAddingGroup(false);goto(`p:${productIndex}:descrizione`);}}/> A forfait
           </label>}
+          {productIndex!==undefined && <label className="ml-3 inline-flex items-center gap-2 text-sm normal-case">
+            <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isSeries(product)}
+              onChange={e=>{onUpdateProduct(productIndex,"prodotto_di_serie",e.target.checked);setAddingGroup(false);goto(`p:${productIndex}:descrizione`);}}/> Prodotto di serie
+          </label>}
         </div>
         <span className="shrink-0 text-xs tabular-nums text-slate-500">Passo {activeIndex+1} di {steps.length}</span>
       </div>
@@ -201,7 +206,7 @@ export default function QuoteMobileWizard(props:Props){
 
       <h1 className="mt-6 text-xl font-bold leading-tight">{current.title}</h1>
       <p className="mt-2 text-sm leading-relaxed text-slate-600">{current.hint}</p>
-      {productIndex!==undefined && !isForfait(product) && (field==="codice" || field==="descrizione") && props.onTemporaryCode && <TemporaryProductCode disabled={locked} ral={doc.verniciatura_ral??null} onApply={(code,ral)=>props.onTemporaryCode!(productIndex,code,ral)}/>}
+      {productIndex!==undefined && !isFixedPrice(product) && (field==="codice" || field==="descrizione") && props.onTemporaryCode && <TemporaryProductCode disabled={locked} ral={doc.verniciatura_ral??null} onApply={(code,ral)=>props.onTemporaryCode!(productIndex,code,ral)}/>}
       <div className="mt-5">
         {current.id==="riepilogo" ? (
           <div className="space-y-4">
@@ -212,8 +217,8 @@ export default function QuoteMobileWizard(props:Props){
               <div><dt className="text-slate-500">Totale preventivo</dt><dd className="font-semibold">{hasPreview?"€ "+price:"Da calcolare"}{hasPreview&&<FormulaTooltip label="Totale preventivo" formula={CALCULATION_FORMULAS.quote.quoteTotal}/>}</dd></div>
               <div><dt className="text-slate-500">Margine netto</dt><dd className="font-semibold">{hasPreview && preview?.margine_netto_complessivo_perc!=null?cashMargin.toFixed(1).replace(".",",")+"%":"—"}{hasPreview&&<FormulaTooltip label="Margine netto complessivo" formula={CALCULATION_FORMULAS.quote.netMarginPercent}/>}</dd></div>
             </dl>
-            {preview?.ha_righe_forfait && <p className="text-xs text-slate-600">Margine complessivo non disponibile: le righe a forfait non hanno un costo di produzione definito.</p>}
-            {costVersion>=2 && doc.prodotti.some((p:Product)=>!isForfait(p)) && (
+            {(preview?.ha_righe_forfait || preview?.ha_righe_serie) && <p className="text-xs text-slate-600">Margine complessivo non disponibile: le righe a forfait o di serie non hanno un costo di produzione definito.</p>}
+            {costVersion>=2 && doc.prodotti.some((p:Product)=>!isFixedPrice(p)) && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Trattamenti applicati al preventivo</p>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -253,12 +258,12 @@ export default function QuoteMobileWizard(props:Props){
                   <span className="min-w-0">
                     <span className="block break-words">{i+1}. {p.descrizione||"Prodotto da completare"}</span>
                     <span className="mt-1 block text-xs text-slate-600">{isForfait(p)?"a forfait/da definire":`${p.quantita} pz · ${hasPreview?"€ "+euro(preview?.prodotti?.[i]?.prezzo_netto_unitario_finale)+" /pz":"Da calcolare"}`}</span>
-                    {!isForfait(p) && doc.trattamenti_modalita==="ore_lavoro" &&
+                    {!isFixedPrice(p) && doc.trattamenti_modalita==="ore_lavoro" &&
                       <span className="mt-1 block text-xs font-medium text-amber-800">Costo trattamenti inglobati nel tempo di produzione</span>}
                   </span>
                   <span className="shrink-0 font-semibold">{hasPreview?"€ "+euro(preview?.prodotti?.[i]?.totale_finale):"—"}</span>
                 </button>
-                {!isForfait(p) && <FormulaTooltip label={`Totale prodotto ${i+1}`} formula={CALCULATION_FORMULAS.quote.productTotal}/>}
+                {!isFixedPrice(p) && <FormulaTooltip label={`Totale prodotto ${i+1}`} formula={CALCULATION_FORMULAS.quote.productTotal}/>}
                 {!locked && doc.prodotti.length>1 && <button type="button"
                   aria-label={`Elimina prodotto ${i+1}`}
                   onClick={()=>{
@@ -306,7 +311,7 @@ export default function QuoteMobileWizard(props:Props){
         ):current.id==="listino_prodotto" ? (
           <select id="wizard-input" value={priceProductIndex} disabled={locked}
             onChange={e=>onPriceProductIndex(Number(e.target.value))} className={inputClass}>
-            {(doc.prodotti as Product[]).map((p,i)=>!isForfait(p)&&<option value={i} key={i}>{i+1}. {p.descrizione||"Prodotto"}</option>)}
+            {(doc.prodotti as Product[]).map((p,i)=>!isFixedPrice(p)&&<option value={i} key={i}>{i+1}. {p.descrizione||"Prodotto"}</option>)}
           </select>
         ):current.id==="listino_sconto" ? (
           <input id="wizard-input" className={inputClass} disabled={locked}
@@ -393,10 +398,10 @@ export default function QuoteMobileWizard(props:Props){
             className={inputClass+(field==="quantita"&&(value===""||value===null||value===undefined)?" quote-quantity-attention":"")}
             kind={current.numeric}
             fractionDigits={field==="lavoro_h" && (doc.lavoro_modalita==="per_pezzo" || doc.lavoro_modalita==="per_prodotto") ? 6 : undefined}
-            optional={field==="valore_forfait"||field==="quantita"||field==="prezzo_manuale"||field==="target_totale"}
+            optional={field==="prezzo_serie"||field==="valore_forfait"||field==="quantita"||field==="prezzo_manuale"||field==="target_totale"}
             placeholder={field==="quantita"?"Inserisci la quantità":undefined}
             disabled={locked}
-            value={field==="valore_forfait"||field==="quantita"?value??null:value??(field==="prezzo_manuale"||field==="target_totale"?null:0)}
+            value={field==="prezzo_serie"||field==="valore_forfait"||field==="quantita"?value??null:value??(field==="prezzo_manuale"||field==="target_totale"?null:0)}
             onChange={updateValue}
             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();e.currentTarget.blur();next();}}}/>
         ):current.kind==="textarea"?(
@@ -405,7 +410,7 @@ export default function QuoteMobileWizard(props:Props){
         ):field==="codice" && product?(
           <ArticleCodeInput id="wizard-input" aria-label="Codice articolo" className={inputClass} disabled={locked}
             value={String(value??"")} onChange={updateValue}
-            protectedPrefix={!doc.verniciatura_ral?manualTemporaryCodePrefix(product.codice_temporaneo):null}
+            protectedPrefix={!isSeries(product) && !doc.verniciatura_ral?manualTemporaryCodePrefix(product.codice_temporaneo):null}
             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();next();}}}/>
         ):current.kind==="text"?(
           <input id="wizard-input" className={inputClass} disabled={locked}

@@ -1,3 +1,4 @@
+import {isSeries,isFixedPrice,seriesProductError} from "./quote-series";
 import {normalizeDocumentTemporaryCodes} from "./document-product-fields";
 import { isForfait, forfaitProductError } from "./quote-forfait";
 import { calculateRal, validRal, ralSourceCode } from "./ral-pricing";
@@ -9,7 +10,7 @@ const val = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n
 const euro = (v: unknown) => val(v).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const blankProduct = (): Product => ({
   gruppo_merceologico: "", materiale_prodotto: "",
-  codice: "", descrizione: "", a_forfait: false, valore_forfait: null, quantita: 1, materiale_cad: 0,
+  codice: "", descrizione: "", a_forfait: false, valore_forfait: null, prodotto_di_serie: false, prezzo_serie: null, quantita: 1, materiale_cad: 0,
   costo_materiale_noto: true, geometria_materiale: "", diametro_mm: 0, diametro_interno_mm: 0, lunghezza_mm: 0, larghezza_mm: 0, spessore_mm: 0,
   costo_materiale_kg: 0, oggetto_modifica: [], lavoro_h: 0, costo_lavoro: 24,
   trattamenti_cad: 0, attrezzaggi_h: 0, nero_standard_goffrato: false,
@@ -38,10 +39,10 @@ export function quoteLaborMode(document: QuoteDocument): "complessivo" | "per_pr
 }
 export function quoteLaborHours(document: QuoteDocument): number[] {
   const products=document.prodotti as Product[];
-  if(products.every(isForfait))return products.map(()=>0);
+  if(products.every(isFixedPrice))return products.map(()=>0);
   const mode=quoteLaborMode(document);
-  const quantities=products.map(p=>isForfait(p)?0:Number(p.quantita));
-  if(quantities.some((q,i)=>!isForfait(products[i])&&(!Number.isFinite(q)||q<=0)))throw new Error("La quantità dei prodotti deve essere maggiore di zero");
+  const quantities=products.map(p=>isFixedPrice(p)?0:Number(p.quantita));
+  if(quantities.some((q,i)=>!isFixedPrice(products[i])&&(!Number.isFinite(q)||q<=0)))throw new Error("La quantità dei prodotti deve essere maggiore di zero");
   const hours=(value:unknown)=>{
     const n=Number(value??0);
     if(!Number.isFinite(n)||n<0)throw new Error("Le ore di lavorazione devono essere numeri non negativi");
@@ -53,7 +54,7 @@ export function quoteLaborHours(document: QuoteDocument): number[] {
     return quantities.map(q=>total*q/pieces);
   }
   // per_pezzo is retained only for documents saved by the previous release.
-  return products.map((p,i)=>isForfait(p)?0:mode==="per_pezzo"?hours(p.lavoro_h)*quantities[i]:mode==="per_prodotto"?hours(p.lavoro_h):val(p.lavoro_h));
+  return products.map((p,i)=>isFixedPrice(p)?0:mode==="per_pezzo"?hours(p.lavoro_h)*quantities[i]:mode==="per_prodotto"?hours(p.lavoro_h):val(p.lavoro_h));
 }
 /** An explicit mode change conserves the current total hours, without editing stored history. */
 export function changeQuoteLaborMode(document: QuoteDocument, mode: "complessivo" | "per_prodotto" | "per_pezzo"): QuoteDocument {
@@ -62,15 +63,17 @@ export function changeQuoteLaborMode(document: QuoteDocument, mode: "complessivo
   const next=structuredClone(document);
   next.lavoro_modalita=mode;
   if(mode==="complessivo")next.lavoro_ore_totali=assigned.reduce((sum,h)=>sum+h,0);
-  else next.prodotti=next.prodotti.map((p:Product,i:number)=>isForfait(p)?p:({...p,lavoro_h:mode==="per_prodotto"?assigned[i]:assigned[i]/Number(p.quantita)}));
+  else next.prodotti=next.prodotti.map((p:Product,i:number)=>isFixedPrice(p)?p:({...p,lavoro_h:mode==="per_prodotto"?assigned[i]:assigned[i]/Number(p.quantita)}));
   return next;
 }
 export function calculateQuote(document: QuoteDocument): QuoteDocument {
   const d = normalizeDocumentTemporaryCodes(structuredClone(document),"prodotti");
   if (!Array.isArray(d.prodotti) || !d.prodotti.length) throw new Error("Inserire almeno un prodotto");
-  const standardProducts = (d.prodotti as Product[]).filter(p=>!isForfait(p));
+  const standardProducts = (d.prodotti as Product[]).filter(p=>!isFixedPrice(p));
   const hasStandard = standardProducts.length > 0;
   const hasForfait = (d.prodotti as Product[]).some(isForfait);
+  const hasSeries = (d.prodotti as Product[]).some(isSeries);
+  const hasFixedPrice = hasForfait || hasSeries;
   const shared = Number(d.costi_comuni_versione) >= 2;
   const laborHours = quoteLaborHours(d);
   const treatmentMode = d.trattamenti_modalita === "globale"
@@ -103,10 +106,11 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
   let saleBefore = 0;
   let fullTotal = 0;
   for (const [productIndex,p] of (d.prodotti as Product[]).entries()) {
-    if (isForfait(p)) {
-      const error = forfaitProductError(p);
+    if (isFixedPrice(p)) {
+      const series = isSeries(p);
+      const error = series ? seriesProductError(p) : forfaitProductError(p);
       if (error) throw new Error(`Prodotto ${productIndex + 1}: ${error}`);
-      const amount = Number(p.valore_forfait);
+      const amount = series ? Number(p.quantita) * Number(p.prezzo_serie) : Number(p.valore_forfait);
       // Preserve user inputs for toggling back, but clear all inactive derived costs.
       for (const key of ["materiale_calcolato_cad", "peso_teorico_kg", "materiale_tot", "lavoro_ore_totali", "lavoro_tot",
         "trattamenti_tot", "attrezzaggi_tot", "progettazione_tot", "progettazione_comune_cad", "trattamenti_globali_cad",
@@ -114,6 +118,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
         "prezzo_netto_unitario_finale", "netto_prima_ral", "ral_ricarico_cad", "ral_percentuale"])
         delete p[key];
       Object.assign(p, {totale: amount, totale_vendita_pre_quadratura: amount, totale_finale: amount, rettifica_unitaria: 0});
+      if (series) Object.assign(p, {prezzo_netto_unitario: Number(p.prezzo_serie), prezzo_vendita_pre_quadratura: Number(p.prezzo_serie), prezzo_netto_unitario_finale: Number(p.prezzo_serie)});
       baseTotal += amount;
       saleBefore += amount;
       continue;
@@ -180,7 +185,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
     p.rettifica_unitaria = adjustment / val(p.quantita);
     p.prezzo_netto_unitario_finale = p.prezzo_vendita_pre_quadratura + p.rettifica_unitaria;
     p.totale_finale = p.prezzo_netto_unitario_finale * val(p.quantita);
-    if (hasForfait && p.totale_finale < 0) throw new Error("Il totale desiderato non può ridurre gli importi a forfait o rendere negativi i prodotti standard");
+    if (hasFixedPrice && p.totale_finale < 0) throw new Error("Il totale desiderato non può ridurre gli importi a forfait o di serie, o rendere negativi i prodotti con costificazione");
   }
   let totalFinal = (d.prodotti as Product[]).reduce((sum,p) => sum + p.totale_finale, 0);
   const totalBeforeRal = totalFinal;
@@ -191,7 +196,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
     const result = calculateRal(standardProducts.map(p => ({ code: ralSourceCode(p, options), net: p.prezzo_netto_unitario_finale, quantity: Number(p.quantita) })), options);
     result.rows.forEach((r, i) => Object.assign(standardProducts[i], { netto_prima_ral: r.baseNet, ral_ricarico_cad: r.surcharge, ral_percentuale: r.percent, prezzo_netto_unitario_finale: r.net, totale_finale: r.total }));
     d.ral_riepilogo = result;
-    totalFinal = result.total! + (d.prodotti as Product[]).filter(isForfait).reduce((sum,p)=>sum+p.totale_finale,0);
+    totalFinal = result.total! + (d.prodotti as Product[]).filter(isFixedPrice).reduce((sum,p)=>sum+p.totale_finale,0);
   } else {
     delete d.ral_riepilogo;
     for (const p of d.prodotti) { delete p.netto_prima_ral; delete p.ral_ricarico_cad; delete p.ral_percentuale; }
@@ -210,7 +215,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
   }
   d.num_prodotti = d.prodotti.length;
   d.lavoro_ore_calcolate = laborHours.reduce((sum,h)=>sum+h,0);
-  d.quantita = quantityTotal;
+  d.quantita = quantityTotal + (d.prodotti as Product[]).filter(isSeries).reduce((sum,p)=>sum+Number(p.quantita),0);
   d.totale_pre_quadratura = baseTotal;
   d.totale_vendita_pre_quadratura = saleBefore;
   d.quadratura_applicata = hasStandard && target !== null;
@@ -219,9 +224,11 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
   d.totale = totalFinal;
   d.prezzo_netto_unitario = hasForfait ? null : d.quantita ? totalFinal / d.quantita : 0;
   d.ha_righe_forfait = hasForfait;
-  d.full_cost_totale = hasForfait ? null : fullTotal;
-  d.margine_netto_complessivo_valore = hasForfait ? null : totalFinal - fullTotal;
-  d.margine_netto_complessivo_perc = hasForfait ? null : totalFinal ? (totalFinal - fullTotal) / totalFinal * 100 : 0;
+  d.ha_righe_serie = hasSeries;
+  d.ha_righe_senza_costo = hasFixedPrice;
+  d.full_cost_totale = hasFixedPrice ? null : fullTotal;
+  d.margine_netto_complessivo_valore = hasFixedPrice ? null : totalFinal - fullTotal;
+  d.margine_netto_complessivo_perc = hasFixedPrice ? null : totalFinal ? (totalFinal - fullTotal) / totalFinal * 100 : 0;
   d.descrizione = d.titolo_preventivo || "Preventivo unatantum";
   const lines = (d.prodotti as Product[]).map((p,i) =>
     isForfait(p) ? `${i+1}. ${p.descrizione} - a forfait/da definire - € ${euro(p.totale_finale)}` :
@@ -243,7 +250,7 @@ export function migrateQuoteToSharedCosts(document: QuoteDocument): QuoteDocumen
   if (Number(document.costi_comuni_versione) >= 2) return structuredClone(document);
   const d=structuredClone(document);
   if (!Array.isArray(d.prodotti) || !d.prodotti.length) throw new Error("Preventivo privo di prodotti");
-  const standardProducts=(d.prodotti as Product[]).filter(p=>!isForfait(p));
+  const standardProducts=(d.prodotti as Product[]).filter(p=>!isFixedPrice(p));
   const engineering=standardProducts.reduce((sum,p)=>
     sum+val(p.progettazione_h)*val(p.costo_progettazione),0);
   const treatment=standardProducts.reduce((sum,p)=>

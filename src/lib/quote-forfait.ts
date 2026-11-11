@@ -11,6 +11,7 @@ export function forfaitAmountError(value: unknown): string | null {
     : null;
 }
 export function forfaitProductError(product: Record<string, any>): string | null {
+  if (product.prodotto_di_serie === true) return "Prodotto di serie e A forfait sono alternativi.";
   if (!String(product.descrizione ?? "").trim()) return "Inserisci la descrizione del prodotto a forfait.";
   if (String(product.descrizione).length > QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH)
     return `La descrizione può contenere al massimo ${QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH} caratteri, spazi inclusi.`;

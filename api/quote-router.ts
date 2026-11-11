@@ -1,3 +1,4 @@
+import {isSeries,seriesProductError} from "../src/lib/quote-series";
 import {isForfait,forfaitProductError} from "../src/lib/quote-forfait";
 import {validateTemporaryProductDocument} from "./temporary-code-validation";
 import { z } from "zod";
@@ -29,6 +30,11 @@ async function validateQuoteClassifications(dataJson: string | undefined): Promi
   for (let i = 0; i < rows.length; i++) {
     const product = rows[i] as Record<string, unknown> | null;
     if (!product || typeof product !== "object") throw new Error("Prodotto " + (i+1) + " non valido");
+    if(isSeries(product)) {
+      const error=seriesProductError(product);
+      if(error)throw new TRPCError({code:"BAD_REQUEST",message:`Prodotto ${i+1}: ${error}`});
+      continue;
+    }
     if(isForfait(product)) {
       const error=forfaitProductError(product);
       if(error)throw new TRPCError({code:"BAD_REQUEST",message:`Prodotto ${i+1}: ${error}`});

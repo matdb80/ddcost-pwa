@@ -308,3 +308,36 @@ describe("forfait completed writes",()=>{
     expect(store.quotes).toHaveLength(0);
   });
 });
+
+describe("series product completed writes",()=>{
+ const seriesDoc=()=>({...doc(),prodotti:[{prodotto_di_serie:true,codice:"STD-123",descrizione:"Serie",quantita:10,prezzo_serie:12.5,
+  gruppo_merceologico:"",materiale_prodotto:"",oggetto_modifica:[],costo_materiale_noto:false,geometria_materiale:"",codice_temporaneo:{code:"inactive",color:"3000"}}]});
+ it("saves, finalizes, reopens and revises without classification or cost fields",async()=>{
+  const d=seriesDoc(),draft=await caller().saveDraft({dataJson:JSON.stringify(d)});
+  const p={client:"Cliente",numProducts:1,totalFinal:"125",targetTotal:null,dataJson:JSON.stringify(d)};
+  await caller().finalizeDraft({draftId:draft.id,...p});
+  expect(JSON.parse((await caller().get({id:draft.id}))!.dataJson!).prodotti).toEqual(d.prodotti);
+  d.prodotti[0].prezzo_serie=25;
+  const r=await caller().saveRevision({sourceId:draft.id,...p,totalFinal:"250",dataJson:JSON.stringify(d)});
+  expect(JSON.parse((await caller().get({id:r.id}))!.dataJson!).prodotti[0].prezzo_serie).toBe(25);
+ });
+ it("rejects each missing required field and conflicting modes on all completed write paths",async()=>{
+  const d=seriesDoc();const p={client:"Cliente",numProducts:1,totalFinal:"125",targetTotal:null,dataJson:JSON.stringify(d)};
+  const source=await caller().create({...p,targetTotal:undefined});
+  for(const invalid of [{codice:" "},{descrizione:" "},{quantita:0},{prezzo_serie:null},{prezzo_serie:-1},{a_forfait:true}]){
+   const dataJson=JSON.stringify({...d,prodotti:[{...d.prodotti[0],...invalid}]});
+   const draft=await caller().saveDraft({dataJson});const before=structuredClone(store.quotes);
+   for(const write of [
+    ()=>caller().create({...p,targetTotal:undefined,dataJson}),
+    ()=>caller().finalizeDraft({draftId:draft.id,...p,dataJson}),
+    ()=>caller().update({id:source.id,expectedToken:quoteWriteToken(store.quotes[0]),...p,dataJson}),
+    ()=>caller().saveRevision({sourceId:source.id,...p,dataJson})
+   ])await expect(write()).rejects.toMatchObject({code:"BAD_REQUEST"});
+   expect(store.quotes).toEqual(before);
+  }
+ });
+ it("retains costed product requirements in mixed documents",async()=>{
+  const d={...doc(),prodotti:[...seriesDoc().prodotti,{...doc().prodotti[0],oggetto_modifica:[]}]};
+  await expect(caller().create({client:"Cliente",numProducts:2,dataJson:JSON.stringify(d)})).rejects.toThrow("Prodotto 2: Seleziona almeno una voce");
+ });
+});

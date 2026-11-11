@@ -1,3 +1,4 @@
+import {isSeries} from "./quote-series";
 import {documentProductCode,documentProductDescription} from "./document-product-fields";
 import {isForfait,forfaitProductError} from "./quote-forfait";
 import {quoteDocumentNumber} from "./commercial-offer-number";
@@ -60,7 +61,7 @@ export function formatQuoteForCopy(doc: Data): string {
     lines.push("Articolo " + (index+1));
     if (asText(p.codice)) lines.push("Codice articolo: " + documentProductCode(p,doc));
     lines.push("Descrizione: " + documentProductDescription(p));
-    if (index === listinoIndex && doc.listino) {
+    if (!isSeries(p) && index === listinoIndex && doc.listino) {
       const listino = doc.listino.prezzo_listino_generato;
       if (listino !== undefined && listino !== null && listino !== "")
         lines.push("Prezzo listino: " + money(asNumber(listino)));

@@ -1,4 +1,4 @@
-import {isForfait} from "./quote-forfait";
+import {isFixedPrice} from "./quote-series";
 import { RAW_GEOMETRIES, RAW_MATERIALS, rawMaterialCalculation } from "./cycle-raw-material";
 import { emptyRiga } from "../types/cycle";
 
@@ -79,7 +79,7 @@ export function calculateQuoteMaterial(product:Record<string,unknown>):MaterialW
 }
 export function quoteMaterialError(products:readonly Record<string,unknown>[]):string|null {
   for(const [index,product] of products.entries()){
-    if(isForfait(product)||product.costo_materiale_noto!==false)continue;
+    if(isFixedPrice(product)||product.costo_materiale_noto!==false)continue;
     try{calculateQuoteMaterial(product);}catch(error){
       return `Prodotto ${index+1}: ${error instanceof Error?error.message:"Materiale non valido"}`;
     }
