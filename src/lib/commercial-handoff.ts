@@ -1,3 +1,4 @@
+import {needsSeriesRalRefresh} from "./quote-series-ral-refresh";
 import {seriesDiscount} from "./series-discount";
 import {isSeries} from "./quote-series";
 import {documentProductCode,documentProductDescription} from "./document-product-fields";
@@ -19,6 +20,7 @@ export function salesDocument(kind:'quote'|'offer',raw:string):SalesDocument{
   let d=JSON.parse(raw);
   if(kind==='offer' && d?.verniciatura_ral)d=prepareRalOffer(d);
   if(!d||typeof d!=='object')throw new Error('Documento non valido');
+  if(kind==='quote'&&needsSeriesRalRefresh(d))throw new Error('Aggiorna e salva i supplementi RAL dei prodotti di serie prima di passare il preventivo al commerciale.');
   if(d.stato_preventivo==='bozza')throw new Error('Completa il preventivo prima di condividerlo');
   const source=kind==='quote'?d.prodotti:d.righe;
   if(!Array.isArray(source)||!source.length)throw new Error('Nessun prodotto');

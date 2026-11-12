@@ -1,3 +1,4 @@
+import {ralCodeInfo} from "@/lib/ral-pricing";
 import {seriesNetPrice} from "@/lib/quote-series";
 import {seriesDiscount} from "@/lib/series-discount";
 import QuoteNumericInput from "./QuoteNumericInput";
@@ -26,6 +27,7 @@ export default function QuoteSeriesFields({product,calculated,ralEnabled,disable
       </label>
       <label className="flex min-w-0 flex-col gap-1 text-xs"><span>Sconto cliente</span><input className={inputClass} disabled={disabled} placeholder="40+15+5%" value={product.sconto_serie??""} onChange={e=>onChange("sconto_serie",e.target.value)}/></label>
     </div>
+    {ralEnabled&&ralCodeInfo(String(product.codice??" ")).paintable&&!/^[a-z0-9]{11}/i.test(String(product.codice??""))&&<p className="text-sm text-amber-800">Codice articolo incompleto: inserisci il codice completo, compreso il materiale, per ottenere la versione RAL.</p>}
     {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
     {valid&&<p className="text-right text-sm">Prezzo netto: {net.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:4})} €/pz</p>}
     {ralEnabled&&calculated&&<p className="text-right text-sm">Supplemento RAL: +{calculated.ral_percentuale??0}% · Netto con RAL: {Number(finalNet).toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:4})} €/pz</p>}

@@ -1,5 +1,5 @@
 import {quoteInoxGrade} from "./quote-inox";
-import {temporaryCodePrefix,temporaryCode,TEMPORARY_FAMILIES,TEMPORARY_MATERIALS} from "./ral-pricing";
+import {ralOutputCode,validRal,temporaryCodePrefix,temporaryCode,TEMPORARY_FAMILIES,TEMPORARY_MATERIALS} from "./ral-pricing";
 import {isFixedPrice} from "./quote-series";
 type Data=Record<string,any>;
 const materialNames:Record<string,string>={ferro:"FERRO",inox:"INOX",ottone:"OTTONE",alluminio:"ALLUMINIO"};
@@ -13,6 +13,8 @@ function legacyParts(code:string){
  * Keep the original issuance metadata and sequence; never reserve a new code. */
 export function documentProductCode(row:Data,document:Data):string {
   const code=String(row.codice??"").trim();
+  if(validRal(document.verniciatura_ral)&&row.a_forfait!==true)return ralOutputCode(code,document.verniciatura_ral.color);
+  if(document.ral_consolidato&&validRal(document.ral_riepilogo)&&row.a_forfait!==true)return ralOutputCode(code,document.ral_riepilogo.color);
   if(document.verniciatura_ral || document.ral_consolidato || isFixedPrice(row))return code;
   const parts=legacyParts(code);
   if(!parts)return code;
@@ -26,14 +28,15 @@ export function documentProductCode(row:Data,document:Data):string {
   return temporaryCode(parts.sequence,parts.family,parts.material,null);
 }
 export function normalizeDocumentTemporaryCodes<T extends Data>(document:T,rowKey:"prodotti"|"righe"):T {
-  if(!Array.isArray(document[rowKey]))return document;
+  // Keep stored base codes for pricing; transform codes only when displaying them.
+  if(document.verniciatura_ral||document.ral_consolidato||!Array.isArray(document[rowKey]))return document;
   return {...document,[rowKey]:document[rowKey].map((row:Data)=>{
     const code=documentProductCode(row,document);
     return code===String(row.codice??"").trim()?row:{...row,codice:code};
   })};
 }
 /** Material is appended for presentation only, outside the editable 60 characters. */
-export function documentProductDescription(row:Data):string {
+export function documentProductDescription(row:Data,language:"it"|"en"="it"):string {
   const description=String(row.descrizione??"").trim();
   if(isFixedPrice(row))return description;
   const selected=String(row.materiale_prodotto??"").trim().toLowerCase();
@@ -50,5 +53,6 @@ export function documentProductDescription(row:Data):string {
   }
   if(selected==="inox"&&quoteInoxGrade(row))material="INOX AISI "+quoteInoxGrade(row);
   if(!material || description.toUpperCase().endsWith(material))return description;
+  if(language==="en")material=material.replace(/^FERRO$/, "IRON").replace(/^INOX/, "STAINLESS STEEL").replace(/^OTTONE$/, "BRASS").replace(/^ALLUMINIO$/, "ALUMINIUM");
   return [description,material].filter(Boolean).join(" — ");
 }

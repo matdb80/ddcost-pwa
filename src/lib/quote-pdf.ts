@@ -1,11 +1,24 @@
-import {seriesDiscount} from "./series-discount";
-import {ralPrintSummary} from "./ral-print-summary";
-import {isSeries,isFixedPrice} from "./quote-series";
-import {documentProductCode,documentProductDescription} from "./document-product-fields";
-import {isForfait} from "./quote-forfait";
-import type {Product, QuoteDocument} from "./quote-calculation";
-import {quoteDocumentNumber} from "./commercial-offer-number";
-import {documentPrintColor,documentPrintFinish} from "./document-print-color";
+import { ralPrintSwatch } from "./ral-print-swatch";
+import {
+  quotePrintLabels,
+  printLocale,
+  type PrintLanguage,
+} from "./quote-print-language";
+import { refreshQuoteSeriesRal } from "./quote-series-ral-refresh";
+import { seriesDiscount } from "./series-discount";
+import { ralPrintSummary } from "./ral-print-summary";
+import { isSeries, isFixedPrice } from "./quote-series";
+import {
+  documentProductCode,
+  documentProductDescription,
+} from "./document-product-fields";
+import { isForfait } from "./quote-forfait";
+import type { Product, QuoteDocument } from "./quote-calculation";
+import { quoteDocumentNumber } from "./commercial-offer-number";
+import {
+  documentPrintColor,
+  documentPrintFinish,
+} from "./document-print-color";
 
 const COMPANY = {
   name: "DIDIEFFE GROUP srl",
@@ -21,42 +34,99 @@ export function buildOneTimeQuotePrintHtml(
   quote: QuoteDocument,
   quoteId?: number,
   logoUrl = "/images/ddf-logo.png",
-  options: { hideDocumentTotal?: boolean } = {},
+  options: { hideDocumentTotal?: boolean } = {}
 ): string {
-  const colorLabel=documentPrintColor(quote);
-  const products = Array.isArray(quote.prodotti) ? quote.prodotti as Product[] : [];
-  const ral=products.some(p=>!isForfait(p)) && (quote.verniciatura_ral||quote.ral_consolidato)?quote.ral_riepilogo:null;
-  const rows = products.map((product, index) => {
-    if(isForfait(product))return `<tr><td class="num">${index+1}</td><td colspan="3">${escapeHtml(product.descrizione)}<br><strong>a forfait/da definire</strong></td><td class="num">€ ${money(product.valore_forfait)}</td></tr>`;
-    const code = documentProductCode(product,quote);
-    const description = documentProductDescription(product);
-    const productName = [code ? `<strong>${escapeHtml(code)}</strong>` : "", escapeHtml(description)].filter(Boolean).join(" · ");
-    const quantity = number(product.quantita);
-    const unitPrice = number(product.prezzo_netto_unitario_finale ?? product.prezzo_netto_unitario);
-    const lineTotal = number(product.totale_finale ?? product.totale ?? unitPrice * quantity);
-    const discount=isSeries(product)?seriesDiscount(product.sconto_serie).label:"";
-    const priceDetails=discount?`<div>Prezzo unitario: € ${money(product.prezzo_serie)}</div><div>Sconto: ${escapeHtml(discount)}</div><div>Prezzo netto${ral?" con RAL":""}: <strong>€ ${unitPrice.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:4})}</strong></div>`:null;
-    return `<tr><td class="num">${index + 1}</td><td>${productName || "Prodotto"}${isSeries(product)&&!ral?"":`<br><strong>Colore: ${escapeHtml(documentPrintFinish(quote,product))}</strong>`}</td><td class="num">${formatNumber(quantity)} pz</td><td class="num">${priceDetails??("€ "+(ral?unitPrice.toLocaleString("it-IT",{minimumFractionDigits:4,maximumFractionDigits:4}):money(unitPrice)))}</td><td class="num">€ ${money(lineTotal)}</td></tr>`;
-  }).join("");
+  quote = refreshQuoteSeriesRal(quote);
+  const language: PrintLanguage = quote.pdf_in_inglese === true ? "en" : "it",
+    t = quotePrintLabels(language),
+    locale = printLocale(language);
+  const money = (value: unknown) =>
+    number(value).toLocaleString(locale, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  const formatNumber = (value: unknown) =>
+    number(value).toLocaleString(locale, { maximumFractionDigits: 2 });
+  const colorLabel = documentPrintColor(quote, language);
+  const swatch = ralPrintSwatch(/RAL (\d{4})/.exec(colorLabel)?.[1] ?? "");
+  const specialMark = '<strong class="special-product">*</strong>';
+  const products = Array.isArray(quote.prodotti)
+    ? (quote.prodotti as Product[])
+    : [];
+  const ral =
+    products.some(p => !isForfait(p)) &&
+    (quote.verniciatura_ral || quote.ral_consolidato)
+      ? quote.ral_riepilogo
+      : null;
+  const rows = products
+    .map((product, index) => {
+      if (isForfait(product))
+        return `<tr><td class="num">${index + 1}</td><td colspan="3">${specialMark} ${escapeHtml(product.descrizione)}<br><strong>${t.forfait}</strong></td><td class="num">€ ${money(product.valore_forfait)}</td></tr>`;
+      const code = documentProductCode(product, quote);
+      const description = documentProductDescription(product, language);
+      const productName = isSeries(product)
+        ? [
+            code ? `<strong>${escapeHtml(code)}</strong>` : "",
+            escapeHtml(description),
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        : code
+          ? `<strong class="special-product">* ${escapeHtml(code)}</strong> · ${escapeHtml(description)}`
+          : `${specialMark} ${escapeHtml(description)}`;
+      const quantity = number(product.quantita);
+      const unitPrice = number(
+        product.prezzo_netto_unitario_finale ?? product.prezzo_netto_unitario
+      );
+      const lineTotal = number(
+        product.totale_finale ?? product.totale ?? unitPrice * quantity
+      );
+      const discount = isSeries(product)
+        ? seriesDiscount(product.sconto_serie).label
+        : "";
+      const priceDetails = discount
+        ? `<div>${t.unitPrice}: € ${money(product.prezzo_serie)}</div><div>${t.discount}: ${escapeHtml(discount)}</div><div>${t.netPrice}${ral ? t.withRal : ""}: <strong>€ ${unitPrice.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</strong></div>`
+        : null;
+      return `<tr><td class="num">${index + 1}</td><td>${productName || t.product}${isSeries(product) && !ral ? "" : `<br><strong>${t.color}: ${escapeHtml(documentPrintFinish(quote, product, language))}</strong>${swatch}`}</td><td class="num">${formatNumber(quantity)} ${t.pieces}</td><td class="num">${priceDetails ?? "€ " + (ral ? unitPrice.toLocaleString(locale, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : money(unitPrice))}</td><td class="num">€ ${money(lineTotal)}</td></tr>`;
+    })
+    .join("");
   const storedTotal = quote.totale_finale ?? quote.totale;
-  const total = storedTotal == null
-    ? products.reduce((sum, product) => sum + number(product.totale_finale ?? product.totale), 0)
-    : number(storedTotal);
+  const total =
+    storedTotal == null
+      ? products.reduce(
+          (sum, product) =>
+            sum + number(product.totale_finale ?? product.totale),
+          0
+        )
+      : number(storedTotal);
   const totalBlock = options.hideDocumentTotal
     ? ""
-    : `<div class="total">Totale netto preventivo: € ${money(total)}</div>`;
+    : `<div class="total">${t.total}: € ${money(total)}</div>`;
   const client = escapeHtml(quote.cliente || "");
   const reference = escapeHtml(quote.riferimento_preventivo || "");
-  const title = escapeHtml(quote.titolo_preventivo || "Preventivo una tantum");
+  const enteredTitle = String(quote.titolo_preventivo ?? "").trim();
+  const title = escapeHtml(
+    !enteredTitle ||
+      (language === "en" && /^preventivo una\s*tantum$/i.test(enteredTitle))
+      ? t.title
+      : enteredTitle
+  );
   const clientNotes = String(quote.note_cliente ?? "").trim();
-  const companyDetails = [COMPANY.address, COMPANY.vat, COMPANY.registry, COMPANY.phone, COMPANY.email]
-    .map((line) => `<div>${escapeHtml(line)}</div>`).join("");
+  const companyDetails = [
+    COMPANY.address.replace(/Italia$/, t.country),
+    COMPANY.vat.replace("P. IVA / C.F.", t.vat),
+    COMPANY.registry.replace("Registro Imprese BL", t.registry),
+    COMPANY.phone,
+    COMPANY.email,
+  ]
+    .map(line => `<div>${escapeHtml(line)}</div>`)
+    .join("");
   const noteBlock = clientNotes
-    ? `<section class="notes"><h2>Note</h2><p>${escapeHtml(clientNotes).replace(/\r?\n/g, "<br>")}</p></section>`
+    ? `<section class="notes"><h2>${t.notes}</h2><p>${escapeHtml(clientNotes).replace(/\r?\n/g, "<br>")}</p></section>`
     : "";
 
   return `<!doctype html>
-<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>
+<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>
 <style>
   @page { size: A4 portrait; margin: 14mm; }
   * { box-sizing: border-box; }
@@ -70,9 +140,12 @@ export function buildOneTimeQuotePrintHtml(
   .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 18px; padding: 10px 12px; border: 1px solid #cbd1d5; border-radius: 4px; margin: 12px 0 20px; }
   .meta b { color: #58636a; font-size: 8pt; display: block; }
   table { width: 100%; border-collapse: collapse; margin: 10px 0 14px; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
   th, td { border: 1px solid #cbd1d5; padding: 8px; vertical-align: top; }
   th { background: #edf0f2; font-weight: 700; text-align: left; }
   td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .special-product { color: #005eb8; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .special-legend { margin-top: 20px; padding-top: 8px; border-top: 1px solid #cbd1d5; font-size: 9pt; break-inside: avoid; }
   .total { text-align: right; font-size: 14pt; font-weight: 700; margin-top: 16px; }
   .notes { margin-top: 22px; border-top: 1px solid #cbd1d5; padding-top: 8px; }
   .notes h2 { margin-top: 6px; }
@@ -81,30 +154,40 @@ export function buildOneTimeQuotePrintHtml(
 <header><img src="${escapeAttribute(logoUrl)}" alt="DDF Didieffe Group"><div class="company"><strong>${COMPANY.name}</strong>${companyDetails}</div></header>
 <h1>${title}</h1>
 <section class="meta">
-  <div><b>Numero preventivo</b>${escapeHtml(quoteDocumentNumber(quote) ?? (quoteId ? String(quoteId) : "—"))}</div>
-  <div><b>Data</b>${new Date().toLocaleDateString("it-IT")}</div>
-  <div><b>Cliente</b>${client || "—"}</div>
-  <div><b>Riferimento</b>${reference || "—"}</div>
-  ${(products.some(p=>!isFixedPrice(p))||ral)?`<div><b>Colore</b><strong>${escapeHtml(colorLabel)}</strong></div>`:""}
+  <div><b>${t.number}</b>${escapeHtml(quoteDocumentNumber(quote) ?? (quoteId ? String(quoteId) : "—"))}</div>
+  <div><b>${t.date}</b>${new Date().toLocaleDateString(locale)}</div>
+  <div><b>${t.client}</b>${client || "—"}</div>
+  <div><b>${t.reference}</b>${reference || "—"}</div>
+  ${products.some(p => !isFixedPrice(p)) || ral ? `<div><b>${t.color}</b><strong>${escapeHtml(colorLabel)}</strong>${swatch}</div>` : ""}
 </section>
-<h2>Prodotti e prezzi netti</h2>
-<table><thead><tr><th class="num">#</th><th>Prodotto</th><th class="num">Quantità</th><th class="num">Prezzo netto unitario</th><th class="num">Totale netto</th></tr></thead><tbody>${rows}</tbody></table>
-${ralPrintSummary(ral)}
+<h2>${t.products}</h2>
+<table><thead><tr><th class="num">#</th><th>${t.product}</th><th class="num">${t.quantity}</th><th class="num">${t.netUnitPrice}</th><th class="num">${t.netTotal}</th></tr></thead><tbody>${rows}</tbody></table>
+${ralPrintSummary(ral, undefined, false, language)}
 ${totalBlock}
 ${noteBlock}
+${products.some(p => !isSeries(p)) ? `<footer class="special-legend">${specialMark} ${t.special}</footer>` : ""}
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>
 </body></html>`;
 }
 
 function escapeHtml(value: unknown): string {
-  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  })[character] ?? character);
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    character =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[character] ?? character
+  );
 }
 
-function escapeAttribute(value: unknown): string { return escapeHtml(value); }
-function number(value: unknown): number { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
-function money(value: unknown): string {
-  return number(value).toLocaleString("it-IT", {minimumFractionDigits:2, maximumFractionDigits:2});
+function escapeAttribute(value: unknown): string {
+  return escapeHtml(value);
 }
-function formatNumber(value: unknown): string { return number(value).toLocaleString("it-IT", {maximumFractionDigits:2}); }
+function number(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}

@@ -31,7 +31,7 @@ describe("customer PDF for one-time quotes",()=>{
 
     expect(html).toContain("Cliente Uno");
     expect(html).toContain("RIF-123");
-    expect(html).toContain("<strong>A-101</strong> · Maniglia");
+    expect(html).toContain("<strong class=\"special-product\">* A-101</strong> · Maniglia");
     expect(html).toContain("€ 12,34");
     expect(html).toContain("€ 123,40");
     expect(html).toContain("Consegna da concordare");
@@ -74,4 +74,57 @@ describe("customer PDF for one-time quotes",()=>{
     expect(html).toContain("<th class=\"num\">Totale netto</th>");
     expect(html).toContain("<td class=\"num\">€ 123,40</td>");
   });
+});
+
+it('marks only non-series products, with or without a code, and shows a single legend at the foot',()=>{
+  const doc={prodotti:[
+    {codice:'TBC0000042In',descrizione:'Speciale',quantita:1,prezzo_netto_unitario_finale:10},
+    {descrizione:'Senza codice',quantita:1,prezzo_netto_unitario_finale:20},
+    {prodotto_di_serie:true,codice:'FCA00504HBIN',descrizione:'Serie',quantita:1,prezzo_serie:3,prezzo_netto_unitario_finale:3},
+    {a_forfait:true,codice:'HIDDEN',descrizione:'Forfait',valore_forfait:4},
+  ]};
+  const html=buildOneTimeQuotePrintHtml(doc);
+  expect(html).toContain('<strong class="special-product">* TBC0000042In</strong>');
+  expect(html).toContain('<strong class="special-product">*</strong> Senza codice');
+  expect(html).toContain('<strong>FCA00504HBIN</strong>');
+  expect(html).not.toContain('* FCA00504HBIN');expect(html).not.toContain('HIDDEN');
+  expect(html).toContain('<strong class="special-product">*</strong> Forfait');
+  expect(html.match(/PRODOTTO SPECIALE REALIZZATO SU DISEGNO/g)).toHaveLength(1);
+  expect(html).toContain('color: #005eb8');
+  const seriesOnly=buildOneTimeQuotePrintHtml({prodotti:[doc.prodotti[2]]});
+  expect(seriesOnly).not.toContain('PRODOTTO SPECIALE REALIZZATO SU DISEGNO');
+});
+
+it('prints English labels, RAL categories, colour sample, finish and legend without translating customer input or changing prices',async()=>{
+  const {calculateQuote,blankQuote,blankProduct}=await import('./quote-calculation');
+  const {ralColors}=await import('./ral-pricing');
+  const doc=calculateQuote({...blankQuote(),pdf_in_inglese:true,cliente:'Cliente originale',note_cliente:'Nota originale',verniciatura_ral:{color:'6021',textured:false},prodotti:[
+    {...blankProduct(),codice:'TBC0000042In',descrizione:'Descrizione originale',materiale_prodotto:'ferro',quantita:2,materiale_cad:10},
+    {...blankProduct(),prodotto_di_serie:true,codice:'FSP001012NIN',descrizione:'Serie',quantita:2,prezzo_serie:10,sconto_serie:'10%'},
+    {...blankProduct(),a_forfait:true,descrizione:'Forfait',valore_forfait:3},
+  ]});
+  const before=structuredClone(doc),html=buildOneTimeQuotePrintHtml(doc);
+  for(const phrase of ['lang="en"','One-time quotation','Quotation number','Customer','Reference','Colour','Products and net prices','Net unit price','Quantity','Net total','Total net quotation','Notes','Unit price','Discount','Net price including RAL','pcs','lump sum/to be defined','SPECIAL PRODUCT MADE TO DRAWING','VAT / Tax ID','BL Companies Register','Italy','RAL surcharge summary','Category','Amount','Colour change (once per order)','Espagnolette hardware (Standard)','Strap hinges or hinges','Pale green','SMOOTH','IRON'])expect(html).toContain(phrase);
+  for(const phrase of ['Riepilogo supplementi RAL','Colore:','LISCIO','GOFFRATO','Prezzo netto','Quantità','una volta per ordine','a forfait/da definire','Registro Imprese','valore indicativo','soggetto a conferma'])expect(html).not.toContain(phrase);
+  for(const phrase of ['Cliente originale','Nota originale','Descrizione originale'])expect(html).toContain(phrase);
+  expect(html).toContain('aria-label="RAL 6021"');expect(html).toContain(`fill="${ralColors.find(c=>c.code==='6021')!.hex}"`);
+  expect(html).toContain('<strong class="special-product">* TBC0000042IO6021</strong>');
+  expect(html).toContain('€ '+doc.totale_finale.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}));
+  expect(doc).toEqual(before);
+  const italian=buildOneTimeQuotePrintHtml({...doc,pdf_in_inglese:false});
+  expect(italian).toContain('PRODOTTO SPECIALE REALIZZATO SU DISEGNO');expect(italian).toContain('Spagnolette (Standard)');
+  expect(italian).not.toContain('valore indicativo');expect(italian).not.toContain('soggetto a conferma');
+});
+
+it('translates the default black textured finish and optional summary exclusions',async()=>{
+  const {ralPrintSummary}=await import('./ral-print-summary');
+  const {calculateRal}=await import('./ral-pricing');
+  const html=buildOneTimeQuotePrintHtml({pdf_in_inglese:true,prodotti:[{descrizione:'Test',materiale_prodotto:'inox',inox_aisi:'316',nero_standard_goffrato:true}]});
+  expect(html).toContain('BLACK RAL 9005 · TEXTURED');expect(html).toContain('STAINLESS STEEL AISI 316');
+  expect(html).toContain('aria-label="RAL 9005"');
+  const summary=ralPrintSummary(calculateRal([
+    {code:'FSP001012NXP',quantity:1,net:2},{code:'FSP001012NIO9005',quantity:1,net:2},
+    {code:'FQU0000042IN',quantity:1,net:2},{code:'FZZ0000042IN',quantity:1,net:null},
+  ],{color:'6021',textured:false}),undefined,true,'en');
+  for(const phrase of ['Stainless steel','already RAL','excluded category','Other items (ZZ)','On request','The batches are alternatives','Items excluded from the surcharge'])expect(summary).toContain(phrase);
 });

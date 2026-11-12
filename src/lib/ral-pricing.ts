@@ -97,3 +97,10 @@ export function ralLinePrice(row: Record<string, unknown>, net: number): number 
   if (!validRal(row.verniciatura_ral)) throw new Error("Configurazione RAL non valida");
   return calculateRal([{ code: ralSourceCode(row, row.verniciatura_ral), net, quantity: 1 }], row.verniciatura_ral).rows[0].net!;
 }
+
+/** Display conversion only: pricing must always retain the original base SKU. */
+export function ralOutputCode(raw:string,color:string):string {
+  const code=raw.trim().toUpperCase();
+  if(!knownColors.has(color)||!ralCodeInfo(code).paintable||!/^[A-Z0-9]{11}/.test(code))return raw.trim();
+  return code.slice(0,11)+"O"+color;
+}

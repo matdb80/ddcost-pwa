@@ -1,6 +1,6 @@
 import {ralPrintSummary,type PrintRalRow} from "./ral-print-summary";
 import {calculateRal,ralSourceCode,validRal} from "./ral-pricing";
-import {documentProductDescription,normalizeDocumentTemporaryCodes} from "./document-product-fields";
+import {documentProductCode,documentProductDescription,normalizeDocumentTemporaryCodes} from "./document-product-fields";
 import {prepareRalOffer} from "./ral-documents";
 import {documentPrintColor,documentPrintFinish} from "./document-print-color";
 import {
@@ -86,8 +86,8 @@ export function buildCommercialOfferPrintHtml(
   const offerName = escapeHtml(offer.nome || "Offerta commerciale");
   const rows = Array.isArray(offer.righe) ? offer.righe : [];
   const body = internal
-    ? rows.map((row, index) => internalProductSection(row, index,documentPrintFinish(offer,row))).join("")
-    : customerOfferTable(rows, pricePresentation, {...options,ral,printFinish:row=>documentPrintFinish(offer,row)});
+    ? rows.map((row, index) => internalProductSection(row, index,documentPrintFinish(offer,row),documentProductCode(row,offer))).join("")
+    : customerOfferTable(rows, pricePresentation, {...options,ral,printCode:row=>documentProductCode(row,offer),printFinish:row=>documentPrintFinish(offer,row)});
   const alternatives=rows.some(r=>selectedOfferLots(r).length>1);
   let summaryRows:PrintRalRow[]|undefined;
   if(ral&&alternatives&&validRal(offer.verniciatura_ral)){
@@ -177,9 +177,9 @@ export function openCommercialOfferPrintWindow(html: string): void {
   printWindow.document.close();
 }
 
-function internalProductSection(row: CommercialOfferRow, index: number, finishLabel:string): string {
+function internalProductSection(row: CommercialOfferRow, index: number, finishLabel:string, outputCode:string): string {
   const cycle = cycleForOfferRow(row);
-  const code = escapeHtml(String(row.codice ?? ""));
+  const code = escapeHtml(outputCode);
   const description = escapeHtml(documentProductDescription(row));
   const offeredLots = selectedOfferLots(row).map(formatNumber).join(" · ") || "nessuno";
   const heading = `<div class="product-heading"><h2>${index + 1}. <strong>${code || "Prodotto"}</strong> · ${description}</h2><strong>Colore: ${escapeHtml(finishLabel)}</strong><br><span class="muted">Lotti offerti: ${offeredLots} pz · rev. ${escapeHtml(String(row.rev ?? "—"))}</span></div>`;
@@ -283,6 +283,7 @@ function customerOfferTable(
     unitPriceFractionDigits?: number;
     ral?:{color:string;fixed:number;onRequest?:boolean};
     printFinish:(row:CommercialOfferRow)=>string;
+    printCode:(row:CommercialOfferRow)=>string;
   },
 ): string {
   const hideDocumentTotal = options.hideDocumentTotal === true;
@@ -294,7 +295,7 @@ function customerOfferTable(
     return lots.map((lot) => ({ row, index, lot }));
   });
   const lines = expanded.map(({ row, index, lot }) => {
-    const code = escapeHtml(String(row.codice ?? ""));
+    const code = escapeHtml(options.printCode(row));
     const finish=`<br><strong>Colore: ${escapeHtml(options.printFinish(row))}</strong>`;
     if(row.ral_su_richiesta)return `<tr><td>${index+1}</td><td><strong>${code}</strong><br>${escapeHtml(documentProductDescription(row))}${finish}</td><td>${formatNumber(lot)} pz</td><td>Su richiesta</td>${showFinalCustomerReferencePrice?"<td>—</td>":""}<td>Su richiesta</td></tr>`;
     const description = escapeHtml(documentProductDescription(row));

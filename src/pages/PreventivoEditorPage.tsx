@@ -1,3 +1,4 @@
+import {refreshQuoteSeriesRal} from "@/lib/quote-series-ral-refresh";
 import ProductGroupRename,{type GroupRenameResult} from "@/components/ProductGroupRename";
 import SearchableSelect from "@/components/SearchableSelect";
 import QuoteInoxChoice from "@/components/QuoteInoxChoice";
@@ -145,6 +146,7 @@ export default function PreventivoEditorPage() {
   };
   const [baseline, setBaseline] = useState("");
   const [originalJson, setOriginalJson] = useState("");
+  const [ralUpgradeNotice,setRalUpgradeNotice]=useState(false);
   const [readOnly, setReadOnly] = useState(!isNew);
   const [dirtyCalculation, setDirtyCalculation] = useState(false);
   const [listinoModified, setListinoModified] = useState(false);
@@ -184,7 +186,10 @@ export default function PreventivoEditorPage() {
       parsed.cliente = data.client ?? parsed.cliente ?? "";
       parsed.riferimento_preventivo = data.reference ?? parsed.riferimento_preventivo ?? "";
       setRenamedEditToken(undefined);
-      setDoc(parsed);
+      let corrected=parsed,refreshError="";
+      try{corrected=refreshQuoteSeriesRal(parsed);}catch(e){refreshError=(e as Error).message;}
+      setRalUpgradeNotice(corrected!==parsed);
+      setDoc(corrected);
       setOriginalJson(data.dataJson ?? "");
       setBaseline(JSON.stringify(parsed));
       setDirtyCalculation(false);
@@ -194,7 +199,7 @@ export default function PreventivoEditorPage() {
       draftIdRef.current=isDraft?numericId:null;
       setReadOnly(!isDraft);
       setDirtyCalculation(isDraft);
-      setError("");
+      setError(refreshError);
     } catch {
       setError("Il preventivo storico contiene dati non riconosciuti. Nessun record è stato modificato.");
     }
@@ -476,6 +481,7 @@ export default function PreventivoEditorPage() {
       void utils.quote.list.invalidate().catch(()=>{});
       void utils.quote.outcomeSummary.invalidate().catch(()=>{});
       void utils.offer.nextNumber.invalidate().catch(()=>{});
+      setRalUpgradeNotice(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Salvataggio fallito");
     } finally {
@@ -509,6 +515,10 @@ export default function PreventivoEditorPage() {
       setError(err instanceof Error ? err.message : "Conversione non riuscita");
     }
   };
+  const pdfLanguageSettings=<label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+    <input type="checkbox" className="h-4 w-4 accent-emerald-600" checked={doc.pdf_in_inglese===true} disabled={locked}
+      onChange={e=>update("pdf_in_inglese",e.target.checked)}/> Elabora diciture preventivo in inglese
+  </label>;
   return <Layout mobileWizard={wizardMode}>
     <div className={wizardMode?"w-full min-w-0":"w-full max-w-screen-2xl mx-auto space-y-5 pb-10"}>
       {blocker.state==="blocked" && (
@@ -541,6 +551,8 @@ export default function PreventivoEditorPage() {
           </div>
         </div>
       )}
+      {wizardMode&&pdfLanguageSettings}
+      {ralUpgradeNotice&&<div role="note" className="rounded-lg border border-amber-400 bg-amber-50 p-3 text-sm">Supplementi RAL aggiornati anche per i prodotti di serie. Controlla il nuovo totale e salva il preventivo per registrare la correzione.</div>}
       {quoteCostCompleteness(doc).issues.length>0&&<div role="note" className="rounded-lg border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950"><strong>Attribuzione dei costi incompleta</strong><ul>{quoteCostCompleteness(doc).issues.map(issue=><li key={issue}>{issue}</li>)}</ul></div>}
       {wizardMode ? (
         <QuoteMobileWizard
@@ -549,7 +561,7 @@ export default function PreventivoEditorPage() {
           groups={groupsQuery.data??[]} loadingGroups={groupsQuery.isLoading}
           error={error} draftMessage={draftMessage} copyMessage={copyMessage}
           busy={draftSaving||create.isPending||revise.isPending||overwrite.isPending||finalizeDraftMutation.isPending}
-          unsavedChanges={unsavedChanges}
+          unsavedChanges={unsavedChanges||ralUpgradeNotice}
           onUnsavedLocalChange={setWizardLocalDirty}
           hideDocumentTotalInPdf={hideDocumentTotalInPdf}
           onHideDocumentTotalInPdfChange={setHideDocumentTotalInPdf}
@@ -652,6 +664,7 @@ export default function PreventivoEditorPage() {
             </>}
           </div>
         </div>
+        {pdfLanguageSettings}
         <section className="quote-header-fields grid items-end gap-2">
           {(["cliente","riferimento_preventivo","titolo_preventivo"] as const).map(key=>
             <label key={key} className="flex min-w-0 flex-col gap-1 text-sm">
@@ -1041,6 +1054,6 @@ export default function PreventivoEditorPage() {
         </>
       )}
     </div>
-  {!wizardMode && !isNew && !isSavedDraft && <SalesHandoffPanel kind="quote" sourceId={numericId} disabled={unsavedChanges}/>}
+  {!wizardMode && !isNew && !isSavedDraft && <SalesHandoffPanel kind="quote" sourceId={numericId} disabled={unsavedChanges||ralUpgradeNotice}/>}
 </Layout>;
 }

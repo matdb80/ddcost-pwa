@@ -1,3 +1,4 @@
+import {refreshQuoteSeriesRal} from "./quote-series-ral-refresh";
 import {seriesDiscount} from "./series-discount";
 import {isSeries} from "./quote-series";
 import {documentProductCode,documentProductDescription} from "./document-product-fields";
@@ -36,6 +37,7 @@ export function listinoProductIndex(doc: Data): number {
   return rows.length === 1 ? 0 : -1;
 }
 export function formatQuoteForCopy(doc: Data): string {
+  doc=refreshQuoteSeriesRal(doc);
   if (!Array.isArray(doc.prodotti) || doc.prodotti.length === 0)
     throw new Error("Nessun prodotto da copiare");
   const listinoIndex = listinoProductIndex(doc);

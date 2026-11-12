@@ -410,3 +410,23 @@ describe('global product group rename',()=>{
   expect(store.quotes).toEqual(before);expect(store.groups[0].name).toBe('Bandelle');
  });
 });
+
+it('rejects obsolete series RAL amounts on completed writes and saves/reopens the corrected quote once',async()=>{
+  const {refreshQuoteSeriesRal}=await import('../src/lib/quote-series-ral-refresh');
+  const stale={...doc(),verniciatura_ral:{color:'6021',textured:false},totale_finale:20,prodotti:[{prodotto_di_serie:true,codice:'FSP001012NIN',descrizione:'Serie',quantita:2,prezzo_serie:10,prezzo_netto_unitario_finale:10,totale_finale:20}]};
+  const dataJson=JSON.stringify(stale),p={client:'Cliente',numProducts:1,totalFinal:'20',targetTotal:null,dataJson};
+  const draft=await caller().saveDraft({dataJson}),source=await createQuote(),before=structuredClone(store.quotes);
+  for(const write of [
+    ()=>caller().create({...p,targetTotal:undefined}),
+    ()=>caller().finalizeDraft({draftId:draft.id,...p}),
+    ()=>caller().update({id:source.id,expectedToken:quoteWriteToken(store.quotes[1]),...p}),
+    ()=>caller().saveRevision({sourceId:source.id,...p}),
+  ])await expect(write()).rejects.toMatchObject({code:'BAD_REQUEST',message:expect.stringContaining('supplementi RAL dei prodotti di serie')});
+  expect(store.quotes).toEqual(before);
+  const fixed=refreshQuoteSeriesRal(stale);
+  await caller().finalizeDraft({draftId:draft.id,...p,totalFinal:String(fixed.totale_finale),dataJson:JSON.stringify(fixed)});
+  const loaded=await caller().get({id:draft.id}),saved=JSON.parse(loaded!.dataJson!);
+  expect(Number(loaded!.totalFinal)).toBe(90);expect(saved.totale_finale).toBe(90);
+  expect(saved.prodotti[0]).toMatchObject({codice:'FSP001012NIN',prezzo_serie:10,netto_prima_ral:10,ral_percentuale:100,totale_finale:40});
+  expect(refreshQuoteSeriesRal(saved)).toEqual(saved);
+});

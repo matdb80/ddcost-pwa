@@ -26,7 +26,8 @@ it("recognizes legacy temporary-format codes without metadata only with a matchi
 });
 it("does not guess brass/aluminium finishes or modify RAL, forfait, edited or inconsistent codes",()=>{
   for(const material of ["B","A"]){const p=row(material);expect(documentProductCode(p,{})).toBe(p.codice);}
-  for(const doc of [{verniciatura_ral:{color:"3000",textured:false}},{ral_consolidato:true}])expect(documentProductCode(row(),doc)).toBe(row().codice);
+  expect(documentProductCode(row(),{verniciatura_ral:{color:"3000",textured:false}})).toBe(row().codice+"O3000");
+  expect(documentProductCode(row(),{ral_consolidato:true})).toBe(row().codice);
   for(const p of [{...row(),a_forfait:true},{...row(),codice:"CUSTOM"},{...row(),codice:"TBC00000056z"},
     {...row(),codice_temporaneo:{...legacy(),sequence:6}},{...row(),codice_temporaneo:{...legacy(),color:"3000"}}])
     expect(documentProductCode(p,{})).toBe(p.codice);
@@ -48,7 +49,7 @@ it("exports the reported old quote with P and material while preserving exact sa
   const input={cliente:"Prova",totale_finale:3113.44,prodotti:[row(),{...row(),codice:legacy("6",6).code,codice_temporaneo:legacy("6",6),nero_standard_goffrato:true}]};
   const before=JSON.stringify(input);
   const pdf=buildOneTimeQuotePrintHtml(input);
-  expect(pdf).toContain("<strong>TBC00000056P</strong> · ANGOLARE INFERIORE SX — INOX AISI 316");
+  expect(pdf).toContain("<strong class=\"special-product\">* TBC00000056P</strong> · ANGOLARE INFERIORE SX — INOX AISI 316");
   expect(pdf).toContain("TBC00000066P");expect(pdf).toContain("€ 1546,16");expect(pdf).toContain("3113,44");
   expect(pdf).toContain("NERO RAL 9005 · LISCIO");expect(pdf).toContain("NERO RAL 9005 · GOFFRATO");
   const text=formatQuoteForCopy(input);expect(text).toContain("TBC00000056P");expect(text).toContain("INOX AISI 316");

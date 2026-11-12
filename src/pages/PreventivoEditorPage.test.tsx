@@ -6,10 +6,10 @@ import type { ReactNode } from "react";
 import { blankProduct, blankQuote, calculateQuote } from "../lib/quote-calculation";
 const state=vi.hoisted(()=>({data:null as any,groups:[] as Array<{id:number;name:string}>,calls:[] as Array<{path:string;input:any}>}));
 vi.mock("@/components/Layout",()=>({default:({children}:{children:ReactNode})=><div>{children}</div>}));
-vi.mock("@/components/SalesHandoffPanel",()=>({default:()=>null}));
+vi.mock("@/components/SalesHandoffPanel",()=>({default:({disabled}:{disabled:boolean})=><button disabled={disabled}>Invia al commerciale (test)</button>}));
 vi.mock("@/components/FormulaTooltip",()=>({default:()=>null}));
 vi.mock("@/providers/trpc",()=>{
-  const utils={quote:{get:{invalidate:async()=>{}},list:{invalidate:async()=>{}}},productGroup:{list:{invalidate:async()=>{}}}};
+  const utils={quote:{get:{invalidate:async()=>{}},list:{invalidate:async()=>{}},outcomeSummary:{invalidate:async()=>{}}},offer:{nextNumber:{invalidate:async()=>{}}},productGroup:{list:{invalidate:async()=>{}}}};
   const proxy=(path:string[]):any=>new Proxy({}, {get:(_,key)=>{
     if(key==="useUtils")return ()=>utils;
     if(key==="useQuery")return ()=>({data:path.join(".")==="quote.get"?state.data:path.join(".")==="productGroup.list"?state.groups:[],isLoading:false});
@@ -513,4 +513,62 @@ it('shows RAL on a series-only quote and searches a color by its full name',asyn
   await waitFor(()=>expect(screen.getByLabelText('Totale preventivo').textContent).toContain('146,90'));
   expect(screen.getByText(/Supplemento RAL: \+100%/)).toBeTruthy();
   fireEvent.change(input,{target:{value:'9005'}});expect(screen.getByRole('option',{name:/RAL 9005/})).toBeTruthy();
+});
+
+it.each([false,true])('recovers an old series RAL quote in mobile=%s, exports the new codes and persists only after explicit save',async mobile=>{
+  const old={...blankQuote(),stato_preventivo:'completo',verniciatura_ral:{color:'6021',textured:false},totale_finale:40,
+    prodotti:['FCA00504HBIN','FSP001012NIN'].map(codice=>({...blankProduct(),prodotto_di_serie:true,codice,descrizione:'Serie',prezzo_serie:10,quantita:2,prezzo_netto_unitario_finale:10,totale_finale:20}))};
+  mount(old,mobile);
+  await screen.findByText(/Supplementi RAL aggiornati anche per i prodotti di serie/);
+  expect(screen.getByLabelText('Totale preventivo').textContent).toContain('120,00');
+  expect(state.calls).toHaveLength(0);
+  if(mobile)for(let i=0;i<30&&!screen.queryByRole('heading',{name:'Riepilogo finale'});i++)fireEvent.click(screen.getByRole('button',{name:'Avanti'}));
+  expect((screen.getByRole('button',{name:'Invia al commerciale (test)'}) as HTMLButtonElement).disabled).toBe(true);
+  if(mobile)fireEvent.click(screen.getByRole('button',{name:'Vista completa'}));
+  const write=vi.fn(),popup=vi.spyOn(window,'open').mockReturnValue({document:{open:vi.fn(),write,close:vi.fn()}} as unknown as Window);
+  try{
+    fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
+    expect(write).toHaveBeenCalledOnce();
+    const html=write.mock.calls[0][0];
+    for(const text of ['<strong>FCA00504HBIO6021</strong>','<strong>FSP001012NIO6021</strong>','Spagnolette (Standard)','+100%','120,00'])expect(html).toContain(text);
+    expect(state.calls).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button',{name:'Modifica'}));
+    fireEvent.click(screen.getByRole('button',{name:'Salva e sovrascrivi versione attuale'}));
+    await waitFor(()=>expect(state.calls.some(c=>c.path==='quote.update')).toBe(true));
+    const request=state.calls.find(c=>c.path==='quote.update')!.input,saved=JSON.parse(request.dataJson);
+    expect(request).toMatchObject({expectedToken:'test-version',totalFinal:'120'});
+    expect(saved.prodotti.map((p:any)=>p.codice)).toEqual(old.prodotti.map(p=>p.codice));
+    expect(saved.prodotti.map((p:any)=>p.ral_percentuale)).toEqual([50,100]);
+    await waitFor(()=>expect(screen.queryByText(/Supplementi RAL aggiornati anche per i prodotti di serie/)).toBeNull());
+    expect((screen.getByRole('button',{name:'Invia al commerciale (test)'}) as HTMLButtonElement).disabled).toBe(false);
+    cleanup();mount(saved);
+    await screen.findByRole('button',{name:'Modifica'});
+    expect(screen.getByLabelText('Totale preventivo').textContent).toContain('120,00');
+    expect(screen.queryByText(/Supplementi RAL aggiornati anche per i prodotti di serie/)).toBeNull();
+    expect(state.calls).toHaveLength(1);
+  }finally{popup.mockRestore();}
+});
+
+it.each([false,true])('stores the PDF language choice in mobile=%s without recalculating saved prices',async mobile=>{
+  const historical={...blankQuote(),stato_preventivo:'completo',totale_finale:74.25,
+    prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'FCA00504HBIN',descrizione:'Descrizione invariata',quantita:2,prezzo_serie:10,prezzo_netto_unitario_finale:37.125,totale_finale:74.25}]};
+  mount(historical,mobile);
+  const flag=await screen.findByRole('checkbox',{name:'Elabora diciture preventivo in inglese'}) as HTMLInputElement;
+  expect(flag.checked).toBe(false);expect(flag.disabled).toBe(true);
+  if(mobile)for(let i=0;i<25&&!screen.queryByRole('heading',{name:'Riepilogo finale'});i++)fireEvent.click(screen.getByRole('button',{name:'Avanti'}));
+  fireEvent.click(screen.getByRole('button',{name:mobile?'Modifica preventivo':'Modifica'}));
+  fireEvent.click(flag);expect(flag.checked).toBe(true);
+  if(mobile)fireEvent.click(screen.getByRole('button',{name:'Vista completa'}));
+  const write=vi.fn(),popup=vi.spyOn(window,'open').mockReturnValue({document:{open:vi.fn(),write,close:vi.fn()}} as unknown as Window);
+  try{
+    fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
+    expect(write).toHaveBeenCalledOnce();expect(write.mock.calls[0][0]).toContain('<html lang="en">');
+    expect(write.mock.calls[0][0]).toContain('Total net quotation: € 74.25');
+    fireEvent.click(screen.getByRole('button',{name:'Salva e sovrascrivi versione attuale'}));
+    await waitFor(()=>expect(state.calls.some(c=>c.path==='quote.update')).toBe(true));
+    const saved=JSON.parse(state.calls.find(c=>c.path==='quote.update')!.input.dataJson);
+    expect(saved.pdf_in_inglese).toBe(true);expect(saved.totale_finale).toBe(74.25);expect(saved.prodotti).toEqual(historical.prodotti);
+    cleanup();mount(saved,mobile);
+    expect((await screen.findByRole('checkbox',{name:'Elabora diciture preventivo in inglese'}) as HTMLInputElement).checked).toBe(true);
+  }finally{popup.mockRestore();}
 });

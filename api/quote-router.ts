@@ -1,3 +1,4 @@
+import {needsSeriesRalRefresh} from "../src/lib/quote-series-ral-refresh";
 import {lockGroupCatalog} from "./product-group-rename";
 import {withCostCompleteness} from "../src/lib/quote-cost-completeness";
 import {quoteInoxError} from "../src/lib/quote-inox";
@@ -26,6 +27,7 @@ async function validateQuoteClassifications(dataJson: string | undefined, db:any
   let document: unknown;
   try { document = JSON.parse(dataJson); }
   catch { throw new Error("JSON preventivo non valido"); }
+  if(needsSeriesRalRefresh(document as Record<string,any>))throw new TRPCError({code:"BAD_REQUEST",message:"Ricalcola il preventivo: i supplementi RAL dei prodotti di serie non sono aggiornati."});
   const rows = (document as { prodotti?: unknown } | null)?.prodotti;
   if (!Array.isArray(rows) || rows.length === 0)
     throw new Error("Inserire almeno un prodotto");
