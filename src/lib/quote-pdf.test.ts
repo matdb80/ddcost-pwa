@@ -1,4 +1,4 @@
-import {describe, expect, it} from "vitest";
+import {describe, expect, it, vi} from "vitest";
 import {buildOneTimeQuotePrintHtml} from "./quote-pdf";
 
 describe("customer PDF for one-time quotes",()=>{
@@ -140,4 +140,25 @@ it.each([false,true])('prints the selected revision in the header in English=%s'
     const historic=buildOneTimeQuotePrintHtml({...doc,rev});
     expect(historic).toContain(`— ${label} —</span>`);
   }
+});
+
+it.each([false,true])('suggests the required PDF filename, independently of the printed title and English=%s',english=>{
+  vi.useFakeTimers();
+  try{
+    vi.setSystemTime(new Date('2026-11-12T10:00:00Z'));
+    const doc={numero_preventivo:'DDC90007/2026',rev:7,titolo_preventivo:'PERSIANE RAL 6021',pdf_in_inglese:english,prodotti:[]};
+    const html=buildOneTimeQuotePrintHtml(doc,123,undefined,{revision:1});
+    expect(html).toContain('<title>2026_DDC90007_REV.1.pdf</title>');
+    expect(html).toContain('<h1>PERSIANE RAL 6021</h1>');
+    expect(html).toContain(`— ${english?'Revision':'Revisione'} 1</span>`);
+    expect(doc.rev).toBe(7);
+    expect(buildOneTimeQuotePrintHtml({...doc,numero_preventivo:'DDC00007/2025',rev:12})).toContain('<title>2026_DDC00007_REV.12.pdf</title>');
+  }finally{vi.useRealTimers();}
+});
+it('uses the current calendar year in Italy even when the saved quote belongs to an earlier year',()=>{
+  vi.useFakeTimers();
+  try{
+    vi.setSystemTime(new Date('2026-12-31T23:30:00Z'));
+    expect(buildOneTimeQuotePrintHtml({numero_preventivo:'DDC90007/2025',rev:2,prodotti:[]})).toContain('<title>2027_DDC90007_REV.2.pdf</title>');
+  }finally{vi.useRealTimers();}
 });

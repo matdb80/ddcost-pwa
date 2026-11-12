@@ -583,6 +583,7 @@ it.each([false,true])('exports the actual saved revision even when its JSON is s
     expect(write).toHaveBeenCalledOnce();
     const html=write.mock.calls[0][0];
     expect(html).toContain(`DDC90007/2026 <span class="quote-revision">— ${english?'Revision':'Revisione'} 3</span>`);
+    expect(html).toMatch(/<title>\d{4}_DDC90007_REV\.3\.pdf<\/title>/);
     expect(state.calls).toHaveLength(0);
   }finally{popup.mockRestore();}
 });

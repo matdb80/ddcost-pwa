@@ -14,7 +14,7 @@ import {
 } from "./document-product-fields";
 import { isForfait } from "./quote-forfait";
 import type { Product, QuoteDocument } from "./quote-calculation";
-import { quoteDocumentNumber } from "./commercial-offer-number";
+import { italianOfferYear, quoteDocumentNumber } from "./commercial-offer-number";
 import {
   documentPrintColor,
   documentPrintFinish,
@@ -43,6 +43,12 @@ export function buildOneTimeQuotePrintHtml(
     (typeof rawRevision === "number" || typeof rawRevision === "string") &&
     Number.isSafeInteger(Number(rawRevision)) && Number(rawRevision) > 0
       ? String(Number(rawRevision)) : "—";
+  const documentNumber = quoteDocumentNumber(quote);
+  const fileNumber = (documentNumber ?? (quoteId ? `PREVENTIVO${quoteId}` : "PREVENTIVO"))
+    .trim().replace(/\/\d{4}$/, "").replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_");
+  // The print job uses the HTML title as its proposed filename. Keep the .pdf
+  // extension explicit so REV.1 is never mistaken for a file extension.
+  const fileName = `${italianOfferYear()}_${fileNumber}_REV.${revision === "—" ? "ND" : revision}.pdf`;
   const language: PrintLanguage = quote.pdf_in_inglese === true ? "en" : "it",
     t = quotePrintLabels(language),
     locale = printLocale(language);
@@ -132,7 +138,7 @@ export function buildOneTimeQuotePrintHtml(
     : "";
 
   return `<!doctype html>
-<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>
+<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(fileName)}</title>
 <style>
   @page { size: A4 portrait; margin: 14mm; }
   * { box-sizing: border-box; }
@@ -161,7 +167,7 @@ export function buildOneTimeQuotePrintHtml(
 <header><img src="${escapeAttribute(logoUrl)}" alt="DDF Didieffe Group"><div class="company"><strong>${COMPANY.name}</strong>${companyDetails}</div></header>
 <h1>${title}</h1>
 <section class="meta">
-  <div><b>${t.number}</b>${escapeHtml(quoteDocumentNumber(quote) ?? (quoteId ? String(quoteId) : "—"))} <span class="quote-revision">— ${t.revision} ${revision}</span></div>
+  <div><b>${t.number}</b>${escapeHtml(documentNumber ?? (quoteId ? String(quoteId) : "—"))} <span class="quote-revision">— ${t.revision} ${revision}</span></div>
   <div><b>${t.date}</b>${new Date().toLocaleDateString(locale)}</div>
   <div><b>${t.client}</b>${client || "—"}</div>
   <div><b>${t.reference}</b>${reference || "—"}</div>
