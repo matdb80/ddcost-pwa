@@ -1,3 +1,4 @@
+import {seriesDiscount} from "./series-discount";
 import {isSeries} from "./quote-series";
 import {documentProductCode,documentProductDescription} from "./document-product-fields";
 import {isForfait,forfaitProductError} from "./quote-forfait";
@@ -61,6 +62,7 @@ export function formatQuoteForCopy(doc: Data): string {
     lines.push("Articolo " + (index+1));
     if (asText(p.codice)) lines.push("Codice articolo: " + documentProductCode(p,doc));
     lines.push("Descrizione: " + documentProductDescription(p));
+    if(isSeries(p)&&String(p.sconto_serie??"").trim())lines.push("Prezzo unitario: "+money(Number(p.prezzo_serie)),"Sconto cliente: "+seriesDiscount(p.sconto_serie).label);
     if (!isSeries(p) && index === listinoIndex && doc.listino) {
       const listino = doc.listino.prezzo_listino_generato;
       if (listino !== undefined && listino !== null && listino !== "")

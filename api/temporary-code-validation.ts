@@ -1,3 +1,4 @@
+import {quoteInoxError} from "../src/lib/quote-inox";
 import {documentProductCode} from "../src/lib/document-product-fields";
 import {isFixedPrice} from "../src/lib/quote-series";
 import { inArray } from "drizzle-orm";
@@ -24,6 +25,7 @@ export async function validateTemporaryProductDocument(raw: string | undefined, 
   if (!generated.length) return;
   const issued = await getDb().select().from(temporaryProductCodes).where(inArray(temporaryProductCodes.code, generated.map(r => String(r.codice_temporaneo.code))));
   for (const row of generated) {
+    const inoxError=quoteInoxError(row);if(inoxError)throw new Error(inoxError);
     const metadata = row.codice_temporaneo;
     const expectedMaterial=({I:"ferro",X:"inox","6":"inox",B:"ottone",A:"alluminio"} as Record<string,string>)[metadata.material];
     if(row.materiale_prodotto && row.materiale_prodotto!==expectedMaterial)throw new Error("Il materiale non corrisponde al codice temporaneo: rigenera il codice");

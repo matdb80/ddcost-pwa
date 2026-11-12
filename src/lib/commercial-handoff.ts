@@ -1,3 +1,4 @@
+import {seriesDiscount} from "./series-discount";
 import {isSeries} from "./quote-series";
 import {documentProductCode,documentProductDescription} from "./document-product-fields";
 import {isForfait,forfaitProductError} from "./quote-forfait";
@@ -38,10 +39,10 @@ export function salesDocument(kind:'quote'|'offer',raw:string):SalesDocument{
         terms.prezzo_netto_manuale??p.prezzo_netto_proposto??p.netto??p.netto_base;
       if(net==null||net==='')throw new Error('Prezzo netto mancante');
       const extra=Number(p.extra??0);
-      const discount=kind==='quote'?(index===ref?String(d.listino?.sconto_riferimento??''):''):
+      const discount=kind==='quote'?(isSeries(p)?seriesDiscount(p.sconto_serie).label:index===ref?String(d.listino?.sconto_riferimento??''):''):
         String(p.sconto_base??'')+(extra>0?'+'+String(extra).replace('.',',')+'%':'');
       return {code:documentProductCode(p,d),description:documentProductDescription(p),quantity:String(quantity).replace('.',','),
-        listPrice:copyNumber(kind==='quote'?(index===ref?d.listino?.prezzo_listino_generato:null):terms.listino??p.listino),
+        listPrice:copyNumber(kind==='quote'?(isSeries(p)&&seriesDiscount(p.sconto_serie).label?p.prezzo_serie:index===ref?d.listino?.prezzo_listino_generato:null):terms.listino??p.listino),
         discount,netPrice:copyNumber(net)};
     });
   });

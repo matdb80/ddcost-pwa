@@ -1,3 +1,4 @@
+import {savedQuoteHasIncompleteCosts} from "@/lib/quote-cost-completeness";
 import Layout from "@/components/Layout";
 import {quoteDocumentNumber} from "@/lib/commercial-offer-number";
 import {trpc} from "@/providers/trpc";
@@ -90,6 +91,7 @@ export default function PreventiviPage(){
                 <p className="text-xs text-slate-500">Preventivo {quoteDocumentNumber(q.dataJson)??q.id} · Revisione {q.rev}</p>
                 <p className="mt-1 text-xs text-slate-500">Creato il {formatDate(q.createdAt)}</p>
                 <h3 className="mt-1 break-words font-semibold text-slate-900">{q.client||"(senza cliente)"}</h3>
+                {savedQuoteHasIncompleteCosts(q.dataJson)&&<p className="text-xs font-semibold text-amber-800">Attribuzione dei costi incompleta</p>}
                 {q.reference&&<p className="mt-1 break-words text-xs text-slate-600">{q.reference}</p>}
               </div>
               {draft&&<span className="shrink-0 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900">Bozza</span>}
@@ -141,7 +143,7 @@ export default function PreventiviPage(){
                 <td className="p-3 whitespace-nowrap text-slate-500 tabular-nums">{quoteDocumentNumber(q.dataJson)??q.id}</td>
                 <td className="p-3 whitespace-nowrap text-slate-500">{formatDate(q.createdAt)}</td>
                 <td className="p-3 font-medium text-slate-800">
-                  <Link className="text-emerald-700 hover:underline" to={`/preventivi/${q.id}`}>{q.client||"(senza cliente)"}</Link>
+                  <Link className="text-emerald-700 hover:underline" to={`/preventivi/${q.id}`}>{q.client||"(senza cliente)"}</Link>{savedQuoteHasIncompleteCosts(q.dataJson)&&<div className="text-xs font-semibold text-amber-800">Costi incompleti</div>}
                   {draft&&<span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Bozza</span>}
                 </td>
                 <td className="p-3 text-slate-600">{q.reference}</td>

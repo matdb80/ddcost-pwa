@@ -1,3 +1,4 @@
+import {quoteInoxGrade} from "./quote-inox";
 import {isFixedPrice} from "./quote-series";
 import { RAW_GEOMETRIES, RAW_MATERIALS, rawMaterialCalculation } from "./cycle-raw-material";
 import { emptyRiga } from "../types/cycle";
@@ -17,6 +18,7 @@ export interface MaterialByWeight {
   material:MaterialName;
   /** Undefined means a saved rectangular blank from before geometry selection. */
   geometry?:string;
+  inoxGrade?:string;
   lengthMm:number;
   widthMm?:number;
   thicknessMm?:number;
@@ -48,8 +50,8 @@ export function quoteMaterialDimensionFields(product:Record<string,unknown>) {
 export function calculateMaterialByWeight(v:MaterialByWeight):MaterialWeightResult {
   const geometry=v.geometry===undefined?"piatto":v.geometry;
   if(!RAW_GEOMETRIES.some(g=>g.id===geometry))throw new Error("Seleziona la geometria del materiale.");
-  const materialId=MATERIAL_IDS[v.material];
-  const density=MATERIAL_DENSITY_G_CM3[v.material];
+  const materialId=v.material==="inox"&&v.inoxGrade==="304"?"inox304":MATERIAL_IDS[v.material];
+  const density=RAW_MATERIALS.find(m=>m.id===materialId)?.density! / 1000;
   if(!materialId || !density)throw new Error("Seleziona ferro, inox, ottone oppure alluminio prima di calcolare il peso");
   const result=rawMaterialCalculation({
     ...emptyRiga(), categoria:"MATERIA PRIMA DA TRASFORMARE", materia_prima_versione:2,
@@ -71,6 +73,7 @@ export function calculateMaterialByWeight(v:MaterialByWeight):MaterialWeightResu
 export function calculateQuoteMaterial(product:Record<string,unknown>):MaterialWeightResult {
   return calculateMaterialByWeight({
     material:String(product.materiale_prodotto??"") as MaterialName,
+    inoxGrade:quoteInoxGrade(product),
     geometry:product.geometria_materiale===undefined?undefined:quoteMaterialGeometry(product),
     lengthMm:Number(product.lunghezza_mm), widthMm:Number(product.larghezza_mm),
     thicknessMm:Number(product.spessore_mm), diameterMm:Number(product.diametro_mm),

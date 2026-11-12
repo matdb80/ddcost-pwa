@@ -1,3 +1,4 @@
+import {renameProductGroup} from "./product-group-rename";
 import { z } from "zod";
 import { asc, eq } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
@@ -5,6 +6,8 @@ import { getDb } from "./queries/connection";
 import { productGroups } from "@db/schema";
 
 export const productGroupRouter = createRouter({
+  rename:authedQuery.input(z.object({id:z.number().int().positive(),expectedName:z.string(),name:z.string().min(2).max(120),confirmGlobal:z.literal(true),quoteId:z.number().int().positive().optional(),quoteToken:z.string().regex(/^[a-f0-9]{64}$/).optional()}))
+    .mutation(async({input})=>getDb().transaction(tx=>renameProductGroup(tx,input))),
   list: authedQuery.query(async () => {
     const db = getDb();
     return db.select({ id: productGroups.id, name: productGroups.name })

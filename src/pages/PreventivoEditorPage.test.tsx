@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { createMemoryRouter, RouterProvider } from "react-router";
 import type { ReactNode } from "react";
 import { blankProduct, blankQuote, calculateQuote } from "../lib/quote-calculation";
-const state=vi.hoisted(()=>({data:null as any,calls:[] as Array<{path:string;input:any}>}));
+const state=vi.hoisted(()=>({data:null as any,groups:[] as Array<{id:number;name:string}>,calls:[] as Array<{path:string;input:any}>}));
 vi.mock("@/components/Layout",()=>({default:({children}:{children:ReactNode})=><div>{children}</div>}));
 vi.mock("@/components/SalesHandoffPanel",()=>({default:()=>null}));
 vi.mock("@/components/FormulaTooltip",()=>({default:()=>null}));
@@ -12,9 +12,10 @@ vi.mock("@/providers/trpc",()=>{
   const utils={quote:{get:{invalidate:async()=>{}},list:{invalidate:async()=>{}}},productGroup:{list:{invalidate:async()=>{}}}};
   const proxy=(path:string[]):any=>new Proxy({}, {get:(_,key)=>{
     if(key==="useUtils")return ()=>utils;
-    if(key==="useQuery")return ()=>({data:path.join(".")==="quote.get"?state.data:[],isLoading:false});
+    if(key==="useQuery")return ()=>({data:path.join(".")==="quote.get"?state.data:path.join(".")==="productGroup.list"?state.groups:[],isLoading:false});
     if(key==="useMutation")return ()=>({isPending:false,mutateAsync:async(input:any)=>{
       state.calls.push({path:path.join("."),input:structuredClone(input)});
+      if(path.join(".")==="productGroup.rename")return {id:input.id,oldName:input.expectedName,name:input.name,updatedQuotes:3};
       return {id:123,...(path.join(".")==="quote.update"?{dataJson:input.dataJson}:{})};
     }});
     return proxy([...path,String(key)]);
@@ -29,7 +30,7 @@ function mount(doc:Record<string,any>,mobile=false){
   return render(<RouterProvider router={router}/>);
 }
 beforeEach(()=>{
-  state.data=null;state.calls=[];window.localStorage.clear();
+  state.data=null;state.calls=[];state.groups=[];window.localStorage.clear();vi.stubGlobal("confirm",vi.fn(()=>true));
   vi.stubGlobal("matchMedia",()=>({matches:false,addEventListener:()=>{},removeEventListener:()=>{}}));
   Element.prototype.scrollIntoView=vi.fn();
 });
@@ -448,6 +449,68 @@ it("offers the four series fields in the mobile wizard and keeps price required"
  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));expect(screen.getByRole("alert").textContent).toContain("prezzo unitario");
  const price=screen.getByRole("textbox");fireEvent.change(price,{target:{value:"12,50"}});fireEvent.blur(price);
  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+ expect(screen.getByRole("heading",{name:"Sconto cliente"})).toBeTruthy();
+ fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
  expect(screen.getByRole("heading",{name:"Riepilogo finale"})).toBeTruthy();
  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("125,00");
+});
+
+it.each([false,true])('copies the selected first product to the end in mobile=%s',async mobile=>{
+  mount({...blankQuote(),cliente:'Prova',stato_preventivo:'bozza',prodotti:[{...blankProduct(),descrizione:'Primo',quantita:10},{...blankProduct(),descrizione:'Secondo',quantita:20}]},mobile);
+  for(let i=0;i<4&&!screen.queryByRole('button',{name:'Copia prodotto 1'});i++)fireEvent.click(await screen.findByRole('button',{name:'Avanti'}));
+  fireEvent.click(await screen.findByRole('button',{name:'Copia prodotto 1'}));
+  if(mobile)fireEvent.click(screen.getByRole('button',{name:'Vista completa'}));
+  fireEvent.click(screen.getByRole('button',{name:'Salva bozza'}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==='quote.saveDraft')).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==='quote.saveDraft')!.input.dataJson);
+  expect(saved.prodotti.map((p:any)=>p.descrizione)).toEqual(['Primo','Secondo','Primo']);
+  expect(saved.prodotti.map((p:any)=>p.quantita)).toEqual([10,20,'']);
+});
+it('requires an explicit continue action for missing costs and saves the warning',async()=>{
+  mount({...blankQuote(),cliente:'Prova',stato_preventivo:'bozza',prodotti:[{...blankProduct(),descrizione:'Primo',gruppo_merceologico:'Bandelle',materiale_prodotto:'ferro',oggetto_modifica:['occhio']}]});
+  vi.mocked(window.confirm).mockReturnValueOnce(false);
+  fireEvent.click(await screen.findByRole('button',{name:'Completa preventivo'}));
+  await waitFor(()=>expect(window.confirm).toHaveBeenCalled());expect(state.calls.filter(c=>c.path==='quote.finalizeDraft')).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button',{name:'Completa preventivo'}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==='quote.finalizeDraft')).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==='quote.finalizeDraft')!.input.dataJson);
+  expect(saved.costi_incompleti.length).toBeGreaterThan(0);expect(saved.costi_incompleti_conferma).toBeTruthy();
+});
+it('offers mutually exclusive inox grades and persists the selected one',async()=>{
+  mount({...blankQuote(),stato_preventivo:'bozza',prodotti:[blankProduct()]});
+  fireEvent.change(await screen.findByLabelText('Materiale *'),{target:{value:'inox'}});
+  const a=screen.getByRole('checkbox',{name:'AISI 304'}) as HTMLInputElement,b=screen.getByRole('checkbox',{name:'AISI 316'}) as HTMLInputElement;
+  fireEvent.click(a);expect(a.checked).toBe(true);expect(b.checked).toBe(false);
+  fireEvent.click(b);expect(a.checked).toBe(false);expect(b.checked).toBe(true);
+  fireEvent.click(screen.getByRole('button',{name:'Salva bozza'}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==='quote.saveDraft')).toBe(true));
+  expect(JSON.parse(state.calls.find(c=>c.path==='quote.saveDraft')!.input.dataJson).prodotti[0].inox_aisi).toBe('316');
+});
+it('searches groups, confirms global rename and keeps unsaved quote fields',async()=>{
+  state.groups=[{id:1,name:'Bandelle'},{id:2,name:'Cardini'}];
+  mount({...blankQuote(),cliente:'Prova',stato_preventivo:'bozza',prodotti:[{...blankProduct(),descrizione:'Non perdere',gruppo_merceologico:'Bandelle'}]});
+  const input=await screen.findByRole('combobox',{name:'Gruppo merceologico *'});
+  fireEvent.change(input,{target:{value:'card'}});expect(screen.getByRole('option',{name:'Cardini'})).toBeTruthy();expect(screen.queryByRole('option',{name:'Bandelle'})).toBeNull();
+  fireEvent.click(screen.getByRole('option',{name:'Cardini'}));
+  fireEvent.click(screen.getByRole('button',{name:'Rinomina gruppo merceologico'}));
+  expect(screen.getByText(/La modifica verrà applicata a tutti i preventivi/)).toBeTruthy();
+  fireEvent.change(screen.getByRole('textbox',{name:'Nuovo nome gruppo'}),{target:{value:'Cardini speciali'}});
+  expect(state.calls).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button',{name:'Conferma modifica in tutti i preventivi'}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==='productGroup.rename')).toBe(true));
+  await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
+  fireEvent.click(screen.getByRole('button',{name:'Salva bozza'}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==='quote.saveDraft')).toBe(true));
+  const p=JSON.parse(state.calls.find(c=>c.path==='quote.saveDraft')!.input.dataJson).prodotti[0];
+  expect(p).toMatchObject({descrizione:'Non perdere',gruppo_merceologico:'Cardini speciali',gruppo_merceologico_id:2});
+});
+it('shows RAL on a series-only quote and searches a color by its full name',async()=>{
+  mount({...blankQuote(),stato_preventivo:'bozza',prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'TFP0000001In',descrizione:'Serie',quantita:10,prezzo_serie:10,sconto_serie:'40+15+5%'}]});
+  fireEvent.click(await screen.findByRole('checkbox',{name:'Verniciatura RAL sul netto cliente'}));
+  const input=screen.getByRole('combobox',{name:'Colore RAL'});
+  fireEvent.change(input,{target:{value:'Bianco puro'}});
+  fireEvent.click(screen.getByRole('option',{name:/RAL 9010.*Bianco puro/}));
+  await waitFor(()=>expect(screen.getByLabelText('Totale preventivo').textContent).toContain('146,90'));
+  expect(screen.getByText(/Supplemento RAL: \+100%/)).toBeTruthy();
+  fireEvent.change(input,{target:{value:'9005'}});expect(screen.getByRole('option',{name:/RAL 9005/})).toBeTruthy();
 });

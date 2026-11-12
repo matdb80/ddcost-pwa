@@ -1,3 +1,4 @@
+import type {calculateRal} from "./ral-pricing";
 import {prepareRalOffer} from "./ral-documents";
 import {
   calculateOfferLotPrice,
@@ -114,8 +115,11 @@ export function buildDistributorOffer(
     };
   });
 
-  const ral = offer.ral_riepilogo as {fixed:number;[key:string]:unknown}|undefined;
-  return { ...offer, cliente: distributorName, righe: rows, ...(ral?{verniciatura_ral:null,ral_consolidato:true,ral_riepilogo:{...ral,fixed:ral.fixed/(1+markupPercent/100)}}:{}) };
+  const ral = offer.ral_riepilogo as ReturnType<typeof calculateRal>|undefined;
+  const divisor=1+markupPercent/100;
+  const scaledRal=ral?{...ral,fixed:ral.fixed/divisor,subtotal:ral.subtotal/divisor,total:ral.total==null?null:ral.total/divisor,
+    rows:(ral.rows??[]).map(r=>({...r,baseNet:r.baseNet==null?null:r.baseNet/divisor,surcharge:r.surcharge==null?null:r.surcharge/divisor,net:r.net==null?null:r.net/divisor,total:r.total==null?null:r.total/divisor}))}:undefined;
+  return { ...offer, cliente: distributorName, righe: rows, ...(scaledRal?{verniciatura_ral:null,ral_consolidato:true,ral_riepilogo:scaledRal}:{}) };
 }
 
 function finalCustomerNetPrice(

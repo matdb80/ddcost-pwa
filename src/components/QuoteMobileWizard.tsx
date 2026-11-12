@@ -1,3 +1,6 @@
+import ProductGroupRename,{type GroupRenameResult} from "./ProductGroupRename";
+import SearchableSelect from "./SearchableSelect";
+import QuoteInoxChoice from "./QuoteInoxChoice";
 import {isSeries,isFixedPrice} from "@/lib/quote-series";
 import {isForfait} from "@/lib/quote-forfait";
 import SalesHandoffPanel from "./SalesHandoffPanel";
@@ -57,8 +60,10 @@ type Props={
   onUpdate:(key:string,value:unknown,economic?:boolean)=>void;
   onUpdateProduct:(index:number,key:string,value:unknown)=>void;
   onAddProduct:()=>void;
-  onCopyProductAndScaleLot:()=>void;
+  onCopyProductAndScaleLot:(index:number)=>void;
   onRemoveProduct:(index:number)=>void;
+  onGroupRenamed:(result:GroupRenameResult)=>void;
+  quoteEditToken?:string;
   onCreateGroup:(index:number,name:string)=>Promise<void>;
   onPriceProductIndex:(value:number)=>void;
   onListinoDiscount:(value:string)=>void;
@@ -138,10 +143,10 @@ export default function QuoteMobileWizard(props:Props){
     onAddProduct();
     goto("p:"+i+":descrizione");
   };
-  const copyProductAndScaleLot=()=>{
+  const copyProductAndScaleLot=(index:number)=>{
     const i=(doc.prodotti as Product[]).length;
-    onCopyProductAndScaleLot();
-    goto("p:"+i+":quantita");
+    onCopyProductAndScaleLot(index);
+    goto("p:"+i+(isForfait(doc.prodotti[index])?":descrizione":":quantita"));
   };
   const percent=Math.round((activeIndex+1)/steps.length*100);
   const hasPreview=preview!==null && Number.isFinite(Number(preview.totale_finale));
@@ -169,7 +174,7 @@ export default function QuoteMobileWizard(props:Props){
       </div>
       <div className="mt-2">{props.attachments}</div>
     </header>
-    {doc.prodotti.some((p:Product)=>!isFixedPrice(p)) && props.ralSettings}
+    {doc.prodotti.some((p:Product)=>!isForfait(p)) && props.ralSettings}
     <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
       <QuoteTotal value={preview?.totale_finale ?? preview?.totale}/>
     </div>
@@ -183,10 +188,10 @@ export default function QuoteMobileWizard(props:Props){
     </div>
 
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className={productIndex===undefined
           ? "min-w-0 text-xs font-semibold uppercase tracking-wide text-emerald-700"
-          : "min-w-0 flex-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-bold text-slate-950"}>
+          : "flex w-full min-w-0 flex-wrap items-center gap-2 rounded-lg bg-sky-500 px-3 py-2 text-sm font-bold text-slate-950"}>
           <span>{current.section}</span>
           {productIndex!==undefined && <label className="ml-3 inline-flex items-center gap-2 text-sm normal-case">
             <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isForfait(product)}
@@ -196,8 +201,11 @@ export default function QuoteMobileWizard(props:Props){
             <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isSeries(product)}
               onChange={e=>{onUpdateProduct(productIndex,"prodotto_di_serie",e.target.checked);setAddingGroup(false);goto(`p:${productIndex}:descrizione`);}}/> Prodotto di serie
           </label>}
+        {productIndex!==undefined&&!locked&&<div className="ml-auto flex shrink-0 gap-1"><button type="button" aria-label={`Copia prodotto ${productIndex+1}`} title="Copia in fondo al preventivo" className="rounded p-2 text-violet-800" onClick={()=>copyProductAndScaleLot(productIndex)}><Copy size={18}/></button>
+          {doc.prodotti.length>1&&<button type="button" aria-label={`Elimina prodotto ${productIndex+1}`} className="rounded p-2 text-red-800" onClick={()=>{onRemoveProduct(productIndex);goto("riepilogo");}}><Trash2 size={18}/></button>}</div>}
         </div>
-        <span className="shrink-0 text-xs tabular-nums text-slate-500">Passo {activeIndex+1} di {steps.length}</span>
+
+        <span className="ml-auto shrink-0 text-xs tabular-nums text-slate-500">Passo {activeIndex+1} di {steps.length}</span>
       </div>
       <div className="h-1.5 w-full rounded-full bg-slate-100" role="progressbar" aria-label="Completamento preventivo"
         aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
@@ -319,12 +327,11 @@ export default function QuoteMobileWizard(props:Props){
             onChange={e=>onListinoDiscount(e.target.value)}/>
         ):field==="gruppo_merceologico" && productIndex!==undefined ? (
           <div className="space-y-3">
-            <select id="wizard-input" className={inputClass} disabled={locked}
-              value={String(value??"")} onChange={e=>updateValue(e.target.value)}>
-              <option value="">{loadingGroups?"Caricamento gruppi...":"Seleziona gruppo..."}</option>
-              {groups.map(g=><option key={g.id} value={g.name}>{g.name}</option>)}
-              {value && !groups.some(g=>g.name===value)&&<option value={value}>{value} (storico)</option>}
-            </select>
+            <SearchableSelect id="wizard-input" label="Gruppo merceologico" className={inputClass} disabled={locked}
+              value={String(value??"")} onChange={updateValue} placeholder={loadingGroups?"Caricamento gruppi…":"Digita il gruppo…"}
+              options={groups.map(g=>({value:g.name,label:g.name}))}/>
+
+            <ProductGroupRename disabled={locked} group={groups.find(g=>g.name===value)} onRenamed={props.onGroupRenamed} quoteId={isNew?undefined:numericId} quoteToken={props.quoteEditToken}/>
             {!locked && (addingGroup?(
               <div className="flex flex-col gap-2">
                 <input className={inputClass} placeholder="Nuovo gruppo merceologico"
@@ -338,11 +345,11 @@ export default function QuoteMobileWizard(props:Props){
               onClick={()=>setAddingGroup(true)}>+ Crea nuovo gruppo</button>)}
           </div>
         ):field==="materiale_prodotto"? (
-          <select id="wizard-input" className={inputClass} disabled={locked}
+          <div><select id="wizard-input" className={inputClass} disabled={locked}
             value={String(value??"")} onChange={e=>updateValue(e.target.value)}>
             <option value="">Seleziona materiale...</option>
             <option value="ferro">Ferro</option><option value="ottone">Ottone</option><option value="inox">Inox</option><option value="alluminio">Alluminio</option>
-          </select>
+          </select><QuoteInoxChoice product={product!} disabled={locked} onChange={value=>onUpdateProduct(productIndex!,"inox_aisi",value)}/></div>
         ):field==="geometria_materiale" && product?(
           <select id="wizard-input" className={inputClass} disabled={locked} value={quoteMaterialGeometry(product)} onChange={e=>updateValue(e.target.value)}>
             <option value="">Seleziona geometria...</option>
@@ -454,12 +461,7 @@ export default function QuoteMobileWizard(props:Props){
           className={actionClass+" min-w-0 flex-1 border border-emerald-700 px-2 text-xs leading-tight text-emerald-800"}>
           <Plus className="shrink-0" size={17}/> Aggiungi prodotto
         </button>
-        <button type="button" onClick={copyProductAndScaleLot}
-          aria-label="Copia prodotto e scala su lotto"
-          title="Copia l’ultimo prodotto lasciando vuota la quantità per il nuovo lotto"
-          className={actionClass+" min-w-0 flex-1 border border-violet-500 px-2 text-xs leading-tight text-violet-800"}>
-          <Copy className="shrink-0" size={17}/> Copia prodotto e scala su lotto
-        </button>
+
       </div>}
       <div className="mx-auto flex w-full max-w-xl gap-2">
         <button type="button" onClick={previous} disabled={activeIndex===0}

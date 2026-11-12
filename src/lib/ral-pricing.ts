@@ -1,7 +1,7 @@
 import colors from "../data/ral-colors.json";
 export { colors as ralColors };
 export type RalOptions = { color: string; textured: boolean };
-export const TEMPORARY_FAMILIES = ["VB", "RN", "QU", "MA", "FP", "CR", "AA", "CS", "CA", "BC", "AM", "AP"] as const;
+export const TEMPORARY_FAMILIES = ["VB", "RN", "QU", "MA", "FP", "CR", "AA", "CS", "CA", "BC", "AM", "AP", "AS", "SP"] as const;
 export const TEMPORARY_MATERIALS = { I: "Ferro", X: "Inox AISI 304", "6": "Inox AISI 316", B: "Ottone", A: "Alluminio" } as const;
 const knownColors = new Set(colors.map(c => c.code));
 const round = (n: number, digits: number) => Math.round((n + Number.EPSILON) * 10 ** digits) / 10 ** digits;
@@ -21,6 +21,7 @@ export function validTemporarySuffix(value: unknown): value is string {
 export function temporaryCode(sequence: number, family: string, material: string, color?: string | null, suffix?: string | null): string {
   const prefix=temporaryCodePrefix(sequence,family,material);
   if(color){
+    if(family==="QU")throw new Error("La famiglia QU è esclusa dalla verniciatura RAL");
     if(!knownColors.has(color)||suffix)throw new Error("Colore RAL non valido o carattere finale incompatibile con il RAL");
     return prefix+"O"+color;
   }
@@ -49,7 +50,7 @@ export function validManualTemporaryCode(code: string, prefix: string, allowEmpt
 export function ralCodeInfo(raw: string) {
   const code = raw.trim().toUpperCase();
   return { code, family: code.slice(1, 3).toLowerCase(), stainless: "1236X".includes(code[10] ?? " "),
-    paintable: !/O\d{4}$/.test(code) && code[10] !== "N" };
+    paintable: code.slice(1,3)!=="QU" && !/O\d{4}$/.test(code) && code[10] !== "N" };
 }
 export function ralRate(code: string, textured: boolean) {
   const info = ralCodeInfo(code);
@@ -83,6 +84,7 @@ export function calculateRal(lines: RalLineInput[], options: RalOptions) {
 export function ralSourceCode(row: Record<string, unknown>, options: RalOptions): string {
   const code = String(row.codice ?? "").trim().toUpperCase();
   const t = row.codice_temporaneo as { sequence?: number; family?: string; material?: string; color?: string; code?: string } | undefined;
+  if(code.slice(1,3)==="QU")return code;
   if (t?.code === code && t.color) {
     if (t.color !== options.color) throw new Error("Il codice temporaneo ha un RAL diverso: rigeneralo per il colore selezionato");
     if (temporaryCode(Number(t.sequence), String(t.family), String(t.material), t.color) !== code) throw new Error("Codice temporaneo incoerente");

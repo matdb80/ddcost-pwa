@@ -1,3 +1,5 @@
+import {ralPrintSummary,type PrintRalRow} from "./ral-print-summary";
+import {calculateRal,ralSourceCode,validRal} from "./ral-pricing";
 import {documentProductDescription,normalizeDocumentTemporaryCodes} from "./document-product-fields";
 import {prepareRalOffer} from "./ral-documents";
 import {documentPrintColor,documentPrintFinish} from "./document-print-color";
@@ -75,7 +77,7 @@ export function buildCommercialOfferPrintHtml(
   } = {},
 ): string {
   offer = prepareRalOffer(normalizeDocumentTemporaryCodes(offer,"righe"));
-  const ral = (offer.verniciatura_ral||offer.ral_consolidato?offer.ral_riepilogo:undefined) as {color:string;fixed:number;onRequest?:boolean}|undefined;
+  const ral = (offer.verniciatura_ral||offer.ral_consolidato?offer.ral_riepilogo:undefined) as ReturnType<typeof calculateRal>|undefined;
   const colorLabel=documentPrintColor(offer);
   const internal = mode === "internal";
   const title = internal ? "Analisi interna dell’offerta" : "Offerta commerciale";
@@ -86,6 +88,18 @@ export function buildCommercialOfferPrintHtml(
   const body = internal
     ? rows.map((row, index) => internalProductSection(row, index,documentPrintFinish(offer,row))).join("")
     : customerOfferTable(rows, pricePresentation, {...options,ral,printFinish:row=>documentPrintFinish(offer,row)});
+  const alternatives=rows.some(r=>selectedOfferLots(r).length>1);
+  let summaryRows:PrintRalRow[]|undefined;
+  if(ral&&alternatives&&validRal(offer.verniciatura_ral)){
+    const options=offer.verniciatura_ral;
+    summaryRows=rows.flatMap((row,i)=>(selectedOfferLots(row).length?selectedOfferLots(row):[Number(row.lotto)]).map(lot=>{
+      const price=offerLotPrice(row,lot);
+      const list=offerLotTerms(row,lot).listino;
+      const net=price?.baseNetPrice??(list==null||list===""?null:Number(list)*discountFactor(discountText(row)));
+      return {...calculateRal([{code:ralSourceCode(row,options),net,quantity:lot}],options).rows[0],context:`posizione ${i+1}, lotto ${lot}`};
+    }));
+  }
+  const ralSummary=ralPrintSummary(ral,summaryRows,alternatives);
   const noteSection = (heading: string, raw: unknown) => {
     const note = String(raw ?? "").trim();
     return note ? `<section class="notes">${sectionHeading("notes", heading)}<p>${escapeHtml(note).replace(/\n/g, "<br>")}</p></section>` : "";
@@ -150,7 +164,7 @@ export function buildCommercialOfferPrintHtml(
 <header><img src="${escapeAttribute(logoUrl)}" alt="DDF Didieffe Group"><div class="company"><strong>${COMPANY.name}</strong>${companyDetails}</div></header>
 <h1>${title}</h1>
 ${sectionHeading("person", "Intestazione")}<section class="meta"><div><b>Numero offerta</b><span class="meta-value">${offerName}</span></div><div><b>Data</b><span class="meta-value">${new Date().toLocaleDateString("it-IT")}</span></div><div><b>Cliente</b><span class="meta-value">${client || "—"}</span></div><div><b>Riferimento</b><span class="meta-value">${reference || "—"}</span></div><div><b>Colore</b><strong class="meta-value">${escapeHtml(colorLabel)}</strong></div></section>
-${sectionHeading("products", "Prodotti")}${body}${internal && ral ? `<p><strong>RAL ${escapeHtml(ral.color)}</strong> · Cambio colore una volta: € ${money(ral.fixed)}. Prezzo indicativo.</p>`:""}${paymentTransportBlock}${internalFootnote}${noteBlock}
+${sectionHeading("products", "Prodotti")}${body}${ralSummary}${paymentTransportBlock}${internalFootnote}${noteBlock}
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>
 </body></html>`;
 }
@@ -336,7 +350,7 @@ function customerOfferTable(
   const priceHeading = showFinalCustomerReferencePrice
     ? `<th>Prezzo al distributore</th><th class="num">Prezzo finale cliente €/pz</th>`
     : `<th>${presentation === "netto" ? "Prezzo" : "Listino e sconto"}</th>`;
-  return `<table class="customer-lines"><thead><tr><th>#</th><th>Prodotto</th><th class="num">Lotto</th>${priceHeading}<th class="num">${showFinalCustomerReferencePrice ? "Totale al distributore" : "Totale netto"}</th></tr></thead><tbody>${lines}</tbody></table>${options.ral?`<p><strong>RAL ${escapeHtml(options.ral.color)}</strong> · Cambio colore (una volta per ordine): € ${money(options.ral.fixed)}. Prezzo verniciato indicativo, da confermare dall’ufficio.</p>`:""}${totalBlock}`;
+  return `<table class="customer-lines"><thead><tr><th>#</th><th>Prodotto</th><th class="num">Lotto</th>${priceHeading}<th class="num">${showFinalCustomerReferencePrice ? "Totale al distributore" : "Totale netto"}</th></tr></thead><tbody>${lines}</tbody></table>${totalBlock}`;
 }
 
 function offerLotPrice(row: CommercialOfferRow, lot: number): ReturnType<typeof calculateOfferLotPrice> | null {

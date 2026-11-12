@@ -14,7 +14,7 @@ const costed=(q:number)=>({...blankProduct(),descrizione:"Speciale",codice:"TFP0
 describe("series products",()=>{
  it("uses only quantity times the explicit price, ignoring all retained row and common costs",()=>{
   const d={...blankQuote(),prodotti:[series()],lavoro_modalita:"invalid",lavoro_ore_totali:-10,progettazione_ore:-2,costo_progettazione_ora:NaN,
-   trattamenti_modalita:"globale",trattamenti_totale_euro:-20,verniciatura_ral:{color:"invalid"},target_totale:900};
+   trattamenti_modalita:"globale",trattamenti_totale_euro:-20,verniciatura_ral:null,target_totale:900};
   const r=calculateQuote(d);
   expect(r.totale_finale).toBe(125);expect(r.quantita).toBe(10);expect(r.lavoro_ore_calcolate).toBe(0);
   expect(r.prodotti[0].prezzo_netto_unitario_finale).toBe(12.5);expect(r.prodotti[0].full_cost).toBeUndefined();
@@ -37,15 +37,15 @@ describe("series products",()=>{
   expect(calculateQuote({...blankQuote(),prodotti:[{...series(),prezzo_serie:0}]}).totale_finale).toBe(0);
   expect(isSeries({...series(),prodotto_di_serie:"true"})).toBe(false);
  });
- it("allocates costs and RAL only to costed rows, with fixed series and forfait amounts",()=>{
+ it("allocates costs only to costed rows and applies RAL also to series",()=>{
   const base={...blankQuote(),lavoro_ore_totali:20,progettazione_ore:2,costo_progettazione_ora:50,trattamenti_modalita:"globale",trattamenti_totale_euro:50,
    verniciatura_ral:null,prodotti:[costed(10),costed(30)]};
   const d={...base,verniciatura_ral:{color:"3000",textured:false}};
   const expected=calculateQuote(d);
   const r=calculateQuote({...d,prodotti:[series(),costed(10),{...blankProduct(),a_forfait:true,descrizione:"Forfait",valore_forfait:75},costed(30)]});
-  expect(r.totale_finale).toBe(expected.totale_finale+200);expect(r.quantita).toBe(50);
+  expect(r.totale_finale).toBe(expected.totale_finale+262.5);expect(r.quantita).toBe(50);
   expect(r.prodotti[1]).toEqual(expected.prodotti[0]);expect(r.prodotti[3]).toEqual(expected.prodotti[1]);
-  expect(r.prodotti[0].totale_finale).toBe(125);expect(r.costi_comuni_riepilogo.quantita_totale).toBe(40);
+  expect(r.prodotti[0].totale_finale).toBe(187.5);expect(r.costi_comuni_riepilogo.quantita_totale).toBe(40);
   const switched=changeQuoteLaborMode(r,"per_prodotto");expect(quoteLaborHours(switched)).toEqual([0,5,0,15]);
  });
  it("holds series prices fixed in rebalance and restores saved costing when unchecked",()=>{
@@ -60,8 +60,8 @@ describe("series products",()=>{
  it("asks exactly four required fields in either wizard mode",()=>{
   for(const advanced of [false,true]){
    const d={...blankQuote(),prodotti:[series()]},steps=buildQuoteWizardSteps(d,advanced);
-   expect(steps.filter(s=>s.index===0).map(s=>s.field)).toEqual(["descrizione","codice","quantita","prezzo_serie"]);
-   expect(steps.filter(s=>s.index===0).every(s=>s.required)).toBe(true);
+   expect(steps.filter(s=>s.index===0).map(s=>s.field)).toEqual(["descrizione","codice","quantita","prezzo_serie","sconto_serie"]);
+   expect(steps.filter(s=>s.index===0&&s.field!=="sconto_serie").every(s=>s.required)).toBe(true);
    expect(steps.some(s=>["lavoro_ore_totali","progettazione_ore","target_totale"].includes(s.field??""))).toBe(false);
    expect(quoteWizardStepError(steps.find(s=>s.field==="prezzo_serie")!,{...d,prodotti:[{...series(),prezzo_serie:null}]})).toContain("prezzo unitario");
   }
@@ -70,7 +70,7 @@ describe("series products",()=>{
   const r=calculateQuote({...blankQuote(),prodotti:[series()],listino:{product_index_riferimento:0,prezzo_listino_generato:999,sconto_riferimento:"40%"}});
   const html=buildOneTimeQuotePrintHtml(r),row=html.split("<tbody>")[1].split("</tr>")[0];
   for(const text of ["ART-123","Articolo di serie","10 pz","12,50","125,00"])expect(row).toContain(text);
-  expect(row).not.toMatch(/Colore|FERRO|GOFFRATO|forfait|1000/);expect(html).not.toContain("NERO RAL 9005");
+  expect(row).not.toMatch(/Colore|FERRO|GOFFRATO|forfait|1000/);
   const copy=formatQuoteForCopy(r);expect(copy).toContain("12,50");expect(copy).not.toMatch(/FERRO|Prezzo listino|Sconto cliente/);
   expect(salesDocument("quote",JSON.stringify(r)).rows[0]).toEqual({code:"ART-123",description:"Articolo di serie",quantity:"10",netPrice:"12,50",listPrice:"",discount:""});
  });

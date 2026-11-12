@@ -1,3 +1,8 @@
+import ProductGroupRename,{type GroupRenameResult} from "@/components/ProductGroupRename";
+import SearchableSelect from "@/components/SearchableSelect";
+import QuoteInoxChoice from "@/components/QuoteInoxChoice";
+import {quoteInoxError} from "@/lib/quote-inox";
+import {quoteCostCompleteness,withCostCompleteness} from "@/lib/quote-cost-completeness";
 import QuoteSeriesFields from "@/components/QuoteSeriesFields";
 import {isSeries,isFixedPrice,seriesProductError} from "@/lib/quote-series";
 import SalesHandoffPanel from "@/components/SalesHandoffPanel";
@@ -29,7 +34,7 @@ import RalSettings from "@/components/RalSettings";
 import QuoteAttachments from "@/components/QuoteAttachments";
 import QuoteTotal from "@/components/QuoteTotal";
 import {
-  blankProduct, blankQuote, calculateQuote, changeQuoteLaborMode, duplicateLastProductForNewLot, migrateQuoteToEngineeringHours,
+  blankProduct, blankQuote, calculateQuote, changeQuoteLaborMode, duplicateProductForNewLot, migrateQuoteToEngineeringHours,
   type Product, type QuoteDocument,
 } from "@/lib/quote-calculation";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
@@ -151,6 +156,7 @@ export default function PreventivoEditorPage() {
       setPriceProductIndex(doc.prodotti.findIndex((p:Product)=>!isFixedPrice(p)));
   },[doc.prodotti,priceProductIndex,hasStandardProducts]);
   const [error, setError] = useState("");
+  const [renamedEditToken,setRenamedEditToken]=useState<string>();
   const [copyMessage, setCopyMessage] = useState("");
   const [newGroupIndex, setNewGroupIndex] = useState<number | null>(null);
   const [newGroupName, setNewGroupName] = useState("");
@@ -177,6 +183,7 @@ export default function PreventivoEditorPage() {
       if (!Array.isArray(parsed.prodotti)) throw new Error("Formato storico non riconosciuto");
       parsed.cliente = data.client ?? parsed.cliente ?? "";
       parsed.riferimento_preventivo = data.reference ?? parsed.riferimento_preventivo ?? "";
+      setRenamedEditToken(undefined);
       setDoc(parsed);
       setOriginalJson(data.dataJson ?? "");
       setBaseline(JSON.stringify(parsed));
@@ -221,6 +228,12 @@ export default function PreventivoEditorPage() {
     setDoc(prev => ({ ...prev, [key]: value }));
     if (economic) setDirtyCalculation(true);
   };
+  const groupRenamed=(result:GroupRenameResult)=>{
+    const apply=(d:QuoteDocument)=>({...d,prodotti:d.prodotti.map((p:Product)=>p.gruppo_merceologico_id===result.id||String(p.gruppo_merceologico??"").toLocaleLowerCase("it")===result.oldName.toLocaleLowerCase("it")?{...p,gruppo_merceologico:result.name,gruppo_merceologico_id:result.id}:p)});
+    setDoc(apply);if(baseline)setBaseline(JSON.stringify(apply(JSON.parse(baseline))));
+    if(result.editToken)setRenamedEditToken(result.editToken);
+    setDraftMessage(`Gruppo rinominato in ${result.updatedQuotes} preventivi. Prezzi e costi invariati.`);
+  };
   const updateProduct = (index: number, key: string, value: unknown) => {
     setDoc(prev => {
       const prodotti = [...(prev.prodotti as Product[])];
@@ -230,6 +243,9 @@ export default function PreventivoEditorPage() {
       if(key==="a_forfait" && value===true)prodotti[index].prodotto_di_serie=false;
       if(key==="costo_materiale_noto" && value===false && before.costo_materiale_noto!==false && before.geometria_materiale===undefined)
         prodotti[index].geometria_materiale="";
+      if(key==="gruppo_merceologico"){const selected=groupsQuery.data?.find(g=>g.name===value);prodotti[index].gruppo_merceologico_id=selected?.id;}
+      if(key==="materiale_prodotto"&&value==="inox"&&before.materiale_prodotto!=="inox"&&before.inox_aisi===undefined)prodotti[index].inox_aisi="";
+      if(key==="codice_temporaneo"&&value){const m=(value as {material?:string}).material;if(m==="X"||m==="6")prodotti[index].inox_aisi=m==="X"?"304":"316";}
       if(key==="codice"){
         const prefix=manualTemporaryCodePrefix(before.codice_temporaneo);
         if(!prefix||!validManualTemporaryCode(String(value),prefix,true))delete prodotti[index].codice_temporaneo;
@@ -382,6 +398,7 @@ export default function PreventivoEditorPage() {
         if(error)return setError(`Prodotto ${i+1}: ${error}`);
         continue;
       }
+      const inoxError=quoteInoxError(p);if(inoxError)return setError(`Prodotto ${i+1}: ${inoxError}`);
       if (!String(p.gruppo_merceologico ?? "").trim())
         return setError("Indicare un gruppo merceologico per il prodotto " + (i+1));
       if (!["ferro","ottone","inox","alluminio"].includes(String(p.materiale_prodotto ?? "")))
@@ -395,6 +412,11 @@ export default function PreventivoEditorPage() {
     try {
       const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
       if (listinoModified) computed.listino = buildListino(computed.listino ?? {}, computed, priceProductIndex);
+      const assessment=quoteCostCompleteness(computed);
+      if(assessment.issues.length&&computed.costi_incompleti_conferma!==assessment.signature){
+        if(!window.confirm("Attribuzione dei costi incompleta:\n"+assessment.issues.join("\n")+"\n\nProcedere comunque? Il preventivo resterà segnalato come incompleto nei costi."))return;
+      }
+      Object.assign(computed,withCostCompleteness(computed,true));
       computed.stato_preventivo="completo";
       const json = JSON.stringify(computed);
       if (!isNew && originalJson === json) return setError("Nessuna modifica rilevata");
@@ -436,7 +458,7 @@ export default function PreventivoEditorPage() {
         navigate("/preventivi/"+result.id);
       }else if(mode === "overwrite"){
         if(!data?.editToken) throw new Error("Riapri il preventivo prima di sovrascriverlo");
-        const result=await overwrite.mutateAsync({id:numericId,expectedToken:data.editToken,...payload});
+        const result=await overwrite.mutateAsync({id:numericId,expectedToken:renamedEditToken??data.editToken,...payload});
         const persisted=JSON.parse(result.dataJson) as QuoteDocument;
         setDoc(persisted);
         setBaseline(JSON.stringify(persisted));
@@ -519,6 +541,7 @@ export default function PreventivoEditorPage() {
           </div>
         </div>
       )}
+      {quoteCostCompleteness(doc).issues.length>0&&<div role="note" className="rounded-lg border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950"><strong>Attribuzione dei costi incompleta</strong><ul>{quoteCostCompleteness(doc).issues.map(issue=><li key={issue}>{issue}</li>)}</ul></div>}
       {wizardMode ? (
         <QuoteMobileWizard
           doc={doc} preview={preview} locked={locked} isNew={isNew}
@@ -533,8 +556,9 @@ export default function PreventivoEditorPage() {
           priceProductIndex={priceProductIndex}
           onUpdate={update} onUpdateProduct={updateProduct}
           onAddProduct={()=>update("prodotti",[...doc.prodotti,{...blankProduct(),nero_standard_goffrato:allStandardBlackTextured(doc.prodotti)}],true)}
-          onCopyProductAndScaleLot={()=>update("prodotti",duplicateLastProductForNewLot(doc.prodotti),true)}
+          onCopyProductAndScaleLot={index=>update("prodotti",duplicateProductForNewLot(doc.prodotti,index),true)}
           onRemoveProduct={index=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}
+          onGroupRenamed={groupRenamed} quoteEditToken={renamedEditToken??data?.editToken}
           onCreateGroup={async(index,name)=>{
             try{
               const result=await createGroup.mutateAsync({name});
@@ -586,12 +610,6 @@ export default function PreventivoEditorPage() {
               className="border border-emerald-600 text-emerald-700 rounded flex gap-2"
               title="Aggiungi prodotto senza scorrere fino alla sezione prodotti">
               <Plus size={16}/> Aggiungi prodotto
-            </button>}
-            {!locked && <button type="button"
-              onClick={()=>update("prodotti",duplicateLastProductForNewLot(doc.prodotti),true)}
-              className="border border-violet-500 text-violet-700 rounded flex gap-2"
-              title="Copia l’ultimo prodotto, lasciando vuota la quantità per il nuovo lotto">
-              <Copy size={16}/> Copia prodotto e scala su lotto
             </button>}
             <QuoteAttachments key={id??"new"} quoteId={isNew?null:numericId} ensureQuoteId={persistDraft} disabled={draftSaving}/>
             <button type="button" onClick={copyQuote}
@@ -793,7 +811,7 @@ export default function PreventivoEditorPage() {
           </p>
         </section>
       ))}
-      {hasStandardProducts && <RalSettings value={doc.verniciatura_ral??null} disabled={locked} onChange={value=>update("verniciatura_ral",value,true)} result={preview?.ral_riepilogo} standardFinish={<StandardBlackFinishGroup rows={doc.prodotti} disabled={locked} onChange={value=>update("prodotti",withStandardBlackFinish(doc.prodotti,value))}/>}/>}
+      {doc.prodotti.some((p:Product)=>!isForfait(p)) && <RalSettings value={doc.verniciatura_ral??null} disabled={locked} onChange={value=>update("verniciatura_ral",value,true)} result={preview?.ral_riepilogo} standardFinish={<StandardBlackFinishGroup rows={doc.prodotti} disabled={locked} onChange={value=>update("prodotti",withStandardBlackFinish(doc.prodotti,value))}/>}/>}
       {hasStandardProducts && <section className="bg-white border rounded-xl p-3 md:p-4 space-y-2">
         <h2 className="font-semibold text-lg">Prezzo di listino da sconto cliente</h2>
         <p className="text-xs text-slate-600">Il listino lordo viene ricavato dal prezzo netto finale dell'articolo selezionato, applicando gli sconti successivi (es. 40+10% = fattore 0,54). Il listino è arrotondato in eccesso al centesimo; il prezzo netto del preventivo non viene cambiato.</p>
@@ -850,9 +868,12 @@ export default function PreventivoEditorPage() {
                   onChange={e=>{if(newGroupIndex===index)setNewGroupIndex(null);updateProduct(index,"prodotto_di_serie",e.target.checked);}}/> Prodotto di serie
               </label>
             </div>
+            <div className="flex items-center gap-2">
+            {!locked&&<button type="button" aria-label={`Copia prodotto ${index+1}`} title="Copia questa riga in fondo al preventivo, con quantità da inserire" className="rounded p-1 hover:bg-white/30" onClick={()=>update("prodotti",duplicateProductForNewLot(doc.prodotti,index),true)}><Copy size={17}/></button>}
             {!locked && doc.prodotti.length > 1 && <button title="Rimuovi prodotto" className="rounded p-1 text-red-950 hover:bg-white/30" onClick={()=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}><Trash2 size={17}/></button>}
+            </div>
           </div>
-          {isSeries(p) ? <QuoteSeriesFields product={p} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : isForfait(p) ? <QuoteForfaitFields product={p} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : <>
+          {isSeries(p) ? <QuoteSeriesFields product={p} calculated={preview?.prodotti?.[index]} ralEnabled={Boolean(doc.verniciatura_ral)} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : isForfait(p) ? <QuoteForfaitFields product={p} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : <>
           {!legacyCostModel && sharedTreatmentMode === "ore_lavoro" &&
             <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
               Costo trattamenti inglobati nel tempo di produzione. Includi il tempo dei trattamenti nelle ore
@@ -887,14 +908,12 @@ export default function PreventivoEditorPage() {
                 onChange={e=>updateProduct(index,"descrizione",e.target.value)}/>
             </label>
             <div className="flex min-w-0 flex-col gap-1 text-xs lg:col-span-3">
-              <label htmlFor={"group-"+index} className="flex min-h-7 items-center font-medium">Gruppo merceologico *</label>
-              <select id={"group-"+index} disabled={locked} className={compactInputClass+" "+normalInputClass}
-                value={p.gruppo_merceologico ?? ""} onChange={e=>updateProduct(index,"gruppo_merceologico",e.target.value)}>
-                <option value="">Seleziona un gruppo esistente</option>
-                {(groupsQuery.data ?? []).map(g=><option key={g.id} value={g.name}>{g.name}</option>)}
-                {p.gruppo_merceologico && !(groupsQuery.data ?? []).some(g=>g.name === p.gruppo_merceologico) &&
-                  <option value={p.gruppo_merceologico}>{p.gruppo_merceologico} (non presente nel catalogo)</option>}
-              </select>
+              <div className="flex min-h-7 items-center justify-between gap-1"><label htmlFor={"group-"+index} className="font-medium">Gruppo merceologico *</label>
+                <ProductGroupRename disabled={locked} group={groupsQuery.data?.find(g=>g.name===p.gruppo_merceologico)} onRenamed={groupRenamed} quoteId={isNew?undefined:numericId} quoteToken={renamedEditToken??data?.editToken}/></div>
+              <SearchableSelect id={"group-"+index} label="Gruppo merceologico *" disabled={locked} className={compactInputClass+" "+normalInputClass}
+                value={p.gruppo_merceologico??""} onChange={value=>updateProduct(index,"gruppo_merceologico",value)}
+                options={(groupsQuery.data??[]).map(g=>({value:g.name,label:g.name}))}/>
+
               {!locked && (newGroupIndex === index
                 ? <div className="flex flex-wrap items-center gap-2 mt-1">
                     <input aria-label="Nome nuovo gruppo merceologico" autoFocus maxLength={120} className="border rounded p-2 flex-1 min-w-32"
@@ -907,8 +926,8 @@ export default function PreventivoEditorPage() {
                 : <button type="button" className="text-left text-emerald-700 underline text-xs mt-1"
                     onClick={()=>{setNewGroupName("");setNewGroupIndex(index);}}>+ Crea un nuovo gruppo merceologico</button>)}
             </div>
-            <label className="flex min-w-0 flex-col gap-1 text-xs lg:col-span-2">
-              <span className="flex min-h-7 items-center font-medium">Materiale *</span>
+            <div className="flex min-w-0 flex-col gap-1 text-xs lg:col-span-2">
+              <label className="flex flex-col gap-1"><span className="flex min-h-7 items-center font-medium">Materiale *</span>
               <select className={compactInputClass+" "+normalInputClass} disabled={locked}
                 value={p.materiale_prodotto ?? ""} onChange={e=>updateProduct(index,"materiale_prodotto",e.target.value)}>
                 <option value="">Seleziona materiale</option>
@@ -916,8 +935,9 @@ export default function PreventivoEditorPage() {
                 <option value="ottone">Ottone</option>
                 <option value="inox">Inox</option>
                 <option value="alluminio">Alluminio</option>
-              </select>
-            </label>
+              </select></label>
+              <QuoteInoxChoice product={p} disabled={locked} onChange={value=>updateProduct(index,"inox_aisi",value)}/>
+            </div>
           </div>
           {!doc.verniciatura_ral && <StandardBlackFinish value={p.nero_standard_goffrato} disabled={locked}
             onChange={value=>updateProduct(index,"nero_standard_goffrato",value)}/>}

@@ -29,7 +29,7 @@ describe("RAL rules supplied on 2026-11-09", () => {
     expect(b.rows.map(r => r.total)).toEqual([105,24,48,6]);
     expect(b.fixed).toBe(100); expect(b.total).toBe(283);
   });
-  it.each(TEMPORARY_FAMILIES)("builds 16 characters in family %s for all materials", family => {
+  it.each(TEMPORARY_FAMILIES.filter(f=>f!=="QU"))("builds 16 characters in family %s for all materials", family => {
     for (const material of Object.keys(TEMPORARY_MATERIALS)) {
       const code = temporaryCode(1, family, material, "9006");
       expect(code).toHaveLength(16); expect(code.slice(1,3)).toBe(family);
@@ -77,7 +77,7 @@ describe("document integration and no double charging", () => {
     const a=calculateQuote(doc), b=calculateQuote(JSON.parse(JSON.stringify(a)));
     expect(a.prodotti[0].prezzo_netto_unitario_finale).toBe(15); expect(a.totale_finale).toBe(200);
     expect(b).toEqual(a); expect(doc.prodotti[0].prezzo_manuale).toBe(10);
-    expect(buildOneTimeQuotePrintHtml(a)).toContain("Cambio colore (una volta): € 50,00");
+    expect(buildOneTimeQuotePrintHtml(a)).toContain("Cambio colore (una volta per ordine): <strong>€ 50,00</strong>");
     const handoff=salesDocument("quote",JSON.stringify(a));
     expect(handoff.rows).toHaveLength(2); expect(handoff.rows[1].netPrice).toBe("50,00");
     expect(()=>calculateQuote({...doc,verniciatura_ral:{color:"9006",textured:false}})).toThrow(/RAL diverso/);
@@ -101,6 +101,7 @@ describe("document integration and no double charging", () => {
     const distributor=buildDistributorOffer(a,"Distributore",20) as any;
     expect(distributor.righe[0].netto).toBe(12.5);
     expect(distributor.ral_riepilogo.fixed).toBeCloseTo(50/1.2);
+    expect(distributor.ral_riepilogo.rows[0].surcharge).toBeCloseTo(5/1.2);
     expect(buildCommercialOfferPrintHtml(distributor,"customer")).toContain("166,67");
   });
   it("renders missing commercial net as on request", () => {

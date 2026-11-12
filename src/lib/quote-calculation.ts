@@ -1,4 +1,4 @@
-import {isSeries,isFixedPrice,seriesProductError} from "./quote-series";
+import {isSeries,isFixedPrice,seriesProductError,seriesNetPrice} from "./quote-series";
 import {normalizeDocumentTemporaryCodes} from "./document-product-fields";
 import { isForfait, forfaitProductError } from "./quote-forfait";
 import { calculateRal, validRal, ralSourceCode } from "./ral-pricing";
@@ -25,13 +25,15 @@ export const blankQuote = (): QuoteDocument => ({
   trattamenti_modalita: "per_prodotto", trattamenti_totale_euro: 0,
   target_totale: null, note_generali: "", note_cliente: "", note_fornitori: "", attachments: [],
 });
-/** Copies the most recently entered product for another lot, leaving its quantity blank. */
-export function duplicateLastProductForNewLot(products: Product[]): Product[] {
+/** Copies the selected product for another lot, leaving its quantity blank. */
+export function duplicateProductForNewLot(products: Product[], index:number): Product[] {
   if (!products.length) throw new Error("Inserire almeno un prodotto da copiare");
-  const copy = structuredClone(products[products.length - 1]);
+  if(!Number.isInteger(index)||index<0||index>=products.length)throw new Error("Prodotto da copiare non valido");
+  const copy = structuredClone(products[index]);
   copy.quantita = "";
   return [...products, copy];
 }
+export function duplicateLastProductForNewLot(products:Product[]):Product[]{return duplicateProductForNewLot(products,products.length-1);}
 export function quoteLaborMode(document: QuoteDocument): "complessivo" | "per_prodotto" | "per_pezzo" | "per_riga" {
   if (document.lavoro_modalita == null) return "per_riga"; // Preserve saved quotes.
   if (document.lavoro_modalita === "complessivo" || document.lavoro_modalita === "per_prodotto" || document.lavoro_modalita === "per_pezzo") return document.lavoro_modalita;
@@ -110,7 +112,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
       const series = isSeries(p);
       const error = series ? seriesProductError(p) : forfaitProductError(p);
       if (error) throw new Error(`Prodotto ${productIndex + 1}: ${error}`);
-      const amount = series ? Number(p.quantita) * Number(p.prezzo_serie) : Number(p.valore_forfait);
+      const amount = series ? Number(p.quantita) * seriesNetPrice(p) : Number(p.valore_forfait);
       // Preserve user inputs for toggling back, but clear all inactive derived costs.
       for (const key of ["materiale_calcolato_cad", "peso_teorico_kg", "materiale_tot", "lavoro_ore_totali", "lavoro_tot",
         "trattamenti_tot", "attrezzaggi_tot", "progettazione_tot", "progettazione_comune_cad", "trattamenti_globali_cad",
@@ -118,7 +120,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
         "prezzo_netto_unitario_finale", "netto_prima_ral", "ral_ricarico_cad", "ral_percentuale"])
         delete p[key];
       Object.assign(p, {totale: amount, totale_vendita_pre_quadratura: amount, totale_finale: amount, rettifica_unitaria: 0});
-      if (series) Object.assign(p, {prezzo_netto_unitario: Number(p.prezzo_serie), prezzo_vendita_pre_quadratura: Number(p.prezzo_serie), prezzo_netto_unitario_finale: Number(p.prezzo_serie)});
+      if (series) Object.assign(p, {prezzo_netto_unitario: seriesNetPrice(p), prezzo_vendita_pre_quadratura: seriesNetPrice(p), prezzo_netto_unitario_finale: seriesNetPrice(p)});
       baseTotal += amount;
       saleBefore += amount;
       continue;
@@ -189,14 +191,15 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
   }
   let totalFinal = (d.prodotti as Product[]).reduce((sum,p) => sum + p.totale_finale, 0);
   const totalBeforeRal = totalFinal;
-  assertPaintedTemporaryCodes(standardProducts, d.verniciatura_ral);
-  if (hasStandard && d.verniciatura_ral) {
+  const paintableProducts = (d.prodotti as Product[]).filter(p=>!isForfait(p));
+  assertPaintedTemporaryCodes(paintableProducts, d.verniciatura_ral);
+  if (paintableProducts.length && d.verniciatura_ral) {
     if (!validRal(d.verniciatura_ral)) throw new Error("Configurazione RAL non valida");
     const options = d.verniciatura_ral;
-    const result = calculateRal(standardProducts.map(p => ({ code: ralSourceCode(p, options), net: p.prezzo_netto_unitario_finale, quantity: Number(p.quantita) })), options);
-    result.rows.forEach((r, i) => Object.assign(standardProducts[i], { netto_prima_ral: r.baseNet, ral_ricarico_cad: r.surcharge, ral_percentuale: r.percent, prezzo_netto_unitario_finale: r.net, totale_finale: r.total }));
+    const result = calculateRal(paintableProducts.map(p => ({ code: ralSourceCode(p, options), net: p.prezzo_netto_unitario_finale, quantity: Number(p.quantita) })), options);
+    result.rows.forEach((r, i) => Object.assign(paintableProducts[i], { netto_prima_ral: r.baseNet, ral_ricarico_cad: r.surcharge, ral_percentuale: r.percent, prezzo_netto_unitario_finale: r.net, totale_finale: r.total }));
     d.ral_riepilogo = result;
-    totalFinal = result.total! + (d.prodotti as Product[]).filter(isFixedPrice).reduce((sum,p)=>sum+p.totale_finale,0);
+    totalFinal = result.total! + (d.prodotti as Product[]).filter(isForfait).reduce((sum,p)=>sum+p.totale_finale,0);
   } else {
     delete d.ral_riepilogo;
     for (const p of d.prodotti) { delete p.netto_prima_ral; delete p.ral_ricarico_cad; delete p.ral_percentuale; }

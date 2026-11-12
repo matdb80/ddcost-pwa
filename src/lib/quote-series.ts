@@ -1,3 +1,4 @@
+import {seriesDiscount} from "./series-discount";
 import {isForfait} from "./quote-forfait";
 import {QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH} from "./quote-product-description";
 type Row = Record<string, any>;
@@ -20,5 +21,13 @@ export function seriesProductError(product: Row): string | null {
     return "Inserisci una quantità maggiore di zero per il prodotto di serie.";
   const priceError = seriesPriceError(product.prezzo_serie);
   if (priceError) return priceError;
+  try{seriesDiscount(product.sconto_serie);}catch(e){return (e as Error).message;}
   return Number.isFinite(Number(product.quantita) * Number(product.prezzo_serie)) ? null : "Totale del prodotto di serie non valido.";
+}
+
+export function seriesNetPrice(product:Row):number {
+  const discount=seriesDiscount(product.sconto_serie);
+  if(!discount.label)return Number(product.prezzo_serie); // Preserve exact historical inputs when no discount is entered.
+  const net=Number(product.prezzo_serie)*discount.factor;
+  return Math.round((net+Number.EPSILON)*10000)/10000;
 }

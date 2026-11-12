@@ -1,3 +1,5 @@
+import {seriesDiscount} from "./series-discount";
+import {ralPrintSummary} from "./ral-print-summary";
 import {isSeries,isFixedPrice} from "./quote-series";
 import {documentProductCode,documentProductDescription} from "./document-product-fields";
 import {isForfait} from "./quote-forfait";
@@ -23,7 +25,7 @@ export function buildOneTimeQuotePrintHtml(
 ): string {
   const colorLabel=documentPrintColor(quote);
   const products = Array.isArray(quote.prodotti) ? quote.prodotti as Product[] : [];
-  const ral=products.some(p=>!isFixedPrice(p)) && (quote.verniciatura_ral||quote.ral_consolidato)?quote.ral_riepilogo:null;
+  const ral=products.some(p=>!isForfait(p)) && (quote.verniciatura_ral||quote.ral_consolidato)?quote.ral_riepilogo:null;
   const rows = products.map((product, index) => {
     if(isForfait(product))return `<tr><td class="num">${index+1}</td><td colspan="3">${escapeHtml(product.descrizione)}<br><strong>a forfait/da definire</strong></td><td class="num">€ ${money(product.valore_forfait)}</td></tr>`;
     const code = documentProductCode(product,quote);
@@ -32,7 +34,9 @@ export function buildOneTimeQuotePrintHtml(
     const quantity = number(product.quantita);
     const unitPrice = number(product.prezzo_netto_unitario_finale ?? product.prezzo_netto_unitario);
     const lineTotal = number(product.totale_finale ?? product.totale ?? unitPrice * quantity);
-    return `<tr><td class="num">${index + 1}</td><td>${productName || "Prodotto"}${isSeries(product)?"":`<br><strong>Colore: ${escapeHtml(documentPrintFinish(quote,product))}</strong>`}</td><td class="num">${formatNumber(quantity)} pz</td><td class="num">€ ${ral && !isSeries(product)?unitPrice.toLocaleString("it-IT",{minimumFractionDigits:4,maximumFractionDigits:4}):money(unitPrice)}</td><td class="num">€ ${money(lineTotal)}</td></tr>`;
+    const discount=isSeries(product)?seriesDiscount(product.sconto_serie).label:"";
+    const priceDetails=discount?`<div>Prezzo unitario: € ${money(product.prezzo_serie)}</div><div>Sconto: ${escapeHtml(discount)}</div><div>Prezzo netto${ral?" con RAL":""}: <strong>€ ${unitPrice.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:4})}</strong></div>`:null;
+    return `<tr><td class="num">${index + 1}</td><td>${productName || "Prodotto"}${isSeries(product)&&!ral?"":`<br><strong>Colore: ${escapeHtml(documentPrintFinish(quote,product))}</strong>`}</td><td class="num">${formatNumber(quantity)} pz</td><td class="num">${priceDetails??("€ "+(ral?unitPrice.toLocaleString("it-IT",{minimumFractionDigits:4,maximumFractionDigits:4}):money(unitPrice)))}</td><td class="num">€ ${money(lineTotal)}</td></tr>`;
   }).join("");
   const storedTotal = quote.totale_finale ?? quote.totale;
   const total = storedTotal == null
@@ -81,11 +85,11 @@ export function buildOneTimeQuotePrintHtml(
   <div><b>Data</b>${new Date().toLocaleDateString("it-IT")}</div>
   <div><b>Cliente</b>${client || "—"}</div>
   <div><b>Riferimento</b>${reference || "—"}</div>
-  ${products.some(p=>!isFixedPrice(p))?`<div><b>Colore</b><strong>${escapeHtml(colorLabel)}</strong></div>`:""}
+  ${(products.some(p=>!isFixedPrice(p))||ral)?`<div><b>Colore</b><strong>${escapeHtml(colorLabel)}</strong></div>`:""}
 </section>
 <h2>Prodotti e prezzi netti</h2>
 <table><thead><tr><th class="num">#</th><th>Prodotto</th><th class="num">Quantità</th><th class="num">Prezzo netto unitario</th><th class="num">Totale netto</th></tr></thead><tbody>${rows}</tbody></table>
-${ral ? `<p><strong>RAL ${escapeHtml(ral.color)}</strong> · Cambio colore (una volta): € ${money(ral.fixed)}. Prezzo verniciato indicativo, da confermare dall’ufficio.</p>` : ""}
+${ralPrintSummary(ral)}
 ${totalBlock}
 ${noteBlock}
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>

@@ -1,3 +1,6 @@
+import {lockGroupCatalog} from "./product-group-rename";
+import {withCostCompleteness} from "../src/lib/quote-cost-completeness";
+import {quoteInoxError} from "../src/lib/quote-inox";
 import {isSeries,seriesProductError} from "../src/lib/quote-series";
 import {isForfait,forfaitProductError} from "../src/lib/quote-forfait";
 import {validateTemporaryProductDocument} from "./temporary-code-validation";
@@ -17,7 +20,7 @@ import {quoteProductDescriptionError} from "../src/lib/quote-product-description
 
 const ALLOWED_MATERIALS = new Set(["ferro","ottone","inox","alluminio"]);
 
-async function validateQuoteClassifications(dataJson: string | undefined): Promise<void> {
+async function validateQuoteClassifications(dataJson: string | undefined, db:any): Promise<string> {
   await validateTemporaryProductDocument(dataJson,"prodotti");
   if (!dataJson) throw new Error("Il preventivo deve contenere i prodotti");
   let document: unknown;
@@ -26,6 +29,7 @@ async function validateQuoteClassifications(dataJson: string | undefined): Promi
   const rows = (document as { prodotti?: unknown } | null)?.prodotti;
   if (!Array.isArray(rows) || rows.length === 0)
     throw new Error("Inserire almeno un prodotto");
+  const catalog:Array<{id:number;name:string}>=await db.select({id:productGroups.id,name:productGroups.name}).from(productGroups);
   const usedGroups = new Set<string>();
   for (let i = 0; i < rows.length; i++) {
     const product = rows[i] as Record<string, unknown> | null;
@@ -40,6 +44,11 @@ async function validateQuoteClassifications(dataJson: string | undefined): Promi
       if(error)throw new TRPCError({code:"BAD_REQUEST",message:`Prodotto ${i+1}: ${error}`});
       continue;
     }
+    const inoxError=quoteInoxError(product);if(inoxError)throw new TRPCError({code:"BAD_REQUEST",message:`Prodotto ${i+1}: ${inoxError}`});
+    const selectedGroup=product.gruppo_merceologico_id!=null
+      ?catalog.find(g=>g.id===product.gruppo_merceologico_id)
+      :catalog.find(g=>g.name.toLocaleLowerCase("it-IT")===String(product.gruppo_merceologico??"").trim().toLocaleLowerCase("it-IT"));
+    if(selectedGroup){product.gruppo_merceologico=selectedGroup.name;product.gruppo_merceologico_id=selectedGroup.id;}
     const group = String(product.gruppo_merceologico ?? "").trim();
     const material = String(product.materiale_prodotto ?? "").trim().toLocaleLowerCase("it-IT");
     if (!group) throw new Error("Selezionare il gruppo merceologico del prodotto " + (i+1));
@@ -53,14 +62,17 @@ async function validateQuoteClassifications(dataJson: string | undefined): Promi
   if(descriptionError)throw new TRPCError({code:"BAD_REQUEST",message:descriptionError});
   const materialError=quoteMaterialError(rows);
   if(materialError)throw new TRPCError({code:"BAD_REQUEST",message:materialError});
-  if(!usedGroups.size)return;
-  const db = getDb();
+  let validated:string;
+  try{validated=JSON.stringify(withCostCompleteness(document as Record<string,any>));}
+  catch(error){throw new TRPCError({code:"BAD_REQUEST",message:(error as Error).message});}
+  if(!usedGroups.size)return validated;
   const exists = await db.select({ name: productGroups.name })
     .from(productGroups).where(inArray(productGroups.name, Array.from(usedGroups)));
-  const recognized = new Set(exists.map(g=>g.name.toLocaleLowerCase("it-IT")));
+  const recognized = new Set(exists.map((g:{name:string})=>g.name.toLocaleLowerCase("it-IT")));
   for (const name of usedGroups)
     if (!recognized.has(name.toLocaleLowerCase("it-IT")))
       throw new Error("Gruppo merceologico non registrato: " + name);
+  return validated;
 }
 
 export const quoteRouter = createRouter({
@@ -172,9 +184,10 @@ export const quoteRouter = createRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await validateQuoteClassifications(input.dataJson);
       const db = getDb();
       return db.transaction(async tx => {
+        await lockGroupCatalog(tx);
+        input.dataJson=await validateQuoteClassifications(input.dataJson,tx);
         const number = await reserveCommercialDocumentNumber(tx);
         const document = { ...JSON.parse(input.dataJson!), numero_preventivo: number, rev: 1, stato_preventivo: "completo" };
         const result = await tx.insert(quotes).values({
@@ -207,6 +220,12 @@ export const quoteRouter = createRouter({
       await validateTemporaryProductDocument(input.dataJson,"prodotti",true);
       const db=getDb();
       return db.transaction(async tx=>{
+        const catalog=await lockGroupCatalog(tx);
+        for(const p of document.prodotti as Record<string,any>[]){
+          if(p.gruppo_merceologico_id){const group=catalog.find(g=>g.id===p.gruppo_merceologico_id);if(group)p.gruppo_merceologico=group.name;}
+          else {const group=catalog.find(g=>g.name===p.gruppo_merceologico);if(group)p.gruppo_merceologico_id=group.id;}
+        }
+
         const source=input.sourceId
           ? (await tx.select().from(quotes).where(and(
               eq(quotes.id,input.sourceId),eq(quotes.userId,ctx.user.id)
@@ -281,9 +300,10 @@ export const quoteRouter = createRouter({
       dataJson:z.string().min(2).max(62000),
     }))
     .mutation(async({ctx,input})=>{
-      await validateQuoteClassifications(input.dataJson);
       const db=getDb();
       return db.transaction(async tx=>{
+        await lockGroupCatalog(tx);
+        input.dataJson=await validateQuoteClassifications(input.dataJson,tx);
         const source=(await tx.select().from(quotes).where(and(
           eq(quotes.id,input.draftId),eq(quotes.userId,ctx.user.id)
         )).limit(1))[0];
@@ -329,8 +349,9 @@ export const quoteRouter = createRouter({
       dataJson: z.string().min(2).max(62000),
     }))
     .mutation(async ({ ctx, input }) => {
-      await validateQuoteClassifications(input.dataJson);
       return getDb().transaction(async tx => {
+        await lockGroupCatalog(tx);
+        input.dataJson=await validateQuoteClassifications(input.dataJson,tx);
         const source = (await tx.select().from(quotes).where(and(
           eq(quotes.id, input.id), eq(quotes.userId, ctx.user.id)
         )).limit(1).for("update"))[0];
@@ -371,9 +392,10 @@ export const quoteRouter = createRouter({
       dataJson: z.string().min(2),
     }))
     .mutation(async ({ ctx, input }) => {
-      await validateQuoteClassifications(input.dataJson);
       const db = getDb();
       return db.transaction(async (tx) => {
+        await lockGroupCatalog(tx);
+        input.dataJson=await validateQuoteClassifications(input.dataJson,tx);
         const sourceRows = await tx.select().from(quotes).where(and(
           eq(quotes.id, input.sourceId), eq(quotes.userId, ctx.user.id)
         )).limit(1);
@@ -454,7 +476,9 @@ export const quoteRouter = createRouter({
     .input(z.object({ rootId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
-      const rows = await db
+      return db.transaction(async tx=>{
+      await lockGroupCatalog(tx);
+      const rows = await tx
         .select()
         .from(quotes)
         .where(
@@ -464,11 +488,11 @@ export const quoteRouter = createRouter({
           )
         )
         .orderBy(desc(quotes.rev))
-        .limit(1);
+        .limit(1).for("update");
 
       const latest = rows[0];
       if (!latest) throw new Error("Quote not found");
-      if (!quoteIsDraft(latest.dataJson)) await validateQuoteClassifications(latest.dataJson ?? undefined);
+      if (!quoteIsDraft(latest.dataJson)) latest.dataJson=await validateQuoteClassifications(latest.dataJson ?? undefined,tx);
       else {
         const draft=parseIncompleteQuote(latest.dataJson??"");
         const descriptionError=quoteProductDescriptionError(draft.prodotti as Record<string,unknown>[]);
@@ -476,7 +500,7 @@ export const quoteRouter = createRouter({
       }
 
       const newRev = (latest.rev ?? 1) + 1;
-      const result = await db.insert(quotes).values({
+      const result = await tx.insert(quotes).values({
         userId: ctx.user.id,
         rootId: input.rootId,
         rev: newRev,
@@ -494,5 +518,6 @@ export const quoteRouter = createRouter({
       });
 
       return { id: Number(result[0].insertId), rev: newRev };
+      });
     }),
 });

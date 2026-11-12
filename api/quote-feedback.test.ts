@@ -9,12 +9,16 @@ const connection=vi.hoisted(()=>({db:undefined as any}));
 vi.mock("./queries/connection",()=>({getDb:()=>connection.db}));
 import {quoteRouter} from "./quote-router";
 import {offerRouter} from "./offer-router";
+import {productGroupRouter} from "./product-group-router";
+import {withCostCompleteness} from "../src/lib/quote-cost-completeness";
 
 // Transactional in-memory adapter: exercises the real routers and shared allocator.
 // Row locking/rollback are simulated here, not a claim of a live TiDB test.
 class Store {
   quotes:any[]=[];
   offers:any[]=[];
+  groups:any[]=[{id:1,name:"Bandelle"}];
+  failGroupUpdate=false;
   counter=0;
   missingCounter=false;
   failInsert="";
@@ -25,7 +29,7 @@ class Store {
   private filter(rows:any[],condition?:SQL){
     if(!condition)return rows;
     const {sql,params}=this.dialect.sqlToQuery(condition);
-    const fields=[...sql.matchAll(/`(?:quotes|commercial_offers)`\.`(id|userId|rootId)` = \?/g)].map(m=>m[1]);
+    const fields=[...sql.matchAll(/`(?:quotes|commercial_offers|product_groups)`\.`(id|userId|rootId)` = \?/g)].map(m=>m[1]);
     if(!fields.length)return rows;
     return rows.filter(row=>{
       const matches=fields.map((field,i)=>row[field]===params[i]);
@@ -38,7 +42,7 @@ class Store {
       transaction:async(fn:(tx:any)=>Promise<unknown>)=>{
         let release!:()=>void;
         const prior=store.tail;store.tail=new Promise<void>(r=>release=r);await prior;
-        const snapshot=structuredClone({quotes:store.quotes,offers:store.offers,counter:store.counter});
+        const snapshot=structuredClone({quotes:store.quotes,offers:store.offers,counter:store.counter,groups:store.groups});
         try{return await fn(store.adapter(true));}
         catch(e){Object.assign(store,snapshot);throw e;}
         finally{release();}
@@ -60,8 +64,8 @@ class Store {
         const q:any={from:(t:any)=>{name=store.table(t);return q;},where:(c:SQL)=>{condition=c;return q;},
           orderBy:()=>q,limit:(n:number)=>{limit=n;return q;},for:()=>{expect(inTransaction).toBe(true);return q;},
           then:(resolve:any,reject:any)=>{
-            const rows=name==="product_groups"?[{name:"Bandelle"}]:name==="quotes"?store.quotes:store.offers;
-            return Promise.resolve(structuredClone(store.filter(rows,condition).sort((a,b)=>(b.rev??1)-(a.rev??1)||b.id-a.id).slice(0,limit))).then(resolve,reject);
+            const rows=name==="product_groups"?store.groups:name==="quotes"?store.quotes:store.offers;
+            return Promise.resolve(structuredClone([...store.filter(rows,condition)].sort((a,b)=>(b.rev??1)-(a.rev??1)||b.id-a.id).slice(0,limit))).then(resolve,reject);
           }};return q;
       },
       insert:(t:any)=>({values:async(values:any)=>{
@@ -71,7 +75,9 @@ class Store {
         rows.push({id,createdAt:new Date(),updatedAt:new Date(),...values});return [{insertId:id}];
       }}),
       update:(t:any)=>({set:(values:any)=>({where:async(condition:SQL)=>{
-        const rows=store.table(t)==="quotes"?store.quotes:store.offers;
+        const table=store.table(t);
+        if(table==="product_groups"&&store.failGroupUpdate)throw new Error("Group update failed");
+        const rows=table==="quotes"?store.quotes:table==="product_groups"?store.groups:store.offers;
         const found=store.filter(rows,condition);found.forEach(row=>Object.assign(row,values,{updatedAt:new Date()}));return [{affectedRows:found.length}];
       }})}),
     };
@@ -79,7 +85,7 @@ class Store {
   connect(){return this.adapter();}
 }
 const context=(id=1,commercialOnly=false):TrpcContext=>({req:new Request("https://test.local"),resHeaders:new Headers(),user:{id,role:"admin",commercialOnly} as TrpcContext["user"]});
-const doc=()=>({cliente:"Cliente",riferimento_preventivo:"Progetto alfa",stato_preventivo:"completo",prodotti:[{codice:"TMP-storico-17",descrizione:"Bandella",gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",quantita:10,oggetto_modifica:["occhio"]}],note_cliente:"Prima"});
+const doc=()=>({cliente:"Cliente",riferimento_preventivo:"Progetto alfa",stato_preventivo:"completo",prodotti:[{codice:"TMP-storico-17",descrizione:"Bandella",gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",materiale_cad:1,lavoro_h:1,costo_lavoro:24,trattamenti_cad:1,quantita:10,oggetto_modifica:["occhio"]}],note_cliente:"Prima"});
 const payload=(document=doc())=>({client:"Cliente",reference:"Progetto alfa",numProducts:1,totalFinal:"100",targetTotal:null,dataJson:JSON.stringify(document)});
 let store:Store;
 beforeEach(()=>{vi.useFakeTimers();vi.setSystemTime(new Date("2026-11-05T12:00:00Z"));store=new Store();connection.db=store.connect();});
@@ -125,7 +131,8 @@ describe("quote product description limit",()=>{
       ()=>caller().saveRevision({sourceId:source.id,...payload(invalid)}),
     ])await expect(write()).rejects.toMatchObject({code:"BAD_REQUEST",message:expect.stringContaining("60 caratteri, spazi inclusi")});
     expect(store.quotes).toEqual(before);
-    for(const row of store.quotes){
+    for(const id of store.quotes.map(r=>r.id)){
+      const row=store.quotes.find(r=>r.id===id)!;
       row.dataJson=JSON.stringify({...invalid,stato_preventivo:row.id===draft.id?"bozza":"completo"});
       expect(JSON.parse((await caller().get({id:row.id}))!.dataJson!).prodotti[0].descrizione).toBe(invalid.prodotti[0].descrizione);
       await expect(caller().createRevision({rootId:row.id})).rejects.toMatchObject({code:"BAD_REQUEST"});
@@ -339,5 +346,67 @@ describe("series product completed writes",()=>{
  it("retains costed product requirements in mixed documents",async()=>{
   const d={...doc(),prodotti:[...seriesDoc().prodotti,{...doc().prodotti[0],oggetto_modifica:[]}]};
   await expect(caller().create({client:"Cliente",numProducts:2,dataJson:JSON.stringify(d)})).rejects.toThrow("Prodotto 2: Seleziona almeno una voce");
+ });
+});
+
+describe('cost acknowledgement on real router handlers',()=>{
+ it('allows incomplete drafts but requires acknowledgement on every completed write',async()=>{
+  const original=await createQuote();const document=doc();document.prodotti[0].trattamenti_cad=0;
+  const draft=await caller().saveDraft({dataJson:JSON.stringify(document)});
+  const before=structuredClone(store.quotes);
+  for(const write of [
+    ()=>caller().create({...payload(document),targetTotal:undefined}),
+    ()=>caller().finalizeDraft({draftId:draft.id,...payload(document)}),
+    ()=>caller().update({id:original.id,expectedToken:quoteWriteToken(store.quotes[0]),...payload(document)}),
+    ()=>caller().saveRevision({sourceId:original.id,...payload(document)}),
+  ])await expect(write()).rejects.toMatchObject({code:'BAD_REQUEST',message:expect.stringContaining('Conferma esplicitamente')});
+  expect(store.quotes).toEqual(before);
+  const confirmed=withCostCompleteness(document,true) as ReturnType<typeof doc>;
+  await caller().finalizeDraft({draftId:draft.id,...payload(confirmed)});
+  expect(JSON.parse((await caller().get({id:draft.id}))!.dataJson!)).toMatchObject({costi_incompleti:['Prodotto 1: trattamenti'],stato_preventivo:'completo'});
+  const changed=structuredClone(confirmed);changed.prodotti[0].materiale_cad=0;
+  await expect(caller().saveRevision({sourceId:draft.id,...payload(changed)})).rejects.toThrow('Conferma esplicitamente');
+ });
+});
+describe('global product group rename',()=>{
+ const groups=()=>productGroupRouter.createCaller(context());
+ it('updates all users and revisions atomically, preserves economic data and refreshes the matching editor token',async()=>{
+  const first=await createQuote();await caller().saveRevision({sourceId:first.id,...payload()});
+  await quoteRouter.createCaller(context(2)).saveDraft({dataJson:JSON.stringify(doc())});
+  const before=structuredClone(store.quotes),token=quoteWriteToken(store.quotes[0]);
+  const result=await groups().rename({id:1,expectedName:'Bandelle',name:'Bandelle speciali',confirmGlobal:true,quoteId:first.id,quoteToken:token});
+  expect(result.updatedQuotes).toBe(3);expect(result.editToken).toBe(quoteWriteToken(store.quotes[0]));expect(result.editToken).not.toBe(token);
+  for(let i=0;i<before.length;i++){
+   const a=JSON.parse(before[i].dataJson),b=JSON.parse(store.quotes[i].dataJson);
+   expect(b.prodotti[0]).toMatchObject({gruppo_merceologico:'Bandelle speciali',gruppo_merceologico_id:1});
+   delete b.prodotti[0].gruppo_merceologico_id;b.prodotti[0].gruppo_merceologico='Bandelle';delete a.prodotti[0].gruppo_merceologico_id;expect(b).toEqual(a);
+   expect(store.quotes[i].totalFinal).toBe(before[i].totalFinal);
+  }
+  await expect(caller().update({id:first.id,expectedToken:token,...payload({...doc(),prodotti:[{...doc().prodotti[0],gruppo_merceologico:'Bandelle speciali'}]})})).rejects.toMatchObject({code:'CONFLICT'});
+ });
+ it('rolls back every document if the final catalog update fails',async()=>{
+  await createQuote();const before=structuredClone(store.quotes);store.failGroupUpdate=true;
+  await expect(groups().rename({id:1,expectedName:'Bandelle',name:'Bandelle speciali',confirmGlobal:true})).rejects.toThrow('Group update failed');
+  expect(store.quotes).toEqual(before);expect(store.groups[0].name).toBe('Bandelle');
+ });
+ it('rejects collisions, stale names and missing explicit global confirmation',async()=>{
+  store.groups.push({id:2,name:'Cardini'});await createQuote();const before=structuredClone(store.quotes);
+  await expect(groups().rename({id:1,expectedName:'Bandelle',name:'cardini',confirmGlobal:true})).rejects.toMatchObject({code:'CONFLICT'});
+  await expect(groups().rename({id:1,expectedName:'Vecchio nome',name:'Nuovo',confirmGlobal:true})).rejects.toMatchObject({code:'CONFLICT'});
+  await expect(groups().rename({id:1,expectedName:'Bandelle',name:'Nuovo',confirmGlobal:false as any})).rejects.toMatchObject({code:'BAD_REQUEST'});
+  expect(store.quotes).toEqual(before);
+ });
+ it('does not refresh a stale quote token and canonicalizes an open draft by stable group id',async()=>{
+  const quote=await createQuote();const stale=quoteWriteToken(store.quotes[0]);store.quotes[0].client='Concurrent edit';
+  const result=await groups().rename({id:1,expectedName:'Bandelle',name:'Nuovo gruppo',confirmGlobal:true,quoteId:quote.id,quoteToken:stale});
+  expect(result.editToken).toBeUndefined();
+  const d={...doc(),prodotti:[{...doc().prodotti[0],gruppo_merceologico_id:1}]};
+  const saved=await caller().saveDraft({dataJson:JSON.stringify(d)});
+  expect(JSON.parse((await caller().get({id:saved.id}))!.dataJson!).prodotti[0].gruppo_merceologico).toBe('Nuovo gruppo');
+ });
+ it('aborts instead of partially renaming when a document is unreadable',async()=>{
+  await createQuote();store.quotes.push({...store.quotes[0],id:99,dataJson:'{"prodotti":'});const before=structuredClone(store.quotes);
+  await expect(groups().rename({id:1,expectedName:'Bandelle',name:'Nuovo',confirmGlobal:true})).rejects.toThrow('illeggibili');
+  expect(store.quotes).toEqual(before);expect(store.groups[0].name).toBe('Bandelle');
  });
 });

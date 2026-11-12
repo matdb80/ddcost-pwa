@@ -1,3 +1,4 @@
+import {quoteInoxGrade} from "./quote-inox";
 import {temporaryCodePrefix,temporaryCode,TEMPORARY_FAMILIES,TEMPORARY_MATERIALS} from "./ral-pricing";
 import {isFixedPrice} from "./quote-series";
 type Data=Record<string,any>;
@@ -47,6 +48,7 @@ export function documentProductDescription(row:Data):string {
         material=TEMPORARY_MATERIALS[metadata.material as keyof typeof TEMPORARY_MATERIALS].toUpperCase();
     }catch{/* Retain the explicitly selected generic material. */}
   }
+  if(selected==="inox"&&quoteInoxGrade(row))material="INOX AISI "+quoteInoxGrade(row);
   if(!material || description.toUpperCase().endsWith(material))return description;
   return [description,material].filter(Boolean).join(" — ");
 }
