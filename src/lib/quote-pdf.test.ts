@@ -128,3 +128,16 @@ it('translates the default black textured finish and optional summary exclusions
   ],{color:'6021',textured:false}),undefined,true,'en');
   for(const phrase of ['Stainless steel','already RAL','excluded category','Other items (ZZ)','On request','The batches are alternatives','Items excluded from the surcharge'])expect(summary).toContain(phrase);
 });
+
+it.each([false,true])('prints the selected revision in the header in English=%s',english=>{
+  const doc={numero_preventivo:'DDC90007/2026',rev:2,pdf_in_inglese:english,prodotti:[]};
+  const label=english?'Revision':'Revisione';
+  const html=buildOneTimeQuotePrintHtml(doc,123,undefined,{revision:3});
+  expect(html).toContain(`DDC90007/2026 <span class="quote-revision">— ${label} 3</span>`);
+  expect(doc.rev).toBe(2);
+  expect(buildOneTimeQuotePrintHtml(doc)).toContain(`— ${label} 2</span>`);
+  for(const rev of [undefined,null,0,-1,1.5,'wrong','<script>',true]){
+    const historic=buildOneTimeQuotePrintHtml({...doc,rev});
+    expect(historic).toContain(`— ${label} —</span>`);
+  }
+});

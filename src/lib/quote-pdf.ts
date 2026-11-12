@@ -34,9 +34,15 @@ export function buildOneTimeQuotePrintHtml(
   quote: QuoteDocument,
   quoteId?: number,
   logoUrl = "/images/ddf-logo.png",
-  options: { hideDocumentTotal?: boolean } = {}
+  options: { hideDocumentTotal?: boolean; revision?: number | null } = {}
 ): string {
   quote = refreshQuoteSeriesRal(quote);
+  // The selected database row takes precedence over an older JSON snapshot.
+  const rawRevision = options.revision ?? quote.rev;
+  const revision =
+    (typeof rawRevision === "number" || typeof rawRevision === "string") &&
+    Number.isSafeInteger(Number(rawRevision)) && Number(rawRevision) > 0
+      ? String(Number(rawRevision)) : "—";
   const language: PrintLanguage = quote.pdf_in_inglese === true ? "en" : "it",
     t = quotePrintLabels(language),
     locale = printLocale(language);
@@ -139,6 +145,7 @@ export function buildOneTimeQuotePrintHtml(
   h2 { font-size: 11pt; margin: 18px 0 8px; color: #303a40; }
   .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 18px; padding: 10px 12px; border: 1px solid #cbd1d5; border-radius: 4px; margin: 12px 0 20px; }
   .meta b { color: #58636a; font-size: 8pt; display: block; }
+  .quote-revision { white-space: nowrap; font-weight: 700; }
   table { width: 100%; border-collapse: collapse; margin: 10px 0 14px; }
   tr { break-inside: avoid; page-break-inside: avoid; }
   th, td { border: 1px solid #cbd1d5; padding: 8px; vertical-align: top; }
@@ -154,7 +161,7 @@ export function buildOneTimeQuotePrintHtml(
 <header><img src="${escapeAttribute(logoUrl)}" alt="DDF Didieffe Group"><div class="company"><strong>${COMPANY.name}</strong>${companyDetails}</div></header>
 <h1>${title}</h1>
 <section class="meta">
-  <div><b>${t.number}</b>${escapeHtml(quoteDocumentNumber(quote) ?? (quoteId ? String(quoteId) : "—"))}</div>
+  <div><b>${t.number}</b>${escapeHtml(quoteDocumentNumber(quote) ?? (quoteId ? String(quoteId) : "—"))} <span class="quote-revision">— ${t.revision} ${revision}</span></div>
   <div><b>${t.date}</b>${new Date().toLocaleDateString(locale)}</div>
   <div><b>${t.client}</b>${client || "—"}</div>
   <div><b>${t.reference}</b>${reference || "—"}</div>

@@ -23,8 +23,8 @@ vi.mock("@/providers/trpc",()=>{
   return {trpc:proxy([])};
 });
 import Editor from "./PreventivoEditorPage";
-function mount(doc:Record<string,any>,mobile=false){
-  state.data={id:123,rev:1,editToken:"test-version",dataJson:JSON.stringify(doc),client:"Cliente prova",reference:"Test"};
+function mount(doc:Record<string,any>,mobile=false,revision=1){
+  state.data={id:123,rev:revision,editToken:"test-version",dataJson:JSON.stringify(doc),client:"Cliente prova",reference:"Test"};
   window.localStorage.setItem("ddcost.quote.mobile-view",mobile?"1":"0");
   const router=createMemoryRouter([{path:"/preventivi/:id",element:<Editor/>}],{initialEntries:["/preventivi/123"]});
   return render(<RouterProvider router={router}/>);
@@ -570,5 +570,19 @@ it.each([false,true])('stores the PDF language choice in mobile=%s without recal
     expect(saved.pdf_in_inglese).toBe(true);expect(saved.totale_finale).toBe(74.25);expect(saved.prodotti).toEqual(historical.prodotti);
     cleanup();mount(saved,mobile);
     expect((await screen.findByRole('checkbox',{name:'Elabora diciture preventivo in inglese'}) as HTMLInputElement).checked).toBe(true);
+  }finally{popup.mockRestore();}
+});
+
+it.each([false,true])('exports the actual saved revision even when its JSON is stale, English=%s',async english=>{
+  mount({...blankQuote(),numero_preventivo:'DDC90007/2026',rev:1,pdf_in_inglese:english,stato_preventivo:'completo',totale_finale:10,
+    prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'FCA00504HBIN',descrizione:'Serie',quantita:1,prezzo_serie:10,prezzo_netto_unitario_finale:10,totale_finale:10}]},false,3);
+  await screen.findByRole('heading',{name:'Preventivo DDC90007/2026 — rev. 3'});
+  const write=vi.fn(),popup=vi.spyOn(window,'open').mockReturnValue({document:{open:vi.fn(),write,close:vi.fn()}} as unknown as Window);
+  try{
+    fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
+    expect(write).toHaveBeenCalledOnce();
+    const html=write.mock.calls[0][0];
+    expect(html).toContain(`DDC90007/2026 <span class="quote-revision">— ${english?'Revision':'Revisione'} 3</span>`);
+    expect(state.calls).toHaveLength(0);
   }finally{popup.mockRestore();}
 });

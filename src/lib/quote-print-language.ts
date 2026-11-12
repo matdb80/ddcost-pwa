@@ -2,6 +2,7 @@ export type PrintLanguage = "it" | "en";
 const italian = {
   title: "Preventivo una tantum",
   number: "Numero preventivo",
+  revision: "Revisione",
   date: "Data",
   client: "Cliente",
   reference: "Riferimento",
@@ -27,6 +28,7 @@ const italian = {
 const english: typeof italian = {
   title: "One-time quotation",
   number: "Quotation number",
+  revision: "Revision",
   date: "Date",
   client: "Customer",
   reference: "Reference",

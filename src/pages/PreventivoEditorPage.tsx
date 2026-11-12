@@ -379,6 +379,7 @@ export default function PreventivoEditorPage() {
       const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
       openCommercialOfferPrintWindow(buildOneTimeQuotePrintHtml(computed,numericId || undefined,undefined,{
         hideDocumentTotal: hideDocumentTotalInPdf,
+        revision: data?.rev,
       }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Impossibile esportare il PDF cliente");
