@@ -99,7 +99,9 @@ export function buildOneTimeQuotePrintHtml(
       const priceDetails = discount
         ? `<div>${t.unitPrice}: € ${money(product.prezzo_serie)}</div><div>${t.discount}: ${escapeHtml(discount)}</div><div>${t.netPrice}${ral ? t.withRal : ""}: <strong>€ ${unitPrice.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</strong></div>`
         : null;
-      return `<tr><td class="num">${index + 1}</td><td>${productName || t.product}${isSeries(product) && !ral ? "" : `<br><strong>${t.color}: ${escapeHtml(documentPrintFinish(quote, product, language))}</strong>${swatch}`}</td><td class="num">${formatNumber(quantity)} ${t.pieces}</td><td class="num">${priceDetails ?? "€ " + (ral ? unitPrice.toLocaleString(locale, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : money(unitPrice))}</td><td class="num">€ ${money(lineTotal)}</td></tr>`;
+      const finish=documentPrintFinish(quote,product,language);
+      const rowSwatch=ralPrintSwatch(/RAL (\d{4})/.exec(finish)?.[1]??"");
+      return `<tr><td class="num">${index + 1}</td><td>${productName || t.product}${isSeries(product) && !ral ? "" : `<br><strong>${t.color}: ${escapeHtml(finish)}</strong>${rowSwatch}`}</td><td class="num">${formatNumber(quantity)} ${t.pieces}</td><td class="num">${priceDetails ?? "€ " + (ral ? unitPrice.toLocaleString(locale, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : money(unitPrice))}</td><td class="num">€ ${money(lineTotal)}</td></tr>`;
     })
     .join("");
   const storedTotal = quote.totale_finale ?? quote.totale;

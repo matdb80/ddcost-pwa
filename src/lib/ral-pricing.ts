@@ -18,8 +18,12 @@ export function temporaryCodePrefix(sequence: number, family: string, material: 
 export function validTemporarySuffix(value: unknown): value is string {
   return typeof value==="string" && Array.from(value).length===1 && !/[\s\p{C}]/u.test(value);
 }
-export function temporaryCode(sequence: number, family: string, material: string, color?: string | null, suffix?: string | null): string {
+export function temporaryCode(sequence: number, family: string, material: string, color?: string | null, suffix?: string | null, natural=false): string {
   const prefix=temporaryCodePrefix(sequence,family,material);
+  if(natural){
+    if(color || (suffix!=null && suffix!=="0"))throw new Error("Grezzo/naturale non può avere un colore RAL o un'altra finitura");
+    return prefix+"0";
+  }
   if(color){
     if(family==="QU")throw new Error("La famiglia QU è esclusa dalla verniciatura RAL");
     if(!knownColors.has(color)||suffix)throw new Error("Colore RAL non valido o carattere finale incompatibile con il RAL");
@@ -38,7 +42,7 @@ export function temporaryCode(sequence: number, family: string, material: string
 export function manualTemporaryCodePrefix(metadata: unknown): string | null {
   if(!metadata||typeof metadata!=="object")return null;
   const t=metadata as Record<string,unknown>;
-  if(t.color!=null || (t.material!=="B"&&t.material!=="A") || typeof t.code!=="string")return null;
+  if(t.color!=null || (t.material!=="B"&&t.material!=="A") || typeof t.code!=="string" || isNaturalTemporaryCode(t.code))return null;
   try{
     const prefix=temporaryCodePrefix(Number(t.sequence),String(t.family),t.material);
     return validManualTemporaryCode(t.code,prefix)?prefix:null;
@@ -47,10 +51,30 @@ export function manualTemporaryCodePrefix(metadata: unknown): string | null {
 export function validManualTemporaryCode(code: string, prefix: string, allowEmpty=false): boolean {
   return code.startsWith(prefix) && ((allowEmpty && code===prefix)||validTemporarySuffix(code.slice(prefix.length)));
 }
+/** The explicit natural finish belongs to the temporary SKU, including after reopening. */
+export function isNaturalTemporaryCode(value:unknown):boolean {
+  const match=/^T([A-Z]{2})(\d{7})([IX6BA])0$/.exec(String(value??"").trim().toUpperCase());
+  return Boolean(match && Number(match[2])>0 && TEMPORARY_FAMILIES.includes(match[1] as typeof TEMPORARY_FAMILIES[number]));
+}
+/** Preserve the selected finish, but never change the issued prefix when copying. */
+export function temporaryCodeCopyOptions(record:{sequence:number;family:string;material:string|null;color:string|null;code:string|null},currentCode:string){
+  const material=record.material??"",prefix=temporaryCodePrefix(record.sequence,record.family,material);
+  const code=currentCode.trim();
+  const manual=manualTemporaryCodePrefix(record);
+  const legacyFixed=record.code===prefix && ["I","X","6"].includes(material) && !record.color;
+  if(manual ? !validManualTemporaryCode(code,prefix) : code!==record.code && !(legacyFixed && code===temporaryCode(record.sequence,record.family,material)))
+    throw new Error("Il codice da copiare non corrisponde al codice temporaneo emesso");
+  const natural=isNaturalTemporaryCode(code);
+  const suffix=!record.color && !natural && (material==="B"||material==="A")?code.slice(prefix.length):undefined;
+  // Validate before reserving a fresh number (including incomplete historical brass codes).
+  temporaryCode(1,record.family,material,record.color,suffix,natural);
+  return {family:record.family,material,color:record.color,suffix,natural};
+}
 export function ralCodeInfo(raw: string) {
   const code = raw.trim().toUpperCase();
+  const natural=isNaturalTemporaryCode(code);
   return { code, family: code.slice(1, 3).toLowerCase(), stainless: "1236X".includes(code[10] ?? " "),
-    paintable: code.slice(1,3)!=="QU" && !/O\d{4}$/.test(code) && code[10] !== "N" };
+    natural, paintable: !natural && code.slice(1,3)!=="QU" && !/O\d{4}$/.test(code) && code[10] !== "N" };
 }
 export function ralRate(code: string, textured: boolean) {
   const info = ralCodeInfo(code);
@@ -63,7 +87,7 @@ export function ralRate(code: string, textured: boolean) {
 export type RalLineInput = { code: string; net: number | null; quantity: number };
 export function calculateRal(lines: RalLineInput[], options: RalOptions) {
   if (!validRal(options)) throw new Error("Seleziona un colore RAL valido");
-  if (options.textured && lines.some(r => ralCodeInfo(r.code).stainless)) throw new Error("Il goffrato non è compatibile con un ordine contenente inox");
+  if (options.textured && lines.some(r => {const info=ralCodeInfo(r.code);return info.stainless&&!info.natural;})) throw new Error("Il goffrato non è compatibile con un ordine contenente inox verniciato");
   const rows = lines.map(line => {
     if (!line.code.trim()) throw new Error("Inserisci il codice articolo per calcolare il RAL");
     if (!Number.isFinite(line.quantity) || line.quantity <= 0 || (line.net !== null && (!Number.isFinite(line.net) || line.net < 0))) throw new Error("Quantità o netto cliente non valido");

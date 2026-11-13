@@ -13,7 +13,7 @@ import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { trpc } from "@/providers/trpc";
-import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy, FileText } from "lucide-react";
+import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy, FileText, ArrowUp, ArrowDown } from "lucide-react";
 import { formatQuoteForCopy } from "@/lib/quote-copy";
 import { buildOneTimeQuotePrintHtml } from "@/lib/quote-pdf";
 import { openCommercialOfferPrintWindow } from "@/lib/commercial-offer-pdf";
@@ -22,7 +22,7 @@ import QuoteNumericInput, {type QuoteNumericKind} from "@/components/QuoteNumeri
 import LaborCostField from "@/components/LaborCostField";
 import ArticleCodeInput from "@/components/ArticleCodeInput";
 import StandardBlackFinish from "@/components/StandardBlackFinish";
-import {manualTemporaryCodePrefix,validManualTemporaryCode} from "@/lib/ral-pricing";
+import {manualTemporaryCodePrefix,validManualTemporaryCode,isNaturalTemporaryCode} from "@/lib/ral-pricing";
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
 import QuoteMobileWizard from "@/components/QuoteMobileWizard";
@@ -35,7 +35,7 @@ import RalSettings from "@/components/RalSettings";
 import QuoteAttachments from "@/components/QuoteAttachments";
 import QuoteTotal from "@/components/QuoteTotal";
 import {
-  blankProduct, blankQuote, calculateQuote, changeQuoteLaborMode, duplicateProductForNewLot, migrateQuoteToEngineeringHours,
+  blankProduct, blankQuote, calculateQuote, changeQuoteLaborMode, duplicateProductForNewLot, moveQuoteProduct, movedProductIndex, migrateQuoteToEngineeringHours,
   type Product, type QuoteDocument,
 } from "@/lib/quote-calculation";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
@@ -166,6 +166,10 @@ export default function PreventivoEditorPage() {
   const draftIdRef=useRef<number|null>(null);
   const allowLeaveRef=useRef(false);
   const [draftSaving,setDraftSaving]=useState(false);
+  const [copyingProduct,setCopyingProduct]=useState(false);
+  const copyingRef=useRef(false);
+  const copyRequest=useRef<{sourceCode:string;currentCode:string;requestKey:string}|null>(null);
+  const duplicateTemporary=trpc.temporaryProduct.duplicate.useMutation();
   const [draftMessage,setDraftMessage]=useState("");
 
   const groupsQuery = trpc.productGroup.list.useQuery();
@@ -261,10 +265,48 @@ export default function PreventivoEditorPage() {
         (key==="materiale_prodotto" && doc.prodotti[index]?.costo_materiale_noto===false))
       setDirtyCalculation(true);
   };
+  const withRowIds=(rows:Product[])=>rows.map(p=>p._rowId?p:{...p,_rowId:crypto.randomUUID()});
+  function remapReferences(map:(index:number)=>number){
+    setPriceProductIndex(map);
+    setNewGroupIndex(i=>i===null?null:map(i));
+    setDoc(prev=>prev.listino && Number.isInteger(prev.listino.product_index_riferimento)
+      ?{...prev,listino:{...prev.listino,product_index_riferimento:map(prev.listino.product_index_riferimento)}}:prev);
+  }
+  async function copyProduct(index:number):Promise<boolean>{
+    if(copyingRef.current || savingRef.current || draftSaving || (readOnly&&!isNew))return false;
+    copyingRef.current=true;setCopyingProduct(true);setError("");
+    try{
+      const source=doc.prodotti[index] as Product;
+      let generated;
+      if(!isFixedPrice(source) && (source.codice_temporaneo || /^T[A-Z]{2}\d{7}[IX6BA]/i.test(String(source.codice??"")))){
+        const sourceCode=String(source.codice_temporaneo?.code??source.codice),currentCode=String(source.codice??"");
+        if(!copyRequest.current || copyRequest.current.sourceCode!==sourceCode || copyRequest.current.currentCode!==currentCode)
+          copyRequest.current={sourceCode,currentCode,requestKey:crypto.randomUUID()};
+        generated=await duplicateTemporary.mutateAsync(copyRequest.current);
+      }
+      const rows=duplicateProductForNewLot(doc.prodotti,index);
+      if(generated)Object.assign(rows[index+1],{codice:generated.code,codice_temporaneo:generated});
+      update("prodotti",withRowIds(rows),true);
+      remapReferences(i=>i>index?i+1:i);
+      copyRequest.current=null;
+      return true;
+    }catch(e){setError(e instanceof Error?e.message:"Impossibile copiare il prodotto");return false;}
+    finally{copyingRef.current=false;setCopyingProduct(false);}
+  }
+  function moveProduct(index:number,direction:-1|1){
+    if(copyingRef.current || savingRef.current || (readOnly&&!isNew) || index+direction<0 || index+direction>=doc.prodotti.length)return;
+    update("prodotti",moveQuoteProduct(withRowIds(doc.prodotti),index,direction),true);
+    remapReferences(i=>movedProductIndex(i,index,direction));
+  }
+  function removeProduct(index:number){
+    if(copyingRef.current || savingRef.current || (readOnly&&!isNew))return;
+    update("prodotti",withRowIds(doc.prodotti).filter((_:Product,i:number)=>i!==index),true);
+    remapReferences(i=>i>index?i-1:i===index?Math.max(0,index-1):i);
+  }
   // A draft is stored in MySQL even with missing client, product group or
   // commercial values. Server-side validations still apply to final quotes.
   async function persistDraft():Promise<number>{
-    if(savingRef.current || draftSaving || saveDraftMutation.isPending)
+    if(copyingRef.current || savingRef.current || draftSaving || saveDraftMutation.isPending)
       throw new Error("Salvataggio già in corso");
     setDraftSaving(true);
     setError("");
@@ -413,7 +455,7 @@ export default function PreventivoEditorPage() {
     const missingModification=quoteModificationError(doc.prodotti);
     if(missingModification)return setError(missingModification);
     if (!isNew && !changed && !isSavedDraft) return setError("Nessuna modifica rilevata");
-    if (savingRef.current || create.isPending || revise.isPending || overwrite.isPending || finalizeDraftMutation.isPending || draftSaving) return;
+    if (copyingRef.current || savingRef.current || create.isPending || revise.isPending || overwrite.isPending || finalizeDraftMutation.isPending || draftSaving) return;
     savingRef.current = true;
     try {
       const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
@@ -491,7 +533,7 @@ export default function PreventivoEditorPage() {
   }
   if (!isNew && isLoading) return <Layout><p>Caricamento preventivo...</p></Layout>;
   if (!isNew && !data) return <Layout><p>Preventivo non trovato.</p><Link to="/preventivi">Torna all'elenco</Link></Layout>;
-  const locked = readOnly && !isNew;
+  const locked = (readOnly && !isNew) || copyingProduct;
   const legacyCostModel = !(Number(doc.costi_comuni_versione) >= 2);
   const sharedTreatmentMode = doc.trattamenti_modalita === "globale"
     ? "globale"
@@ -552,6 +594,7 @@ export default function PreventivoEditorPage() {
           </div>
         </div>
       )}
+      {copyingProduct&&<p role="status">Copia prodotto e assegnazione del nuovo codice in corso…</p>}
       {wizardMode&&pdfLanguageSettings}
       {ralUpgradeNotice&&<div role="note" className="rounded-lg border border-amber-400 bg-amber-50 p-3 text-sm">Supplementi RAL aggiornati anche per i prodotti di serie. Controlla il nuovo totale e salva il preventivo per registrare la correzione.</div>}
       {quoteCostCompleteness(doc).issues.length>0&&<div role="note" className="rounded-lg border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950"><strong>Attribuzione dei costi incompleta</strong><ul>{quoteCostCompleteness(doc).issues.map(issue=><li key={issue}>{issue}</li>)}</ul></div>}
@@ -561,7 +604,7 @@ export default function PreventivoEditorPage() {
           numericId={numericId} isSavedDraft={isSavedDraft}
           groups={groupsQuery.data??[]} loadingGroups={groupsQuery.isLoading}
           error={error} draftMessage={draftMessage} copyMessage={copyMessage}
-          busy={draftSaving||create.isPending||revise.isPending||overwrite.isPending||finalizeDraftMutation.isPending}
+          busy={copyingProduct||draftSaving||create.isPending||revise.isPending||overwrite.isPending||finalizeDraftMutation.isPending}
           unsavedChanges={unsavedChanges||ralUpgradeNotice}
           onUnsavedLocalChange={setWizardLocalDirty}
           hideDocumentTotalInPdf={hideDocumentTotalInPdf}
@@ -569,8 +612,9 @@ export default function PreventivoEditorPage() {
           priceProductIndex={priceProductIndex}
           onUpdate={update} onUpdateProduct={updateProduct}
           onAddProduct={()=>update("prodotti",[...doc.prodotti,{...blankProduct(),nero_standard_goffrato:allStandardBlackTextured(doc.prodotti)}],true)}
-          onCopyProductAndScaleLot={index=>update("prodotti",duplicateProductForNewLot(doc.prodotti,index),true)}
-          onRemoveProduct={index=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}
+          onCopyProductAndScaleLot={copyProduct}
+          onMoveProduct={moveProduct}
+          onRemoveProduct={removeProduct}
           onGroupRenamed={groupRenamed} quoteEditToken={renamedEditToken??data?.editToken}
           onCreateGroup={async(index,name)=>{
             try{
@@ -645,7 +689,7 @@ export default function PreventivoEditorPage() {
             </label>
           </div>
           <div className="grid grid-cols-2 content-start gap-1 text-sm" data-testid="quote-primary-actions">
-            {locked ? <button type="button" className="col-span-2 flex h-9 items-center justify-center gap-2 rounded bg-emerald-600 px-3 text-white" onClick={() => setReadOnly(false)}><Pencil size={16}/> Modifica</button>
+            {locked ? <button type="button" disabled={copyingProduct} className="col-span-2 flex h-9 items-center justify-center gap-2 rounded bg-emerald-600 px-3 text-white disabled:opacity-40" onClick={() => setReadOnly(false)}>{copyingProduct?"Copia in corso…":<><Pencil size={16}/> Modifica</>}</button>
             : <>
               <button type="button" className="flex h-9 items-center justify-center gap-2 rounded border px-2" onClick={() => { try { setDoc(calculateQuote(doc)); setDirtyCalculation(false); setError(""); } catch(e) { setError(e instanceof Error ? e.message : "Errore ricalcolo"); } }}><Calculator size={16}/> Ricalcola</button>
               <button type="button" disabled={draftSaving || overwrite.isPending || revise.isPending || !unsavedChanges} onClick={()=>void saveDraftOnly()}
@@ -869,7 +913,7 @@ export default function PreventivoEditorPage() {
         </div>
       </div>
       {(doc.prodotti as Product[]).map((p,index)=>
-        <section key={index} className="bg-white border rounded-xl p-3 md:p-4 space-y-2.5">
+        <section key={p._rowId??index} className="bg-white border rounded-xl p-3 md:p-4 space-y-2.5">
           <div className="-mx-3 -mt-3 md:-mx-4 md:-mt-4 flex justify-between items-center gap-3 rounded-t-xl bg-sky-500 px-3 py-3 md:px-4 text-slate-950">
             <div className="flex flex-wrap items-center gap-4">
               <h3 className="text-base font-bold">Prodotto {index+1}</h3>
@@ -883,8 +927,10 @@ export default function PreventivoEditorPage() {
               </label>
             </div>
             <div className="flex items-center gap-2">
-            {!locked&&<button type="button" aria-label={`Copia prodotto ${index+1}`} title="Copia questa riga in fondo al preventivo, con quantità da inserire" className="rounded p-1 hover:bg-white/30" onClick={()=>update("prodotti",duplicateProductForNewLot(doc.prodotti,index),true)}><Copy size={17}/></button>}
-            {!locked && doc.prodotti.length > 1 && <button title="Rimuovi prodotto" className="rounded p-1 text-red-950 hover:bg-white/30" onClick={()=>update("prodotti",doc.prodotti.filter((_:Product,i:number)=>i!==index),true)}><Trash2 size={17}/></button>}
+            {!locked&&<><button type="button" aria-label={`Sposta su prodotto ${index+1}`} title="Sposta su" disabled={index===0} className="rounded p-1 hover:bg-white/30 disabled:opacity-30" onClick={()=>moveProduct(index,-1)}><ArrowUp size={17}/></button>
+              <button type="button" aria-label={`Sposta giù prodotto ${index+1}`} title="Sposta giù" disabled={index===doc.prodotti.length-1} className="rounded p-1 hover:bg-white/30 disabled:opacity-30" onClick={()=>moveProduct(index,1)}><ArrowDown size={17}/></button></>}
+            {!locked&&<button type="button" aria-label={`Copia prodotto ${index+1}`} title="Copia subito sotto, con nuova quantità e nuovo codice temporaneo" className="rounded p-1 hover:bg-white/30" onClick={()=>void copyProduct(index)}><Copy size={17}/></button>}
+            {!locked && doc.prodotti.length > 1 && <button title="Rimuovi prodotto" className="rounded p-1 text-red-950 hover:bg-white/30" onClick={()=>removeProduct(index)}><Trash2 size={17}/></button>}
             </div>
           </div>
           {isSeries(p) ? <QuoteSeriesFields product={p} calculated={preview?.prodotti?.[index]} ralEnabled={Boolean(doc.verniciatura_ral)} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : isForfait(p) ? <QuoteForfaitFields product={p} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : <>
@@ -953,7 +999,8 @@ export default function PreventivoEditorPage() {
               <QuoteInoxChoice product={p} disabled={locked} onChange={value=>updateProduct(index,"inox_aisi",value)}/>
             </div>
           </div>
-          {!doc.verniciatura_ral && <StandardBlackFinish value={p.nero_standard_goffrato} disabled={locked}
+          {isNaturalTemporaryCode(p.codice) && <p className="text-xs text-slate-600">Grezzo/naturale · senza verniciatura</p>}
+          {!doc.verniciatura_ral && !isNaturalTemporaryCode(p.codice) && <StandardBlackFinish value={p.nero_standard_goffrato} disabled={locked}
             onChange={value=>updateProduct(index,"nero_standard_goffrato",value)}/>}
           <QuoteModificationObjectFields value={p.oggetto_modifica} disabled={locked}
             idPrefix={`quote-product-${index}-modification`}

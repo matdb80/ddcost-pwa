@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { createMemoryRouter, RouterProvider } from "react-router";
 import type { ReactNode } from "react";
 import { blankProduct, blankQuote, calculateQuote } from "../lib/quote-calculation";
-const state=vi.hoisted(()=>({data:null as any,groups:[] as Array<{id:number;name:string}>,calls:[] as Array<{path:string;input:any}>}));
+const state=vi.hoisted(()=>({data:null as any,groups:[] as Array<{id:number;name:string}>,calls:[] as Array<{path:string;input:any}>,failDuplicate:false,duplicateGate:null as null|Promise<void>}));
 vi.mock("@/components/Layout",()=>({default:({children}:{children:ReactNode})=><div>{children}</div>}));
 vi.mock("@/components/SalesHandoffPanel",()=>({default:({disabled}:{disabled:boolean})=><button disabled={disabled}>Invia al commerciale (test)</button>}));
 vi.mock("@/components/FormulaTooltip",()=>({default:()=>null}));
@@ -15,6 +15,11 @@ vi.mock("@/providers/trpc",()=>{
     if(key==="useQuery")return ()=>({data:path.join(".")==="quote.get"?state.data:path.join(".")==="productGroup.list"?state.groups:[],isLoading:false});
     if(key==="useMutation")return ()=>({isPending:false,mutateAsync:async(input:any)=>{
       state.calls.push({path:path.join("."),input:structuredClone(input)});
+      if(path.join(".")==="temporaryProduct.duplicate"){
+        if(state.duplicateGate)await state.duplicateGate;
+        if(state.failDuplicate){state.failDuplicate=false;throw new Error("Connessione interrotta");}
+        return {sequence:77,family:"BC",material:"6",color:null,code:"TBC000007760"};
+      }
       if(path.join(".")==="productGroup.rename")return {id:input.id,oldName:input.expectedName,name:input.name,updatedQuotes:3};
       return {id:123,...(path.join(".")==="quote.update"?{dataJson:input.dataJson}:{})};
     }});
@@ -30,7 +35,7 @@ function mount(doc:Record<string,any>,mobile=false,revision=1){
   return render(<RouterProvider router={router}/>);
 }
 beforeEach(()=>{
-  state.data=null;state.calls=[];state.groups=[];window.localStorage.clear();vi.stubGlobal("confirm",vi.fn(()=>true));
+  state.data=null;state.calls=[];state.groups=[];state.failDuplicate=false;state.duplicateGate=null;window.localStorage.clear();vi.stubGlobal("confirm",vi.fn(()=>true));
   vi.stubGlobal("matchMedia",()=>({matches:false,addEventListener:()=>{},removeEventListener:()=>{}}));
   Element.prototype.scrollIntoView=vi.fn();
 });
@@ -455,7 +460,7 @@ it("offers the four series fields in the mobile wizard and keeps price required"
  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("125,00");
 });
 
-it.each([false,true])('copies the selected first product to the end in mobile=%s',async mobile=>{
+it.each([false,true])('copies the selected first product immediately below its source in mobile=%s',async mobile=>{
   mount({...blankQuote(),cliente:'Prova',stato_preventivo:'bozza',prodotti:[{...blankProduct(),descrizione:'Primo',quantita:10},{...blankProduct(),descrizione:'Secondo',quantita:20}]},mobile);
   for(let i=0;i<4&&!screen.queryByRole('button',{name:'Copia prodotto 1'});i++)fireEvent.click(await screen.findByRole('button',{name:'Avanti'}));
   fireEvent.click(await screen.findByRole('button',{name:'Copia prodotto 1'}));
@@ -463,8 +468,8 @@ it.each([false,true])('copies the selected first product to the end in mobile=%s
   fireEvent.click(screen.getByRole('button',{name:'Salva bozza'}));
   await waitFor(()=>expect(state.calls.some(c=>c.path==='quote.saveDraft')).toBe(true));
   const saved=JSON.parse(state.calls.find(c=>c.path==='quote.saveDraft')!.input.dataJson);
-  expect(saved.prodotti.map((p:any)=>p.descrizione)).toEqual(['Primo','Secondo','Primo']);
-  expect(saved.prodotti.map((p:any)=>p.quantita)).toEqual([10,20,'']);
+  expect(saved.prodotti.map((p:any)=>p.descrizione)).toEqual(['Primo','Primo','Secondo']);
+  expect(saved.prodotti.map((p:any)=>p.quantita)).toEqual([10,'',20]);
 });
 it('requires an explicit continue action for missing costs and saves the warning',async()=>{
   mount({...blankQuote(),cliente:'Prova',stato_preventivo:'bozza',prodotti:[{...blankProduct(),descrizione:'Primo',gruppo_merceologico:'Bandelle',materiale_prodotto:'ferro',oggetto_modifica:['occhio']}]});
@@ -586,4 +591,44 @@ it.each([false,true])('exports the actual saved revision even when its JSON is s
     expect(html).toMatch(/<title>\d{4}_DDC90007_REV\.3\.pdf<\/title>/);
     expect(state.calls).toHaveLength(0);
   }finally{popup.mockRestore();}
+});
+
+it.each([false,true])("moves products in desktop/mobile, keeps price selection, and persists the new order: mobile=%s",async mobile=>{
+  mount({...blankQuote(),cliente:"Prova",stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Primo",quantita:10},{...blankProduct(),descrizione:"Secondo",quantita:20}],listino:{product_index_riferimento:1}},mobile);
+  if(mobile)for(let i=0;i<5&&!screen.queryByRole("button",{name:"Sposta giù prodotto 1"});i++)fireEvent.click(await screen.findByRole("button",{name:"Avanti"}));
+  const up=await screen.findByRole("button",{name:"Sposta su prodotto 1"}) as HTMLButtonElement;
+  expect(up.disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button",{name:"Sposta giù prodotto 1"}));
+  if(mobile)fireEvent.click(screen.getByRole("button",{name:"Vista completa"}));
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
+  expect(saved.prodotti.map((p:any)=>[p.descrizione,p.quantita])).toEqual([["Secondo",20],["Primo",10]]);
+  expect(saved.listino.product_index_riferimento).toBe(0);
+  expect(saved.prodotti[0]._rowId).not.toBe(saved.prodotti[1]._rowId);
+  cleanup();mount(saved);
+  expect((await screen.findAllByLabelText("Descrizione *")).map(e=>(e as HTMLInputElement).value)).toEqual(["Secondo","Primo"]);
+});
+it("copies an issued natural code once, retries the same request after failure and preserves the source",async()=>{
+  const generated={sequence:1,family:"BC",material:"6",color:null,code:"TBC000000160"};
+  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Originale",codice:generated.code,codice_temporaneo:generated,materiale_prodotto:"inox",inox_aisi:"316",quantita:10},{...blankProduct(),descrizione:"Successivo"}]});
+  state.failDuplicate=true;
+  fireEvent.click(await screen.findByRole("button",{name:"Copia prodotto 1"}));
+  await screen.findByText("Connessione interrotta");
+  expect(screen.getAllByLabelText("Descrizione *")).toHaveLength(2);
+  let release!:()=>void;state.duplicateGate=new Promise<void>(resolve=>{release=resolve;});
+  const button=screen.getByRole("button",{name:"Copia prodotto 1"});
+  fireEvent.click(button);fireEvent.click(button);
+  expect(state.calls.filter(c=>c.path==="temporaryProduct.duplicate")).toHaveLength(2);
+  release();
+  await waitFor(()=>expect(screen.getAllByLabelText("Descrizione *")).toHaveLength(3));
+  expect(state.calls.filter(c=>c.path==="temporaryProduct.duplicate")[0].input).toEqual(state.calls.filter(c=>c.path==="temporaryProduct.duplicate")[1].input);
+  const fields=screen.getAllByLabelText("Codice articolo") as HTMLInputElement[];
+  expect(fields.map(f=>f.value)).toEqual([generated.code,"TBC000007760",""]);
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
+  expect(saved.prodotti[0].codice_temporaneo).toEqual(generated);
+  expect(saved.prodotti[1].codice_temporaneo.sequence).toBe(77);
+  expect(saved.prodotti[1].quantita).toBe("");
 });

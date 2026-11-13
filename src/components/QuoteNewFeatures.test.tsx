@@ -12,7 +12,7 @@ vi.mock("@/providers/trpc",()=>({trpc:{
   },
   temporaryProduct:{
     reserve:{useMutation:()=>({mutateAsync:async(input:any)=>{mock.calls.push({name:"reserve",input});if(mock.failReserve){mock.failReserve=false;throw new Error("Connessione interrotta");}return {sequence:42,requestKey:input.requestKey};}})},
-    complete:{useMutation:()=>({mutateAsync:async(input:any)=>{mock.calls.push({name:"complete",input});return {sequence:42,...input,code:temporaryCode(42,input.family,input.material,input.color,input.suffix)};}})},
+    complete:{useMutation:()=>({mutateAsync:async(input:any)=>{mock.calls.push({name:"complete",input});return {sequence:42,...input,code:temporaryCode(42,input.family,input.material,input.color,input.suffix,input.natural)};}})},
   },
 }}));
 import QuoteAttachments from "./QuoteAttachments";
@@ -95,4 +95,18 @@ it("reserves on family selection, retries the same request and emits a complete 
   fireEvent.click(dialog.getByRole("button",{name:"Usa questo codice"}));
   await waitFor(()=>expect(apply).toHaveBeenCalledWith(expect.objectContaining({code:"TFP0000042XO9006",sequence:42}),{color:"9006",textured:false}));
   expect(mock.calls.filter(c=>c.name==="complete")).toHaveLength(1);
+});
+
+it.each([null,{color:"6021",textured:true}])("natural checkbox always produces suffix zero and disables painting",async ral=>{
+  const apply=vi.fn();render(<TemporaryProductCode disabled={false} ral={ral} onApply={apply}/>);
+  fireEvent.click(screen.getByRole("button",{name:"Genera codice temporaneo"}));
+  fireEvent.change(screen.getByLabelText("Famiglia"),{target:{value:"BC"}});
+  await waitFor(()=>expect((screen.getByLabelText("Progressivo automatico") as HTMLInputElement).value).toBe("0000042"));
+  fireEvent.change(screen.getByLabelText("Materiale"),{target:{value:"6"}});
+  fireEvent.click(screen.getByRole("checkbox",{name:"Grezzo/naturale"}));
+  const painted=screen.getByRole("checkbox",{name:"Articolo verniciato RAL"}) as HTMLInputElement;
+  expect(painted.checked).toBe(false);expect(painted.disabled).toBe(true);
+  expect(screen.getByLabelText("Codice temporaneo completo").textContent).toBe("TBC000004260");
+  fireEvent.click(screen.getByRole("button",{name:"Usa questo codice"}));
+  await waitFor(()=>expect(apply).toHaveBeenCalledWith(expect.objectContaining({code:"TBC000004260",color:null}),ral));
 });

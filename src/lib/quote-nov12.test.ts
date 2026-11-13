@@ -203,15 +203,15 @@ describe("cost completeness", () => {
     ).toEqual(["Prodotto 1: materiale"]);
   });
 });
-it("copies the selected first row to the end with an independent quantity and nested data", () => {
+it("copies the selected first row immediately after its source with an independent quantity and nested data", () => {
   const rows:Product[] = [
     { ...costed(), quantita: 10, oggetto_modifica: ["occhio"] },
     series(),
   ];
   const copy = duplicateProductForNewLot(rows, 0);
-  expect(copy[2].descrizione).toBe("Test");
-  expect(copy[2].quantita).toBe("");
-  copy[2].oggetto_modifica.push("collo");
+  expect(copy[1].descrizione).toBe("Test");
+  expect(copy[1].quantita).toBe("");
+  copy[1].oggetto_modifica.push("collo");
   expect(rows[0].oggetto_modifica).toEqual(["occhio"]);
   expect(copy[0].quantita).toBe(10);
 });

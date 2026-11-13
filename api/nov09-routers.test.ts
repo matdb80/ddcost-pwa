@@ -162,3 +162,39 @@ it.each(["prodotti","righe"] as const)("accepts the completed old inox suffix in
   await expect(validateTemporaryProductDocument(forged,rowKey)).rejects.toThrow("non emesso");
   expect(store.rows).toEqual(before);
 });
+
+it.each(["I","X","6","B","A"] as const)("issues and validates natural %s using suffix zero",async material=>{
+  const requestKey=randomUUID();await codes().reserve({family:"BC",requestKey});
+  const natural=await codes().complete({requestKey,family:"BC",material,color:null,natural:true});
+  expect(natural.code).toBe(`TBC0000001${material}0`);
+  expect(await codes().complete({requestKey,family:"BC",material,color:null,natural:true})).toEqual(natural);
+  await expect(validateTemporaryProductDocument(JSON.stringify({verniciatura_ral:{color:"6021",textured:true},prodotti:[{codice:natural.code,codice_temporaneo:natural}]}),"prodotti")).resolves.toBeUndefined();
+  await expect(codes().complete({requestKey,family:"BC",material,color:"6021",natural:true})).rejects.toMatchObject({code:"BAD_REQUEST"});
+});
+it("copies a natural code with the next free global sequence, idempotently across concurrent retries",async()=>{
+  const requestKey=randomUUID();await codes().reserve({family:"BC",requestKey});
+  const source=await codes().complete({requestKey,family:"BC",material:"6",color:null,natural:true});
+  const input={requestKey:randomUUID(),sourceCode:source.code,currentCode:source.code};
+  const copies=await Promise.all([codes().duplicate(input),codes().duplicate(input)]);
+  expect(copies[0].code).toBe("TBC000000260");expect(copies[1]).toEqual(copies[0]);
+  expect(store.rows.temporary_product_sequence[0].lastNumber).toBe(2);
+  await codes(2).reserve({requestKey:randomUUID(),family:"AM"});
+  const next=await codes().duplicate({...input,requestKey:randomUUID()});
+  expect(next.code).toBe("TBC000000460");
+  await expect(validateTemporaryProductDocument(JSON.stringify({prodotti:[{codice:next.code,codice_temporaneo:next}]}),"prodotti")).resolves.toBeUndefined();
+  await expect(codes(2).duplicate(input)).rejects.toMatchObject({code:"FORBIDDEN"});
+});
+it("copies painted and custom finishes and rolls back a failed copy without consuming a number",async()=>{
+  const requestKey=randomUUID();await codes().reserve({family:"BC",requestKey});
+  const source=await codes().complete({requestKey,family:"BC",material:"B",color:null,suffix:"z"});
+  const input={requestKey:randomUUID(),sourceCode:source.code,currentCode:source.code.slice(0,11)+"a"};
+  store.failInsert="temporary_product_codes";
+  await expect(codes().duplicate(input)).rejects.toThrow(/injected/);
+  expect(store.rows.temporary_product_sequence[0].lastNumber).toBe(1);
+  store.failInsert="";
+  expect((await codes().duplicate(input)).code).toBe("TBC0000002Ba");
+  await expect(codes().duplicate({...input,requestKey:randomUUID(),currentCode:"TBC0000009Ba"})).rejects.toMatchObject({code:"BAD_REQUEST"});
+  const key=randomUUID();await codes().reserve({family:"BC",requestKey:key});
+  const painted=await codes().complete({requestKey:key,family:"BC",material:"6",color:"6021"});
+  expect((await codes().duplicate({requestKey:randomUUID(),sourceCode:painted.code,currentCode:painted.code})).code).toBe("TBC00000046O6021");
+});

@@ -31,9 +31,19 @@ export function duplicateProductForNewLot(products: Product[], index:number): Pr
   if(!Number.isInteger(index)||index<0||index>=products.length)throw new Error("Prodotto da copiare non valido");
   const copy = structuredClone(products[index]);
   copy.quantita = "";
-  return [...products, copy];
+  delete copy._rowId;
+  return [...products.slice(0,index+1),copy,...products.slice(index+1)];
 }
 export function duplicateLastProductForNewLot(products:Product[]):Product[]{return duplicateProductForNewLot(products,products.length-1);}
+export function moveQuoteProduct(products:Product[],index:number,direction:-1|1):Product[]{
+  if(!Number.isInteger(index)||index<0||index>=products.length||![-1,1].includes(direction))throw new Error("Posizione prodotto non valida");
+  const target=index+direction;
+  if(target<0||target>=products.length)return products;
+  const next=[...products];[next[index],next[target]]=[next[target],next[index]];return next;
+}
+export function movedProductIndex(selected:number,index:number,direction:-1|1):number {
+  return selected===index?index+direction:selected===index+direction?index:selected;
+}
 export function quoteLaborMode(document: QuoteDocument): "complessivo" | "per_prodotto" | "per_pezzo" | "per_riga" {
   if (document.lavoro_modalita == null) return "per_riga"; // Preserve saved quotes.
   if (document.lavoro_modalita === "complessivo" || document.lavoro_modalita === "per_prodotto" || document.lavoro_modalita === "per_pezzo") return document.lavoro_modalita;

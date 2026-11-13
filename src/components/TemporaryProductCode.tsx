@@ -13,8 +13,9 @@ export default function TemporaryProductCode({ disabled, ral, onApply }: {
   const [material, setMaterial] = useState("I");
   const [color, setColor] = useState("9010");
   const [painted, setPainted] = useState(false);
+  const [natural,setNatural]=useState(false);
   const [suffix,setSuffix]=useState("");
-  const manualSuffix=!painted && !ral && (material==="B"||material==="A");
+  const manualSuffix=!natural && !painted && !ral && (material==="B"||material==="A");
   const [sequence, setSequence] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,7 +38,7 @@ export default function TemporaryProductCode({ disabled, ral, onApply }: {
     saving.current = true; setBusy(true); setError("");
     try {
       if (painted && ral?.textured && (material === "X" || material === "6")) throw new Error("Inox e goffrato non sono compatibili");
-      const result = await complete.mutateAsync({ requestKey: request.current, family: family as typeof TEMPORARY_FAMILIES[number], material: material as keyof typeof TEMPORARY_MATERIALS, color: painted ? color : null, ...(manualSuffix?{suffix}:{} ) });
+      const result = await complete.mutateAsync({ requestKey: request.current, family: family as typeof TEMPORARY_FAMILIES[number], material: material as keyof typeof TEMPORARY_MATERIALS, color: painted ? color : null, natural, ...(manualSuffix?{suffix}:{} ) });
       onApply(result, painted ? { color, textured: ral?.textured ?? false } : ral);
       setOpen(false);
     } catch (e) { setError(e instanceof Error ? e.message : "Generazione non riuscita"); }
@@ -46,17 +47,19 @@ export default function TemporaryProductCode({ disabled, ral, onApply }: {
   let preview = "",prefix="";
   try { if (sequence){
     prefix=temporaryCodePrefix(sequence,family,material);
-    preview=manualSuffix?prefix+suffix:temporaryCode(sequence, family, material, painted ? color : null);
+    preview=manualSuffix?prefix+suffix:temporaryCode(sequence, family, material, painted ? color : null,undefined,natural);
   }} catch { /* fields incomplete */ }
   return <>
     <button type="button" disabled={disabled} className="rounded border border-sky-600 px-2 py-1 text-xs text-sky-800 disabled:opacity-40" onClick={() => {
-      request.current = crypto.randomUUID(); setSequence(null); setFamily(""); setMaterial("I"); setSuffix(""); setError(""); setColor(ral?.color ?? "9010"); setPainted(Boolean(ral)); setOpen(true);
+      request.current = crypto.randomUUID(); setSequence(null); setFamily(""); setMaterial("I"); setSuffix(""); setNatural(false); setError(""); setColor(ral?.color ?? "9010"); setPainted(Boolean(ral)); setOpen(true);
     }}>Genera codice temporaneo</button>
     <Dialog open={open} onOpenChange={value => { if (!busy) setOpen(value); }}>
       <DialogContent className="sm:max-w-3xl">
         <DialogTitle>Nuovo codice prodotto temporaneo</DialogTitle>
         <DialogDescription>Progressivo unico per offerte standard e preventivi una tantum. Un numero prenotato non viene riassegnato se annulli.</DialogDescription>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={painted} disabled={busy || Boolean(ral)} onChange={e => setPainted(e.target.checked)}/>Articolo verniciato RAL</label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={natural} disabled={busy} onChange={e=>{setNatural(e.target.checked);setPainted(e.target.checked?false:Boolean(ral));}}/>Grezzo/naturale</label>
+        {natural && <p className="text-sm text-slate-600">Senza verniciatura: codice con finale 0, nessun supplemento RAL e nessun riquadro colore nel PDF.</p>}
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={painted} disabled={busy || natural || Boolean(ral)} onChange={e => setPainted(e.target.checked)}/>Articolo verniciato RAL</label>
         <div className="flex flex-wrap items-end gap-2 text-sm">
           <span className="rounded bg-slate-100 px-3 py-2 font-mono font-bold">T</span>
           <label className="flex flex-col gap-1">Famiglia<select disabled={busy} className="h-9 rounded border px-2" value={family} onChange={e => void chooseFamily(e.target.value)}><option value="">Seleziona</option>{TEMPORARY_FAMILIES.filter(f=>!painted||f!=="QU").map(f => <option key={f}>{f}</option>)}</select></label>

@@ -9,7 +9,7 @@ import {useEffect, useMemo, useRef, useState, type ReactNode} from "react";
 import {Link} from "react-router";
 import {
   ArrowLeft, ArrowRight, Check, ChevronLeft, Copy, FileText,
-  Plus, Save, Settings2, Trash2,
+  Plus, Save, Settings2, Trash2, ArrowUp, ArrowDown,
 } from "lucide-react";
 import TemporaryProductCode, {type GeneratedProductCode} from "./TemporaryProductCode";
 import type {RalOptions} from "@/lib/ral-pricing";
@@ -17,7 +17,7 @@ import QuoteNumericInput from "@/components/QuoteNumericInput";
 import LaborCostField from "@/components/LaborCostField";
 import ArticleCodeInput from "@/components/ArticleCodeInput";
 import StandardBlackFinish from "@/components/StandardBlackFinish";
-import {manualTemporaryCodePrefix} from "@/lib/ral-pricing";
+import {manualTemporaryCodePrefix,isNaturalTemporaryCode} from "@/lib/ral-pricing";
 import QuoteTotal from "@/components/QuoteTotal";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { QUOTE_MATERIAL_GEOMETRIES, QUOTE_MATERIAL_HELP, quoteMaterialGeometry } from "@/lib/quote-material-weight";
@@ -60,7 +60,8 @@ type Props={
   onUpdate:(key:string,value:unknown,economic?:boolean)=>void;
   onUpdateProduct:(index:number,key:string,value:unknown)=>void;
   onAddProduct:()=>void;
-  onCopyProductAndScaleLot:(index:number)=>void;
+  onCopyProductAndScaleLot:(index:number)=>void|Promise<boolean>;
+  onMoveProduct?:(index:number,direction:-1|1)=>void;
   onRemoveProduct:(index:number)=>void;
   onGroupRenamed:(result:GroupRenameResult)=>void;
   quoteEditToken?:string;
@@ -143,11 +144,17 @@ export default function QuoteMobileWizard(props:Props){
     onAddProduct();
     goto("p:"+i+":descrizione");
   };
-  const copyProductAndScaleLot=(index:number)=>{
-    const i=(doc.prodotti as Product[]).length;
-    onCopyProductAndScaleLot(index);
+  const copyProductAndScaleLot=async(index:number)=>{
+    const i=index+1;
+    if(await onCopyProductAndScaleLot(index)===false)return;
     goto("p:"+i+(isForfait(doc.prodotti[index])?":descrizione":":quantita"));
   };
+  const orderButtons=(index:number,navigate=false)=>props.onMoveProduct && <>
+    <button type="button" aria-label={`Sposta su prodotto ${index+1}`} title="Sposta su" disabled={locked||index===0} className="min-h-11 min-w-9 rounded p-2 disabled:opacity-30"
+      onClick={()=>{props.onMoveProduct!(index,-1);if(navigate)goto(`p:${index-1}:${field??"descrizione"}`);}}><ArrowUp size={18}/></button>
+    <button type="button" aria-label={`Sposta giù prodotto ${index+1}`} title="Sposta giù" disabled={locked||index===doc.prodotti.length-1} className="min-h-11 min-w-9 rounded p-2 disabled:opacity-30"
+      onClick={()=>{props.onMoveProduct!(index,1);if(navigate)goto(`p:${index+1}:${field??"descrizione"}`);}}><ArrowDown size={18}/></button>
+  </>;
   const percent=Math.round((activeIndex+1)/steps.length*100);
   const hasPreview=preview!==null && Number.isFinite(Number(preview.totale_finale));
   const price=euro(preview?.totale_finale);
@@ -201,7 +208,7 @@ export default function QuoteMobileWizard(props:Props){
             <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isSeries(product)}
               onChange={e=>{onUpdateProduct(productIndex,"prodotto_di_serie",e.target.checked);setAddingGroup(false);goto(`p:${productIndex}:descrizione`);}}/> Prodotto di serie
           </label>}
-        {productIndex!==undefined&&!locked&&<div className="ml-auto flex shrink-0 gap-1"><button type="button" aria-label={`Copia prodotto ${productIndex+1}`} title="Copia in fondo al preventivo" className="rounded p-2 text-violet-800" onClick={()=>copyProductAndScaleLot(productIndex)}><Copy size={18}/></button>
+        {productIndex!==undefined&&!locked&&<div className="ml-auto flex shrink-0 gap-1">{orderButtons(productIndex,true)}<button type="button" aria-label={`Copia prodotto ${productIndex+1}`} title="Copia subito sotto con un nuovo codice temporaneo" className="rounded p-2 text-violet-800" onClick={()=>void copyProductAndScaleLot(productIndex)}><Copy size={18}/></button>
           {doc.prodotti.length>1&&<button type="button" aria-label={`Elimina prodotto ${productIndex+1}`} className="rounded p-2 text-red-800" onClick={()=>{onRemoveProduct(productIndex);goto("riepilogo");}}><Trash2 size={18}/></button>}</div>}
         </div>
 
@@ -214,6 +221,7 @@ export default function QuoteMobileWizard(props:Props){
 
       <h1 className="mt-6 text-xl font-bold leading-tight">{current.title}</h1>
       <p className="mt-2 text-sm leading-relaxed text-slate-600">{current.hint}</p>
+      {product && isNaturalTemporaryCode(product.codice) && <p className="mt-3 text-sm text-slate-600">Grezzo/naturale · senza verniciatura</p>}
       {productIndex!==undefined && !isFixedPrice(product) && (field==="codice" || field==="descrizione") && props.onTemporaryCode && <TemporaryProductCode disabled={locked} ral={doc.verniciatura_ral??null} onApply={(code,ral)=>props.onTemporaryCode!(productIndex,code,ral)}/>}
       <div className="mt-5">
         {current.id==="riepilogo" ? (
@@ -260,7 +268,7 @@ export default function QuoteMobileWizard(props:Props){
               </div>
             )}
             <div className="space-y-2">
-              {(doc.prodotti as Product[]).map((p,i)=><div key={i} className="flex min-h-12 items-center rounded-lg border border-slate-200 p-3 text-sm">
+              {(doc.prodotti as Product[]).map((p,i)=><div key={p._rowId??i} className="flex min-h-12 items-center rounded-lg border border-slate-200 p-3 text-sm">
                 <button type="button" onClick={()=>goto("p:"+i+":descrizione")}
                   className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
                   <span className="min-w-0">
@@ -272,6 +280,7 @@ export default function QuoteMobileWizard(props:Props){
                   <span className="shrink-0 font-semibold">{hasPreview?"€ "+euro(preview?.prodotti?.[i]?.totale_finale):"—"}</span>
                 </button>
                 {!isFixedPrice(p) && <FormulaTooltip label={`Totale prodotto ${i+1}`} formula={CALCULATION_FORMULAS.quote.productTotal}/>}
+                {!locked && orderButtons(i)}
                 {!locked && doc.prodotti.length>1 && <button type="button"
                   aria-label={`Elimina prodotto ${i+1}`}
                   onClick={()=>{
@@ -427,7 +436,7 @@ export default function QuoteMobileWizard(props:Props){
             autoComplete="off" value={String(value??"")} onChange={e=>updateValue(e.target.value)}
             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();next();}}}/>
         ):null}
-        {field==="materiale_prodotto" && productIndex!==undefined && product && !doc.verniciatura_ral &&
+        {field==="materiale_prodotto" && productIndex!==undefined && product && !doc.verniciatura_ral && !isNaturalTemporaryCode(product.codice) &&
           <div className="mt-3"><StandardBlackFinish value={product.nero_standard_goffrato} disabled={locked}
             onChange={checked=>onUpdateProduct(productIndex,"nero_standard_goffrato",checked)}/></div>}
         {field==="costo_materiale_noto" && value===false && <p className="mt-2 text-sm text-slate-600">{QUOTE_MATERIAL_HELP}</p>}

@@ -53,7 +53,7 @@ export function ralPrintSummary(
   alternatives = false,
   language: PrintLanguage = "it"
 ): string {
-  if (!summary) return "";
+  if (!summary || (rows.length>0 && rows.every(r=>r.natural))) return "";
   const en = language === "en";
   const text = en
     ? {
@@ -98,7 +98,7 @@ export function ralPrintSummary(
       excluded.push(
         row.code +
           (row.context ? " — " + row.context : "") +
-          (/O\d{4}$/.test(row.code)
+          (row.natural ? (en?" (unfinished / natural)":" (grezzo / naturale)") : /O\d{4}$/.test(row.code)
             ? text.already
             : row.family === "qu"
               ? text.excludedCategory
