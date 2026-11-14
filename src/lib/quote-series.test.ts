@@ -60,8 +60,8 @@ describe("series products",()=>{
  it("asks exactly four required fields in either wizard mode",()=>{
   for(const advanced of [false,true]){
    const d={...blankQuote(),prodotti:[series()]},steps=buildQuoteWizardSteps(d,advanced);
-   expect(steps.filter(s=>s.index===0).map(s=>s.field)).toEqual(["descrizione","codice","quantita","prezzo_serie","sconto_serie"]);
-   expect(steps.filter(s=>s.index===0&&s.field!=="sconto_serie").every(s=>s.required)).toBe(true);
+   expect(steps.filter(s=>s.index===0).map(s=>s.field)).toEqual(["descrizione","codice","quantita","prezzo_serie"]);
+   expect(steps.filter(s=>s.index===0).every(s=>s.required)).toBe(true);
    expect(steps.some(s=>["lavoro_ore_totali","progettazione_ore","target_totale"].includes(s.field??""))).toBe(false);
    expect(quoteWizardStepError(steps.find(s=>s.field==="prezzo_serie")!,{...d,prodotti:[{...series(),prezzo_serie:null}]})).toContain("prezzo unitario");
   }

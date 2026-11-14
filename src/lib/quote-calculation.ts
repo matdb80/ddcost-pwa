@@ -39,10 +39,23 @@ export function moveQuoteProduct(products:Product[],index:number,direction:-1|1)
   if(!Number.isInteger(index)||index<0||index>=products.length||![-1,1].includes(direction))throw new Error("Posizione prodotto non valida");
   const target=index+direction;
   if(target<0||target>=products.length)return products;
-  const next=[...products];[next[index],next[target]]=[next[target],next[index]];return next;
+  return moveQuoteProductToIndex(products,index,target);
 }
 export function movedProductIndex(selected:number,index:number,direction:-1|1):number {
-  return selected===index?index+direction:selected===index+direction?index:selected;
+  return productIndexAfterMove(selected,index,index+direction);
+}
+/** Insert at the requested zero-based index; only intervening rows shift. */
+export function moveQuoteProductToIndex(products:Product[],index:number,target:number):Product[]{
+  if(!Number.isInteger(index)||!Number.isInteger(target)||index<0||target<0||index>=products.length||target>=products.length)
+    throw new Error("Posizione prodotto non valida");
+  if(index===target)return products;
+  const next=[...products];const [product]=next.splice(index,1);next.splice(target,0,product);return next;
+}
+export function productIndexAfterMove(selected:number,index:number,target:number):number {
+  if(selected===index)return target;
+  if(target<index && selected>=target && selected<index)return selected+1;
+  if(target>index && selected>index && selected<=target)return selected-1;
+  return selected;
 }
 export function quoteLaborMode(document: QuoteDocument): "complessivo" | "per_prodotto" | "per_pezzo" | "per_riga" {
   if (document.lavoro_modalita == null) return "per_riga"; // Preserve saved quotes.

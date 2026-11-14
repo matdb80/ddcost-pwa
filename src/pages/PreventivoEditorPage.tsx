@@ -13,7 +13,8 @@ import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { trpc } from "@/providers/trpc";
-import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy, FileText, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy, FileText } from "lucide-react";
+import QuoteProductOrder from "@/components/QuoteProductOrder";
 import { formatQuoteForCopy } from "@/lib/quote-copy";
 import { buildOneTimeQuotePrintHtml } from "@/lib/quote-pdf";
 import { openCommercialOfferPrintWindow } from "@/lib/commercial-offer-pdf";
@@ -35,7 +36,7 @@ import RalSettings from "@/components/RalSettings";
 import QuoteAttachments from "@/components/QuoteAttachments";
 import QuoteTotal from "@/components/QuoteTotal";
 import {
-  blankProduct, blankQuote, calculateQuote, changeQuoteLaborMode, duplicateProductForNewLot, moveQuoteProduct, movedProductIndex, migrateQuoteToEngineeringHours,
+  blankProduct, blankQuote, calculateQuote, changeQuoteLaborMode, duplicateProductForNewLot, moveQuoteProductToIndex, productIndexAfterMove, migrateQuoteToEngineeringHours,
   type Product, type QuoteDocument,
 } from "@/lib/quote-calculation";
 import { CALCULATION_FORMULAS } from "@/lib/calculation-formulas";
@@ -248,6 +249,9 @@ export default function PreventivoEditorPage() {
       const prodotti = [...(prev.prodotti as Product[])];
       const before=prodotti[index];
       prodotti[index] = { ...before, [key]: value };
+      // The single series price field now contains the net selling price.
+      // Keep legacy discount inputs until the user explicitly edits that price.
+      if(key==="prezzo_serie" && isSeries(before))prodotti[index].sconto_serie="";
       if(key==="prodotto_di_serie" && value===true)prodotti[index].a_forfait=false;
       if(key==="a_forfait" && value===true)prodotti[index].prodotto_di_serie=false;
       if(key==="costo_materiale_noto" && value===false && before.costo_materiale_noto!==false && before.geometria_materiale===undefined)
@@ -293,10 +297,12 @@ export default function PreventivoEditorPage() {
     }catch(e){setError(e instanceof Error?e.message:"Impossibile copiare il prodotto");return false;}
     finally{copyingRef.current=false;setCopyingProduct(false);}
   }
-  function moveProduct(index:number,direction:-1|1){
-    if(copyingRef.current || savingRef.current || (readOnly&&!isNew) || index+direction<0 || index+direction>=doc.prodotti.length)return;
-    update("prodotti",moveQuoteProduct(withRowIds(doc.prodotti),index,direction),true);
-    remapReferences(i=>movedProductIndex(i,index,direction));
+  function moveProductTo(index:number,target:number):boolean{
+    if(copyingRef.current || savingRef.current || draftSaving || (readOnly&&!isNew) || !Number.isInteger(target) || target<0 || target>=doc.prodotti.length)return false;
+    if(index===target)return true;
+    update("prodotti",moveQuoteProductToIndex(withRowIds(doc.prodotti),index,target),true);
+    remapReferences(i=>productIndexAfterMove(i,index,target));
+    return true;
   }
   function removeProduct(index:number){
     if(copyingRef.current || savingRef.current || (readOnly&&!isNew))return;
@@ -613,7 +619,7 @@ export default function PreventivoEditorPage() {
           onUpdate={update} onUpdateProduct={updateProduct}
           onAddProduct={()=>update("prodotti",[...doc.prodotti,{...blankProduct(),nero_standard_goffrato:allStandardBlackTextured(doc.prodotti)}],true)}
           onCopyProductAndScaleLot={copyProduct}
-          onMoveProduct={moveProduct}
+          onMoveProductTo={moveProductTo}
           onRemoveProduct={removeProduct}
           onGroupRenamed={groupRenamed} quoteEditToken={renamedEditToken??data?.editToken}
           onCreateGroup={async(index,name)=>{
@@ -914,7 +920,7 @@ export default function PreventivoEditorPage() {
       </div>
       {(doc.prodotti as Product[]).map((p,index)=>
         <section key={p._rowId??index} className="bg-white border rounded-xl p-3 md:p-4 space-y-2.5">
-          <div className="-mx-3 -mt-3 md:-mx-4 md:-mt-4 flex justify-between items-center gap-3 rounded-t-xl bg-sky-500 px-3 py-3 md:px-4 text-slate-950">
+          <div className="-mx-3 -mt-3 md:-mx-4 md:-mt-4 flex flex-wrap justify-between items-center gap-3 rounded-t-xl bg-sky-500 px-3 py-3 md:px-4 text-slate-950">
             <div className="flex flex-wrap items-center gap-4">
               <h3 className="text-base font-bold">Prodotto {index+1}</h3>
               <label className="flex items-center gap-2 text-sm font-semibold">
@@ -927,8 +933,7 @@ export default function PreventivoEditorPage() {
               </label>
             </div>
             <div className="flex items-center gap-2">
-            {!locked&&<><button type="button" aria-label={`Sposta su prodotto ${index+1}`} title="Sposta su" disabled={index===0} className="rounded p-1 hover:bg-white/30 disabled:opacity-30" onClick={()=>moveProduct(index,-1)}><ArrowUp size={17}/></button>
-              <button type="button" aria-label={`Sposta giù prodotto ${index+1}`} title="Sposta giù" disabled={index===doc.prodotti.length-1} className="rounded p-1 hover:bg-white/30 disabled:opacity-30" onClick={()=>moveProduct(index,1)}><ArrowDown size={17}/></button></>}
+            {!locked&&<QuoteProductOrder index={index} count={doc.prodotti.length} disabled={draftSaving} onMoveTo={target=>moveProductTo(index,target)}/>}
             {!locked&&<button type="button" aria-label={`Copia prodotto ${index+1}`} title="Copia subito sotto, con nuova quantità e nuovo codice temporaneo" className="rounded p-1 hover:bg-white/30" onClick={()=>void copyProduct(index)}><Copy size={17}/></button>}
             {!locked && doc.prodotti.length > 1 && <button title="Rimuovi prodotto" className="rounded p-1 text-red-950 hover:bg-white/30" onClick={()=>removeProduct(index)}><Trash2 size={17}/></button>}
             </div>

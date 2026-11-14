@@ -1,7 +1,7 @@
 import ProductGroupRename,{type GroupRenameResult} from "./ProductGroupRename";
 import SearchableSelect from "./SearchableSelect";
 import QuoteInoxChoice from "./QuoteInoxChoice";
-import {isSeries,isFixedPrice} from "@/lib/quote-series";
+import {isSeries,isFixedPrice,seriesPriceForInput} from "@/lib/quote-series";
 import {isForfait} from "@/lib/quote-forfait";
 import SalesHandoffPanel from "./SalesHandoffPanel";
 import { quoteDocumentNumber } from "@/lib/commercial-offer-number";
@@ -9,8 +9,9 @@ import {useEffect, useMemo, useRef, useState, type ReactNode} from "react";
 import {Link} from "react-router";
 import {
   ArrowLeft, ArrowRight, Check, ChevronLeft, Copy, FileText,
-  Plus, Save, Settings2, Trash2, ArrowUp, ArrowDown,
+  Plus, Save, Settings2, Trash2,
 } from "lucide-react";
+import QuoteProductOrder from "./QuoteProductOrder";
 import TemporaryProductCode, {type GeneratedProductCode} from "./TemporaryProductCode";
 import type {RalOptions} from "@/lib/ral-pricing";
 import QuoteNumericInput from "@/components/QuoteNumericInput";
@@ -61,7 +62,7 @@ type Props={
   onUpdateProduct:(index:number,key:string,value:unknown)=>void;
   onAddProduct:()=>void;
   onCopyProductAndScaleLot:(index:number)=>void|Promise<boolean>;
-  onMoveProduct?:(index:number,direction:-1|1)=>void;
+  onMoveProductTo?:(index:number,target:number)=>boolean|void;
   onRemoveProduct:(index:number)=>void;
   onGroupRenamed:(result:GroupRenameResult)=>void;
   quoteEditToken?:string;
@@ -120,7 +121,7 @@ export default function QuoteMobileWizard(props:Props){
   const productIndex=current.index;
   const product=productIndex===undefined?null:(doc.prodotti?.[productIndex] as Product|undefined);
   const field=current.field;
-  const value=(productIndex===undefined?doc:product)?.[field??""];
+  const value=field==="prezzo_serie" && product?seriesPriceForInput(product):(productIndex===undefined?doc:product)?.[field??""];
   const updateValue=(v:unknown)=>{
     setLocalError("");
     if(!field)return;
@@ -149,12 +150,12 @@ export default function QuoteMobileWizard(props:Props){
     if(await onCopyProductAndScaleLot(index)===false)return;
     goto("p:"+i+(isForfait(doc.prodotti[index])?":descrizione":":quantita"));
   };
-  const orderButtons=(index:number,navigate=false)=>props.onMoveProduct && <>
-    <button type="button" aria-label={`Sposta su prodotto ${index+1}`} title="Sposta su" disabled={locked||index===0} className="min-h-11 min-w-9 rounded p-2 disabled:opacity-30"
-      onClick={()=>{props.onMoveProduct!(index,-1);if(navigate)goto(`p:${index-1}:${field??"descrizione"}`);}}><ArrowUp size={18}/></button>
-    <button type="button" aria-label={`Sposta giù prodotto ${index+1}`} title="Sposta giù" disabled={locked||index===doc.prodotti.length-1} className="min-h-11 min-w-9 rounded p-2 disabled:opacity-30"
-      onClick={()=>{props.onMoveProduct!(index,1);if(navigate)goto(`p:${index+1}:${field??"descrizione"}`);}}><ArrowDown size={18}/></button>
-  </>;
+  const orderButtons=(index:number,navigate=false)=>props.onMoveProductTo &&
+    <QuoteProductOrder key={doc.prodotti[index]._rowId??index} index={index} count={doc.prodotti.length} disabled={locked||busy} onMoveTo={target=>{
+      if(props.onMoveProductTo!(index,target)===false)return false;
+      if(navigate)goto(`p:${target}:${field??"descrizione"}`);
+      return true;
+    }}/>;
   const percent=Math.round((activeIndex+1)/steps.length*100);
   const hasPreview=preview!==null && Number.isFinite(Number(preview.totale_finale));
   const price=euro(preview?.totale_finale);
@@ -208,7 +209,7 @@ export default function QuoteMobileWizard(props:Props){
             <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isSeries(product)}
               onChange={e=>{onUpdateProduct(productIndex,"prodotto_di_serie",e.target.checked);setAddingGroup(false);goto(`p:${productIndex}:descrizione`);}}/> Prodotto di serie
           </label>}
-        {productIndex!==undefined&&!locked&&<div className="ml-auto flex shrink-0 gap-1">{orderButtons(productIndex,true)}<button type="button" aria-label={`Copia prodotto ${productIndex+1}`} title="Copia subito sotto con un nuovo codice temporaneo" className="rounded p-2 text-violet-800" onClick={()=>void copyProductAndScaleLot(productIndex)}><Copy size={18}/></button>
+        {productIndex!==undefined&&!locked&&<div className="ml-auto flex max-w-full flex-wrap items-center gap-1">{orderButtons(productIndex,true)}<button type="button" aria-label={`Copia prodotto ${productIndex+1}`} title="Copia subito sotto con un nuovo codice temporaneo" className="rounded p-2 text-violet-800" onClick={()=>void copyProductAndScaleLot(productIndex)}><Copy size={18}/></button>
           {doc.prodotti.length>1&&<button type="button" aria-label={`Elimina prodotto ${productIndex+1}`} className="rounded p-2 text-red-800" onClick={()=>{onRemoveProduct(productIndex);goto("riepilogo");}}><Trash2 size={18}/></button>}</div>}
         </div>
 
@@ -268,9 +269,9 @@ export default function QuoteMobileWizard(props:Props){
               </div>
             )}
             <div className="space-y-2">
-              {(doc.prodotti as Product[]).map((p,i)=><div key={p._rowId??i} className="flex min-h-12 items-center rounded-lg border border-slate-200 p-3 text-sm">
+              {(doc.prodotti as Product[]).map((p,i)=><div key={p._rowId??i} className="flex min-h-12 flex-wrap items-center gap-y-2 rounded-lg border border-slate-200 p-3 text-sm">
                 <button type="button" onClick={()=>goto("p:"+i+":descrizione")}
-                  className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
+                  className="flex min-w-0 basis-full items-center justify-between gap-2 text-left">
                   <span className="min-w-0">
                     <span className="block break-words">{i+1}. {p.descrizione||"Prodotto da completare"}</span>
                     <span className="mt-1 block text-xs text-slate-600">{isForfait(p)?"a forfait/da definire":`${p.quantita} pz · ${hasPreview?"€ "+euro(preview?.prodotti?.[i]?.prezzo_netto_unitario_finale)+" /pz":"Da calcolare"}`}</span>
@@ -413,7 +414,7 @@ export default function QuoteMobileWizard(props:Props){
           <QuoteNumericInput key={current.id} id="wizard-input"
             className={inputClass+(field==="quantita"&&(value===""||value===null||value===undefined)?" quote-quantity-attention":"")}
             kind={current.numeric}
-            fractionDigits={field==="lavoro_h" && (doc.lavoro_modalita==="per_pezzo" || doc.lavoro_modalita==="per_prodotto") ? 6 : undefined}
+            fractionDigits={field==="prezzo_serie"?4:field==="lavoro_h" && (doc.lavoro_modalita==="per_pezzo" || doc.lavoro_modalita==="per_prodotto") ? 6 : undefined}
             optional={field==="prezzo_serie"||field==="valore_forfait"||field==="quantita"||field==="prezzo_manuale"||field==="target_totale"}
             placeholder={field==="quantita"?"Inserisci la quantità":undefined}
             disabled={locked}

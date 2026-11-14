@@ -126,7 +126,7 @@ it("uses the geometry selection and tube dimensions in the mobile wizard",async(
   fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
   for(const [title,value] of [["Lunghezza (mm)","100"],["Diametro esterno (mm)","10"],["Diametro interno (mm)","6"]]){
     expect(screen.getByRole("heading",{name:title})).toBeTruthy();
-    fireEvent.change(screen.getByRole("textbox"),{target:{value}});
+    fireEvent.change(document.getElementById("wizard-input")!,{target:{value}});
     fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
   }
   expect(screen.getByRole("heading",{name:"Costo materiale al kg"})).toBeTruthy();
@@ -153,7 +153,7 @@ it("limits the mobile description and blocks advancing an overlength saved value
   mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"A".repeat(61)}]},true);
   await screen.findByTestId("quote-mobile-wizard");
   for(let i=0;i<3;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
-  const input=screen.getByRole("textbox") as HTMLInputElement;
+  const input=document.getElementById("wizard-input") as HTMLInputElement;
   expect(input.maxLength).toBe(60);
   expect(input.value).toHaveLength(61);
   fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
@@ -349,7 +349,7 @@ it("switches the mobile product header to forfait, validates its amount and reac
   expect(screen.getByRole("heading",{name:"Valore di vendita a forfait (€)"})).toBeTruthy();
   fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
   expect(screen.getByRole("alert").textContent).toContain("valore di vendita");
-  const amount=screen.getByRole("textbox");fireEvent.change(amount,{target:{value:"250"}});fireEvent.blur(amount);
+  const amount=document.getElementById("wizard-input")!;fireEvent.change(amount,{target:{value:"250"}});fireEvent.blur(amount);
   fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
   expect(screen.getByRole("heading",{name:"Riepilogo finale"})).toBeTruthy();
   expect(screen.getByText("a forfait/da definire")).toBeTruthy();
@@ -418,6 +418,10 @@ it("completes, reopens and edits a series product with only code, description, q
  expect(screen.queryByRole("group",{name:"Oggetto della modifica *"})).toBeNull();
  expect(screen.queryByText("Attribuzione dei costi comuni")).toBeNull();
  expect(screen.queryByRole("button",{name:"Genera codice temporaneo"})).toBeNull();
+ const saleFields=screen.getByLabelText("Codice articolo *").closest(".grid")!.querySelectorAll("input");
+ expect(saleFields).toHaveLength(4);expect(Array.from(saleFields).every(input=>input.required)).toBe(true);
+ expect(screen.queryByRole("combobox",{name:"Gruppo merceologico *"})).toBeNull();
+ expect(screen.queryByRole("textbox",{name:"Costo €/h"})).toBeNull();
  fireEvent.click(screen.getByRole("button",{name:"Completa preventivo"}));
  expect(screen.getByRole("alert").textContent).toContain("codice articolo");
  fireEvent.change(screen.getByLabelText("Codice articolo *"),{target:{value:"STD-123"}});
@@ -452,12 +456,42 @@ it("offers the four series fields in the mobile wizard and keeps price required"
  for(let i=0;i<3;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
  expect(screen.getByRole("heading",{name:"Prezzo unitario di vendita (€/pz)"})).toBeTruthy();
  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));expect(screen.getByRole("alert").textContent).toContain("prezzo unitario");
- const price=screen.getByRole("textbox");fireEvent.change(price,{target:{value:"12,50"}});fireEvent.blur(price);
- fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
- expect(screen.getByRole("heading",{name:"Sconto cliente"})).toBeTruthy();
+ const price=document.getElementById("wizard-input")!;fireEvent.change(price,{target:{value:"12,50"}});fireEvent.blur(price);
  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
  expect(screen.getByRole("heading",{name:"Riepilogo finale"})).toBeTruthy();
  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("125,00");
+});
+
+it.each([false,true])("preserves a legacy series net price until explicitly edited, mobile=%s",async mobile=>{
+ const old=calculateQuote({...blankQuote(),cliente:"Cliente",stato_preventivo:"bozza",prodotti:[{...blankProduct(),
+  prodotto_di_serie:true,codice:"STD-1",descrizione:"Serie",quantita:10,prezzo_serie:10,sconto_serie:"40+15+5%"}]});
+ const priceField=async()=>{
+  if(!mobile)return await screen.findByLabelText("Prezzo unitario €/pz *") as HTMLInputElement;
+  await screen.findByTestId("quote-mobile-wizard");
+  for(let i=0;i<10&&!screen.queryByRole("heading",{name:"Prezzo unitario di vendita (€/pz)"});i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(screen.getByRole("heading",{name:"Prezzo unitario di vendita (€/pz)"})).toBeTruthy();
+  return document.getElementById("wizard-input") as HTMLInputElement;
+ };
+ const save=async()=>{
+  if(mobile)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  return JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
+ };
+ mount(old,mobile);
+ const input=await priceField();expect(input.value).toBe("4,845");
+ fireEvent.focus(input);fireEvent.blur(input);
+ // Change an unrelated option to enable saving the otherwise unchanged draft.
+ fireEvent.click(screen.getByRole("checkbox",{name:"Elabora diciture preventivo in inglese"}));
+ const unchanged=await save();
+ expect(unchanged.prodotti[0]).toMatchObject({prezzo_serie:10,sconto_serie:"40+15+5%"});
+ expect(calculateQuote(unchanged).totale_finale).toBe(old.totale_finale);
+ cleanup();state.calls=[];mount(unchanged,mobile);
+ const reopened=await priceField();expect(reopened.value).toBe("4,845");
+ fireEvent.focus(reopened);fireEvent.change(reopened,{target:{value:"7,1234"}});fireEvent.blur(reopened);
+ const edited=await save();
+ expect(edited.prodotti[0]).toMatchObject({prezzo_serie:7.1234,sconto_serie:""});
+ expect(calculateQuote(edited).totale_finale).toBeCloseTo(71.234);
 });
 
 it.each([false,true])('copies the selected first product immediately below its source in mobile=%s',async mobile=>{
@@ -631,4 +665,31 @@ it("copies an issued natural code once, retries the same request after failure a
   expect(saved.prodotti[0].codice_temporaneo).toEqual(generated);
   expect(saved.prodotti[1].codice_temporaneo.sequence).toBe(77);
   expect(saved.prodotti[1].quantita).toBe("");
+});
+
+it.each([false,true])("sets an exact product position and retains it after saving/reopening, mobile=%s",async mobile=>{
+  const products=["Primo","Secondo","Terzo","Quarto","Quinto"].map((descrizione,i)=>({...blankProduct(),descrizione,quantita:i+1,materiale_cad:10+i,gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",oggetto_modifica:["occhio"]}));
+  mount({...blankQuote(),cliente:"Prova",stato_preventivo:"bozza",prodotti:products,listino:{product_index_riferimento:2}},mobile);
+  if(mobile){
+    for(let i=0;i<100&&!screen.queryByRole("textbox",{name:"Posizione prodotto 3"});i++)fireEvent.click(await screen.findByRole("button",{name:"Avanti"}));
+  }
+  const input=await screen.findByRole("textbox",{name:"Posizione prodotto 3"});
+  fireEvent.change(input,{target:{value:"1"}});fireEvent.keyDown(input,{key:"Enter"});
+  if(mobile){
+    // The wizard follows the same product to its new position.
+    expect(screen.getByRole("textbox",{name:"Posizione prodotto 1"})).toBeTruthy();
+    expect((document.getElementById("wizard-input") as HTMLInputElement).value).toBe("Terzo");
+    fireEvent.click(screen.getByRole("button",{name:"Vista completa"}));
+  }
+  expect(screen.getAllByLabelText("Descrizione *").map(e=>(e as HTMLInputElement).value)).toEqual(["Terzo","Primo","Secondo","Quarto","Quinto"]);
+  const fourth=screen.getByRole("textbox",{name:"Posizione prodotto 4"});
+  fireEvent.change(fourth,{target:{value:"5"}});fireEvent.blur(fourth);
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
+  expect(saved.prodotti.map((p:any)=>[p.descrizione,p.quantita,p.materiale_cad])).toEqual([["Terzo",3,12],["Primo",1,10],["Secondo",2,11],["Quinto",5,14],["Quarto",4,13]]);
+  expect(saved.listino.product_index_riferimento).toBe(0);
+  cleanup();mount(saved);
+  expect((await screen.findAllByLabelText("Descrizione *")).map(e=>(e as HTMLInputElement).value)).toEqual(["Terzo","Primo","Secondo","Quinto","Quarto"]);
+  expect(screen.getAllByRole("textbox",{name:/Posizione prodotto/}).map(e=>(e as HTMLInputElement).value)).toEqual(["1","2","3","4","5"]);
 });

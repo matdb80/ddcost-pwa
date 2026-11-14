@@ -31,3 +31,13 @@ export function seriesNetPrice(product:Row):number {
   const net=Number(product.prezzo_serie)*discount.factor;
   return Math.round((net+Number.EPSILON)*10000)/10000;
 }
+
+/** Show the effective sale price of legacy discounted rows without rewriting
+ * their stored inputs. A subsequent explicit price edit replaces the discount. */
+export function seriesPriceForInput(product:Row):number|null {
+  if(seriesPriceError(product.prezzo_serie))return null;
+  try{
+    const price=seriesNetPrice(product);
+    return Number.isFinite(price)?price:null;
+  }catch{return null;}
+}

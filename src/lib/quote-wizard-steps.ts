@@ -1,6 +1,5 @@
-import {seriesDiscount} from "./series-discount";
 import {quoteInoxError} from "./quote-inox";
-import {isSeries,isFixedPrice,seriesPriceError} from "./quote-series";
+import {isSeries,isFixedPrice,seriesPriceError,seriesPriceForInput} from "./quote-series";
 import {isForfait,forfaitAmountError} from "./quote-forfait";
 import { calculateQuoteMaterial, quoteMaterialDimensionFields, quoteMaterialGeometry, QUOTE_MATERIAL_GEOMETRIES, QUOTE_MATERIAL_HELP } from "./quote-material-weight";
 import type {QuoteDocument} from "./quote-calculation";
@@ -50,8 +49,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     if(isSeries(product)){
       add("codice","Codice articolo","Codice dell’articolo di serie, obbligatorio.",{kind:"text",required:true});
       add("quantita","Quanti pezzi?","Quantità dell’articolo di serie.",{kind:"number",numeric:"decimal",required:true});
-      add("prezzo_serie","Prezzo unitario di vendita (€/pz)","Prezzo unitario prima degli sconti cliente e dell’eventuale supplemento RAL.",{kind:"number",numeric:"euro",required:true});
-      add("sconto_serie","Sconto cliente","Facoltativo: fino a tre sconti successivi, ad esempio 40+15+5%.",{kind:"text"});
+      add("prezzo_serie","Prezzo unitario di vendita (€/pz)","Prezzo netto unitario di vendita, prima dell’eventuale supplemento RAL.",{kind:"number",numeric:"euro",required:true});
       return;
     }
     if(isForfait(product)){
@@ -141,14 +139,13 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
 
 /** Field validation for advancing; drafts are allowed to remain incomplete. */
 export function quoteWizardStepError(step:QuoteWizardStep,doc:QuoteDocument):string|null{
-  if(step.field==="sconto_serie"){try{seriesDiscount(doc.prodotti?.[step.index!]?.sconto_serie);return null;}catch(e){return (e as Error).message;}}
   if(!step.required)return null;
   const obj=step.index===undefined?doc:doc.prodotti?.[step.index];
   const value=obj?.[step.field||""];
   if(step.maxLength!==undefined && String(value??"").length>step.maxLength)
     return `Massimo ${step.maxLength} caratteri, spazi inclusi.`;
   if(step.field==="materiale_prodotto"&&obj){const error=quoteInoxError(obj);if(error)return error;}
-  if(step.field==="prezzo_serie")return seriesPriceError(value);
+  if(step.field==="prezzo_serie")return seriesPriceError(seriesPriceForInput(obj??{}));
   if(step.field==="valore_forfait")return forfaitAmountError(value);
   if(step.field==="geometria_materiale")return QUOTE_MATERIAL_GEOMETRIES.some(g=>g.id===quoteMaterialGeometry(obj??{}))
     ?null:"Seleziona la geometria del materiale.";
