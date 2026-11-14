@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useBlocker } from "react-router";
 import Layout from "@/components/Layout";
 import { AlertCircle, CheckCircle2, FileUp, ShieldCheck } from "lucide-react";
 
@@ -27,6 +28,16 @@ export default function ImportaStorico() {
   const [done, setDone] = useState<ImportResult | null>(null);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
+  const hasUnsavedInput=!done&&(Boolean(file)||Boolean(preview)||working);
+  const blocker=useBlocker(({currentLocation,nextLocation})=>
+    hasUnsavedInput && (currentLocation.pathname!==nextLocation.pathname || currentLocation.search!==nextLocation.search)
+  );
+  useEffect(()=>{
+    if(!hasUnsavedInput)return;
+    const handler=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};
+    window.addEventListener("beforeunload",handler);
+    return()=>window.removeEventListener("beforeunload",handler);
+  },[hasUnsavedInput]);
 
   async function submit(stage: "preview" | "commit") {
     if (!file || working) return;
@@ -63,6 +74,16 @@ export default function ImportaStorico() {
 
   return (
     <Layout>
+      {blocker.state==="blocked" && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4">
+        <div role="dialog" aria-modal="true" aria-labelledby="import-leave-title" className="w-full max-w-lg space-y-4 rounded-xl bg-white p-6 shadow-2xl">
+          <h2 id="import-leave-title" className="text-lg font-semibold text-slate-900">Vuoi uscire dall’importazione?</h2>
+          <p className="text-sm text-slate-700">Il file selezionato e l’esito della verifica sono temporanei. {working?"L’operazione è in corso: resta qui per verificarne l’esito.":"Puoi restare oppure uscire e selezionare di nuovo il file."}</p>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" disabled={working} onClick={()=>blocker.proceed()} className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700 disabled:opacity-50">Esci senza salvare</button>
+            <button type="button" onClick={()=>blocker.reset()} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">Continua qui</button>
+          </div>
+        </div>
+      </div>}
       <div className="max-w-3xl mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-semibold text-slate-800">Importa storico DDCost</h1>
