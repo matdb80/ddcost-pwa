@@ -24,6 +24,7 @@ export const blankQuote = (): QuoteDocument => ({
   lavoro_modalita: "complessivo", lavoro_ore_totali: 0,
   trattamenti_modalita: "per_prodotto", trattamenti_totale_euro: 0,
   target_totale: null, note_generali: "", note_cliente: "", note_fornitori: "", attachments: [],
+  oggetti_modifica_personalizzati: [],
 });
 /** Copies the selected product for another lot, leaving its quantity blank. */
 export function duplicateProductForNewLot(products: Product[], index:number): Product[] {

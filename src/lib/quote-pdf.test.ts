@@ -162,3 +162,15 @@ it('uses the current calendar year in Italy even when the saved quote belongs to
     expect(buildOneTimeQuotePrintHtml({numero_preventivo:'DDC90007/2025',rev:2,prodotti:[]})).toContain('<title>2027_DDC90007_REV.2.pdf</title>');
   }finally{vi.useRealTimers();}
 });
+it.each([false,true])('shows colour text but no colour swatch in product rows; header only, English=%s',english=>{
+  const doc={pdf_in_inglese:english,verniciatura_ral:{color:'3000',textured:false},prodotti:[{codice:'TBC0000001IO3000',descrizione:'Maniglia RAL',quantita:1,prezzo_netto_unitario_finale:5,totale_finale:5}]};
+  const html=buildOneTimeQuotePrintHtml(doc);
+  const tbody=html.match(/<tbody>([\s\S]*?)<\/tbody>/)![1];
+  expect(tbody).toContain(english?'Colour: RAL 3000':'Colore: RAL 3000');
+  expect(tbody).toContain(english?'SMOOTH':'LISCIO');
+  expect(tbody).not.toContain('class="ral-swatch"');
+  const meta=html.match(/<section class="meta">([\s\S]*?)<\/section>/)![1];
+  expect(meta).toContain('class="ral-swatch"');
+  expect(meta).toContain('aria-label="RAL 3000"');
+  expect(html.match(/class="ral-swatch"/g)).toHaveLength(1);
+});

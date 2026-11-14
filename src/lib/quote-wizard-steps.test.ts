@@ -318,3 +318,45 @@ it("asks for geometry first and only for dimensions of the chosen shape",()=>{
   product.geometria_materiale="tondino";
   expect(buildQuoteWizardSteps(doc).some(s=>s.field==="diametro_interno_mm")).toBe(false);
 });
+
+describe("series discount validation",()=>{
+  it("accepts empty or missing discount",()=>{
+    const d={...blankQuote(),prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:"ART",descrizione:"D",quantita:1,prezzo_serie:10,sconto_serie:undefined as string|undefined}]},steps=buildQuoteWizardSteps(d);
+    const discountStep=steps.find(s=>s.field==="sconto_serie")!;
+    expect(quoteWizardStepError(discountStep,d)).toBeNull();
+    d.prodotti[0].sconto_serie="";
+    expect(quoteWizardStepError(discountStep,d)).toBeNull();
+    d.prodotti[0].sconto_serie=undefined;
+    expect(quoteWizardStepError(discountStep,d)).toBeNull();
+  });
+  it("accepts valid single, double and triple discounts",()=>{
+    const d={...blankQuote(),prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:"ART",descrizione:"D",quantita:1,prezzo_serie:10,sconto_serie:undefined as string|undefined}]},steps=buildQuoteWizardSteps(d);
+    const discountStep=steps.find(s=>s.field==="sconto_serie")!;
+    for(const discount of ["50","50%","0","100","50+15","50+12+15","40","30+5+2","40+15+5%"]){
+      d.prodotti[0].sconto_serie=discount;
+      expect(quoteWizardStepError(discountStep,d)).toBeNull();
+    }
+  });
+  it("rejects invalid discount syntax",()=>{
+    const d={...blankQuote(),prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:"ART",descrizione:"D",quantita:1,prezzo_serie:10,sconto_serie:undefined as string|undefined}]},steps=buildQuoteWizardSteps(d);
+    const discountStep=steps.find(s=>s.field==="sconto_serie")!;
+    for(const discount of ["abc","50++15","50+","-10","101","50+15+10+5"]){
+      d.prodotti[0].sconto_serie=discount;
+      expect(quoteWizardStepError(discountStep,d)).toMatch(/percentuale|sconto|numero/i);
+    }
+  });
+});
+
+describe("custom modification objects catalog",()=>{
+  it("initialises blank quote with empty catalog",()=>{
+    const q=blankQuote();
+    expect(Array.isArray(q.oggetti_modifica_personalizzati)).toBe(true);
+    expect(q.oggetti_modifica_personalizzati).toEqual([]);
+  });
+  it("preserves custom objects in document JSON even when deselected",()=>{
+    const q={...blankQuote(),oggetti_modifica_personalizzati:["Foratura aggiuntiva"],prodotti:[{...blankProduct(),oggetto_modifica:["occhio"]}]};
+    const json=JSON.stringify(q);
+    const restored=JSON.parse(json);
+    expect(restored.oggetti_modifica_personalizzati).toEqual(["Foratura aggiuntiva"]);
+  });
+});

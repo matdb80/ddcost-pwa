@@ -33,13 +33,15 @@ it.each([false,true])("all-natural PDF contains no colour square or finish/paint
   expect(doc.ral_riepilogo.fixed).toBe(0);
   expect(doc.prodotti[0].ral_ricarico_cad).toBe(0);
 });
-it("a mixed PDF shows the swatch only for painted products and preserves the natural SKU",()=>{
+it("a mixed PDF keeps the swatch in the header and preserves natural and painted row labels",()=>{
   const doc=calculateQuote({...blankQuote(),cliente:"Test",verniciatura_ral:{...ral,textured:true},prodotti:[row("TBC000000160"),row("TBC0000002In")]});
   const html=buildOneTimeQuotePrintHtml(doc);
   const trs=html.match(/<tr>.*?<\/tr>/gs)!;
   const natural=trs.find(r=>r.includes("TBC000000160"))!,painted=trs.find(r=>r.includes("TBC0000002IO6021"))!;
   expect(natural).toContain("GREZZO / NATURALE");expect(natural).not.toMatch(/class="ral-swatch"|RAL 6021|GOFFRATO|LISCIO/);
-  expect(painted).toContain('class="ral-swatch"');expect(painted).toContain("GOFFRATO");
+   expect(painted).not.toContain('class="ral-swatch"');expect(painted).toContain("RAL 6021");expect(painted).toContain("GOFFRATO");
+   const meta=html.match(/<section class="meta">([\s\S]*?)<\/section>/)![1];
+   expect(meta).toContain('aria-label="RAL 6021"');expect(meta.match(/class="ral-swatch"/g)).toHaveLength(1);
   expect(doc.prodotti[0].ral_percentuale).toBe(0);expect(doc.prodotti[1].ral_percentuale).toBe(100);
   expect(doc.ral_riepilogo.fixed).toBe(100);expect(html).not.toContain("TBC000000160 (nylon)");
   expect(documentPrintFinish({},row("TBC000000160"))).toBe("GREZZO / NATURALE");

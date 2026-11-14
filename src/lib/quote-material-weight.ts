@@ -96,6 +96,8 @@ export const MODIFICATION_OBJECTS=[
   "altre pieghe o variazioni alla geometria",
 ] as const;
 export type ModificationObject=typeof MODIFICATION_OBJECTS[number];
+/** Set tipizzato per verifica membership senza errori TS2345 su tuple readonly. */
+export const predefinedObjectsSet: ReadonlySet<string> = new Set(MODIFICATION_OBJECTS);
 export function toggleModificationObject(current:readonly string[]|unknown,option:string):string[]{
   const values=Array.isArray(current)?current.filter((v):v is string=>typeof v==="string"):[];
   return values.includes(option)?values.filter(v=>v!==option):[...values,option];

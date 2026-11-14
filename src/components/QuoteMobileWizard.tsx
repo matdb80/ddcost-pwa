@@ -1,7 +1,7 @@
 import ProductGroupRename,{type GroupRenameResult} from "./ProductGroupRename";
 import SearchableSelect from "./SearchableSelect";
 import QuoteInoxChoice from "./QuoteInoxChoice";
-import {isSeries,isFixedPrice,seriesPriceForInput} from "@/lib/quote-series";
+import {isSeries,isFixedPrice} from "@/lib/quote-series";
 import {isForfait} from "@/lib/quote-forfait";
 import SalesHandoffPanel from "./SalesHandoffPanel";
 import { quoteDocumentNumber } from "@/lib/commercial-offer-number";
@@ -58,6 +58,10 @@ type Props={
   hideDocumentTotalInPdf:boolean;
   onHideDocumentTotalInPdfChange:(hide:boolean)=>void;
   priceProductIndex:number;
+  /** Oggetti personalizzati del preventivo, condivisi fra editor e wizard. */
+  customObjects?:string[];
+  /** Callback quando un oggetto personalizzato viene rinominato. */
+  onRenameObject?:(oldName:string,newName:string)=>void;
   onUpdate:(key:string,value:unknown,economic?:boolean)=>void;
   onUpdateProduct:(index:number,key:string,value:unknown)=>void;
   onAddProduct:()=>void;
@@ -84,6 +88,7 @@ export default function QuoteMobileWizard(props:Props){
     copyMessage,busy,unsavedChanges,onUnsavedLocalChange,priceProductIndex,onUpdate,onUpdateProduct,
     onAddProduct,onCopyProductAndScaleLot,onRemoveProduct,onCreateGroup,onPriceProductIndex,onListinoDiscount,
     hideDocumentTotalInPdf,onHideDocumentTotalInPdfChange,
+    customObjects=[],onRenameObject,
     onSave,onSaveOverwrite,onSaveDraft,onCopy,onExportPdf,onEdit,onUpgrade,onDesktop,
   }=props;
   const [advanced,setAdvanced]=useState(false);
@@ -121,7 +126,7 @@ export default function QuoteMobileWizard(props:Props){
   const productIndex=current.index;
   const product=productIndex===undefined?null:(doc.prodotti?.[productIndex] as Product|undefined);
   const field=current.field;
-  const value=field==="prezzo_serie" && product?seriesPriceForInput(product):(productIndex===undefined?doc:product)?.[field??""];
+  const value=(productIndex===undefined?doc:product)?.[field??""];
   const updateValue=(v:unknown)=>{
     setLocalError("");
     if(!field)return;
@@ -370,6 +375,8 @@ export default function QuoteMobileWizard(props:Props){
             onChange={(key,value)=>onUpdateProduct(productIndex,key,value)}/>
         ):field==="oggetto_modifica" && product && productIndex!==undefined?(
           <QuoteModificationObjectFields value={value} disabled={locked} compact idPrefix={`wizard-modification-${productIndex}`}
+            customObjects={customObjects}
+            onRename={onRenameObject}
             onChange={selected=>onUpdateProduct(productIndex,"oggetto_modifica",selected)}/>
         ):field==="lavoro_modalita"?(
           <select id="wizard-input" className={inputClass} disabled={locked} value={value??"per_prodotto"}
@@ -424,6 +431,11 @@ export default function QuoteMobileWizard(props:Props){
         ):current.kind==="textarea"?(
           <textarea id="wizard-input" rows={4} className={inputClass} disabled={locked}
             value={String(value??"")} onChange={e=>updateValue(e.target.value)}/>
+        ):field==="sconto_serie" && product?(
+          <input id="wizard-input" className={inputClass} disabled={locked}
+            placeholder="Es. 50+15%" autoComplete="off"
+            value={String(value??"")} onChange={e=>updateValue(e.target.value||undefined)}
+            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();next();}}}/>
         ):field==="codice" && product?(
           <ArticleCodeInput id="wizard-input" aria-label="Codice articolo" className={inputClass} disabled={locked}
             value={String(value??"")} onChange={updateValue}

@@ -60,11 +60,16 @@ export function buildOneTimeQuotePrintHtml(
   const formatNumber = (value: unknown) =>
     number(value).toLocaleString(locale, { maximumFractionDigits: 2 });
   const colorLabel = documentPrintColor(quote, language);
-  const swatch = ralPrintSwatch(/RAL (\d{4})/.exec(colorLabel)?.[1] ?? "");
   const specialMark = '<strong class="special-product">*</strong>';
   const products = Array.isArray(quote.prodotti)
     ? (quote.prodotti as Product[])
     : [];
+  // Mixed natural/painted quotes have a generic header label. Keep the sample
+  // for their painted rows in the header, without assigning a colour to natural rows.
+  const paintedFinish = products.filter(p => !isForfait(p))
+    .map(p => documentPrintFinish(quote, p, language))
+    .find(finish => /RAL \d{4}/.test(finish));
+  const swatch = ralPrintSwatch(/RAL (\d{4})/.exec(paintedFinish ?? colorLabel)?.[1] ?? "");
   const ral =
     products.some(p => !isForfait(p)) &&
     (quote.verniciatura_ral || quote.ral_consolidato)
@@ -100,8 +105,7 @@ export function buildOneTimeQuotePrintHtml(
         ? `<div>${t.unitPrice}: € ${money(product.prezzo_serie)}</div><div>${t.discount}: ${escapeHtml(discount)}</div><div>${t.netPrice}${ral ? t.withRal : ""}: <strong>€ ${unitPrice.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</strong></div>`
         : null;
       const finish=documentPrintFinish(quote,product,language);
-      const rowSwatch=ralPrintSwatch(/RAL (\d{4})/.exec(finish)?.[1]??"");
-      return `<tr><td class="num">${index + 1}</td><td>${productName || t.product}${isSeries(product) && !ral ? "" : `<br><strong>${t.color}: ${escapeHtml(finish)}</strong>${rowSwatch}`}</td><td class="num">${formatNumber(quantity)} ${t.pieces}</td><td class="num">${priceDetails ?? "€ " + (ral ? unitPrice.toLocaleString(locale, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : money(unitPrice))}</td><td class="num">€ ${money(lineTotal)}</td></tr>`;
+      return `<tr><td class="num">${index + 1}</td><td>${productName || t.product}${isSeries(product) && !ral ? "" : `<br><strong>${t.color}: ${escapeHtml(finish)}</strong>`}</td><td class="num">${formatNumber(quantity)} ${t.pieces}</td><td class="num">${priceDetails ?? "€ " + (ral ? unitPrice.toLocaleString(locale, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : money(unitPrice))}</td><td class="num">€ ${money(lineTotal)}</td></tr>`;
     })
     .join("");
   const storedTotal = quote.totale_finale ?? quote.totale;

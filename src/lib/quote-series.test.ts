@@ -57,16 +57,17 @@ describe("series products",()=>{
   const opened=JSON.parse(JSON.stringify(saved));opened.prodotti[0].prodotto_di_serie=false;
   expect(calculateQuote(opened).totale_finale).toBe(expected.totale_finale);
  });
- it("asks exactly four required fields in either wizard mode",()=>{
+ it("asks five fields in either wizard mode, four required and one optional discount",()=>{
   for(const advanced of [false,true]){
    const d={...blankQuote(),prodotti:[series()]},steps=buildQuoteWizardSteps(d,advanced);
-   expect(steps.filter(s=>s.index===0).map(s=>s.field)).toEqual(["descrizione","codice","quantita","prezzo_serie"]);
-   expect(steps.filter(s=>s.index===0).every(s=>s.required)).toBe(true);
+   expect(steps.filter(s=>s.index===0).map(s=>s.field)).toEqual(["descrizione","codice","quantita","prezzo_serie","sconto_serie"]);
+   expect(steps.filter(s=>s.index===0&&s.required).map(s=>s.field)).toEqual(["descrizione","codice","quantita","prezzo_serie"]);
+   expect(steps.some(s=>s.field==="sconto_serie"&&!s.required)).toBe(true);
    expect(steps.some(s=>["lavoro_ore_totali","progettazione_ore","target_totale"].includes(s.field??""))).toBe(false);
    expect(quoteWizardStepError(steps.find(s=>s.field==="prezzo_serie")!,{...d,prodotti:[{...series(),prezzo_serie:null}]})).toContain("prezzo unitario");
   }
  });
- it("prints and copies the four sale fields without retained material, finish or listino",()=>{
+ it("prints and copies the five sale fields without retained material, finish or listino",()=>{
   const r=calculateQuote({...blankQuote(),prodotti:[series()],listino:{product_index_riferimento:0,prezzo_listino_generato:999,sconto_riferimento:"40%"}});
   const html=buildOneTimeQuotePrintHtml(r),row=html.split("<tbody>")[1].split("</tr>")[0];
   for(const text of ["ART-123","Articolo di serie","10 pz","12,50","125,00"])expect(row).toContain(text);

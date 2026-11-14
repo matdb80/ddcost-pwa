@@ -27,6 +27,7 @@ import {manualTemporaryCodePrefix,validManualTemporaryCode,isNaturalTemporaryCod
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
 import QuoteMobileWizard from "@/components/QuoteMobileWizard";
+import {predefinedObjectsSet} from "@/lib/quote-material-weight";
 import {normalizeDocumentTemporaryCodes} from "@/lib/document-product-fields";
 import StandardBlackFinishGroup, {allStandardBlackTextured,withStandardBlackFinish} from "@/components/StandardBlackFinishGroup";
 import QuoteForfaitFields from "@/components/QuoteForfaitFields";
@@ -190,6 +191,21 @@ export default function PreventivoEditorPage() {
       if (!Array.isArray(parsed.prodotti)) throw new Error("Formato storico non riconosciuto");
       parsed.cliente = data.client ?? parsed.cliente ?? "";
       parsed.riferimento_preventivo = data.reference ?? parsed.riferimento_preventivo ?? "";
+      // Compatibilità: inizializza catalogo personalizzato dalle selezioni dei documenti precedenti
+      if(!Array.isArray(parsed.oggetti_modifica_personalizzati)){
+        const catalogSet = new Set<string>();
+        (parsed.prodotti as Product[]).forEach((p: any) => {
+          const arr = p.oggetto_modifica;
+          if (Array.isArray(arr)) {
+            arr.forEach((item: string) => {
+              if (typeof item === "string" && item.trim() && !predefinedObjectsSet.has(item)) {
+                catalogSet.add(item);
+              }
+            });
+          }
+        });
+        parsed.oggetti_modifica_personalizzati = Array.from(catalogSet);
+      }
       setRenamedEditToken(undefined);
       let corrected=parsed,refreshError="";
       try{corrected=refreshQuoteSeriesRal(parsed);}catch(e){refreshError=(e as Error).message;}
@@ -249,9 +265,7 @@ export default function PreventivoEditorPage() {
       const prodotti = [...(prev.prodotti as Product[])];
       const before=prodotti[index];
       prodotti[index] = { ...before, [key]: value };
-      // The single series price field now contains the net selling price.
-      // Keep legacy discount inputs until the user explicitly edits that price.
-      if(key==="prezzo_serie" && isSeries(before))prodotti[index].sconto_serie="";
+      // Non cancellare lo sconto quando cambia il prezzo base; lo sconto è gestito separatamente.
       if(key==="prodotto_di_serie" && value===true)prodotti[index].a_forfait=false;
       if(key==="a_forfait" && value===true)prodotti[index].prodotto_di_serie=false;
       if(key==="costo_materiale_noto" && value===false && before.costo_materiale_noto!==false && before.geometria_materiale===undefined)
@@ -263,11 +277,33 @@ export default function PreventivoEditorPage() {
         const prefix=manualTemporaryCodePrefix(before.codice_temporaneo);
         if(!prefix||!validManualTemporaryCode(String(value),prefix,true))delete prodotti[index].codice_temporaneo;
       }
-      return { ...prev, prodotti };
+      let catalog=prev.oggetti_modifica_personalizzati;
+      if(key==="oggetto_modifica"){
+        const selected=Array.isArray(value)?value.filter((item):item is string=>typeof item==="string" && !!item.trim()):[];
+        const newItems=selected.filter(item=>!predefinedObjectsSet.has(item));
+        if(newItems.length>0){
+          const current=Array.isArray(prev.oggetti_modifica_personalizzati)?prev.oggetti_modifica_personalizzati as string[]:[];
+          catalog=Array.from(new Set([...current,...newItems]));
+        }
+      }
+      return { ...prev, prodotti, oggetti_modifica_personalizzati: catalog };
     });
     if (!["gruppo_merceologico","materiale_prodotto","codice","descrizione","nero_standard_goffrato"].includes(key) ||
         (key==="materiale_prodotto" && doc.prodotti[index]?.costo_materiale_noto===false))
       setDirtyCalculation(true);
+  };
+  // Rinomina un oggetto della modifica nel catalogo e in tutti i prodotti del preventivo
+  const handleRenameObject = (oldName: string, newName: string) => {
+    setDoc(prev => {
+      const currentCatalog=Array.isArray(prev.oggetti_modifica_personalizzati)?prev.oggetti_modifica_personalizzati as string[]:[];
+      const catalog=currentCatalog.map(n => n === oldName ? newName : n);
+      const prodotti = [...(prev.prodotti as Product[])].map((p: any) => {
+        const arr = p.oggetto_modifica;
+        if (!Array.isArray(arr)) return p;
+        return { ...p, oggetto_modifica: arr.map((item: string) => item === oldName ? newName : item) };
+      });
+      return { ...prev, prodotti, oggetti_modifica_personalizzati: catalog };
+    });
   };
   const withRowIds=(rows:Product[])=>rows.map(p=>p._rowId?p:{...p,_rowId:crypto.randomUUID()});
   function remapReferences(map:(index:number)=>number){
@@ -616,6 +652,8 @@ export default function PreventivoEditorPage() {
           hideDocumentTotalInPdf={hideDocumentTotalInPdf}
           onHideDocumentTotalInPdfChange={setHideDocumentTotalInPdf}
           priceProductIndex={priceProductIndex}
+          customObjects={Array.isArray(doc.oggetti_modifica_personalizzati)?(doc.oggetti_modifica_personalizzati as string[]):[]}
+          onRenameObject={handleRenameObject}
           onUpdate={update} onUpdateProduct={updateProduct}
           onAddProduct={()=>update("prodotti",[...doc.prodotti,{...blankProduct(),nero_standard_goffrato:allStandardBlackTextured(doc.prodotti)}],true)}
           onCopyProductAndScaleLot={copyProduct}
@@ -1009,6 +1047,8 @@ export default function PreventivoEditorPage() {
             onChange={value=>updateProduct(index,"nero_standard_goffrato",value)}/>}
           <QuoteModificationObjectFields value={p.oggetto_modifica} disabled={locked}
             idPrefix={`quote-product-${index}-modification`}
+            customObjects={Array.isArray(doc.oggetti_modifica_personalizzati)?(doc.oggetti_modifica_personalizzati as string[]):[]}
+            onRename={handleRenameObject}
             onChange={value=>updateProduct(index,"oggetto_modifica",value)}/>
           <QuoteMaterialCostFields product={p} disabled={locked} placement="dimensions"
             onChange={(key,value)=>updateProduct(index,key,value)}/>
