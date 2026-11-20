@@ -14,7 +14,7 @@ export default function RalSettings({ value, disabled, onChange, result, standar
     <label className={`block rounded-t-xl p-2 ${disabled ? "cursor-default" : "cursor-pointer"}`} style={{ background: "linear-gradient(105deg, #8b5cf6 0%, #ef4444 25%, #facc15 50%, #22c55e 75%, #3b82f6 100%)" }}>
       <span className="inline-flex max-w-full items-center gap-2 rounded-md bg-white/95 px-3 py-1.5 font-semibold leading-5 text-slate-900 shadow-sm">
         <input type="checkbox" className="h-4 w-4 shrink-0 accent-emerald-600" checked={Boolean(value)} disabled={disabled} onChange={e => onChange(e.target.checked ? { color: "9010", textured: false } : null)}/>
-        <span>Verniciatura RAL sul netto cliente</span>
+        <span>RAL</span>
       </span>
     </label>
     {!value && standardFinish}

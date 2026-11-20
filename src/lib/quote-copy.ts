@@ -1,3 +1,5 @@
+import {quoteRowListino} from "./quote-row-listino";
+export {listinoProductIndex} from "./quote-row-listino";
 import {refreshQuoteSeriesRal} from "./quote-series-ral-refresh";
 import {seriesDiscount} from "./series-discount";
 import {isSeries} from "./quote-series";
@@ -17,30 +19,10 @@ function asNumber(v: unknown): number {
   return n;
 }
 
-export function listinoProductIndex(doc: Data): number {
-  const rows = doc.prodotti as Data[];
-  const reference = doc.listino;
-  if (!reference) return -1;
-  const idx = reference.product_index_riferimento;
-  if (Number.isInteger(idx) && idx >= 0 && idx < rows.length) return idx;
-  const code = asText(reference.codice_riferimento);
-  if (code) {
-    const matching = rows.map((p,i) => asText(p.codice) === code || documentProductCode({...p,codice:code},doc) === documentProductCode(p,doc) ? i : -1).filter(i=>i>=0);
-    if (matching.length === 1) return matching[0];
-  }
-  const description = asText(reference.descrizione_riferimento);
-  if (description) {
-    const matching = rows.map((p,i) => asText(p.descrizione) === description ? i : -1).filter(i=>i>=0);
-    if (matching.length === 1) return matching[0];
-  }
-  // A global reference can only be assigned safely with a single article.
-  return rows.length === 1 ? 0 : -1;
-}
 export function formatQuoteForCopy(doc: Data): string {
   doc=refreshQuoteSeriesRal(doc);
   if (!Array.isArray(doc.prodotti) || doc.prodotti.length === 0)
     throw new Error("Nessun prodotto da copiare");
-  const listinoIndex = listinoProductIndex(doc);
   const lines: string[] = ["PREVENTIVO UNA TANTUM"];
   const number=quoteDocumentNumber(doc);
   if(number)lines.push("Numero: " + number);
@@ -65,12 +47,10 @@ export function formatQuoteForCopy(doc: Data): string {
     if (asText(p.codice)) lines.push("Codice articolo: " + documentProductCode(p,doc));
     lines.push("Descrizione: " + documentProductDescription(p));
     if(isSeries(p)&&String(p.sconto_serie??"").trim())lines.push("Prezzo unitario: "+money(Number(p.prezzo_serie)),"Sconto cliente: "+seriesDiscount(p.sconto_serie).label);
-    if (!isSeries(p) && index === listinoIndex && doc.listino) {
-      const listino = doc.listino.prezzo_listino_generato;
-      if (listino !== undefined && listino !== null && listino !== "")
-        lines.push("Prezzo listino: " + money(asNumber(listino)));
-      const discount = asText(doc.listino.sconto_riferimento);
-      if (discount) lines.push("Sconto cliente: " + discount);
+    const listino=quoteRowListino(doc,index);
+    if(listino){
+      lines.push("Prezzo listino: "+money(listino.listino));
+      if(listino.discount)lines.push("Sconto cliente: "+listino.discount);
     }
     lines.push(
       "Prezzo netto unitario: " + (doc.ral_riepilogo?net.toLocaleString("it-IT",{minimumFractionDigits:4,maximumFractionDigits:4})+" €":money(net)),

@@ -7,7 +7,7 @@ import type {Product} from "@/lib/quote-calculation";
 export default function QuoteSeriesFields({product,calculated,ralEnabled,disabled,onChange}:{product:Product;calculated?:Product;ralEnabled?:boolean;disabled:boolean;onChange:(key:string,value:unknown)=>void}) {
   const inputClass="h-10 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-2 disabled:bg-slate-100";
   let net=NaN,error="";
-  try{net=seriesNetPrice(product);}catch{error="Prezzo storico non valido: inserisci il prezzo unitario netto di vendita.";}
+  try{net=seriesNetPrice(product);}catch{error="Prezzo base o sconto non valido: verifica i valori inseriti.";}
   const finalNet=ralEnabled?calculated?.prezzo_netto_unitario_finale:net;
   const total=Number(product.quantita)*finalNet;
   const valid=product.prezzo_serie!=null && product.prezzo_serie!=="" && Number(product.quantita)>0 && Number.isFinite(total);

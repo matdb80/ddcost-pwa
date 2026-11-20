@@ -3,6 +3,9 @@ import ProductGroupRename,{type GroupRenameResult} from "@/components/ProductGro
 import SearchableSelect from "@/components/SearchableSelect";
 import QuoteInoxChoice from "@/components/QuoteInoxChoice";
 import {quoteInoxError} from "@/lib/quote-inox";
+import {quoteOttoneError} from "@/lib/quote-ottone";
+import {listinoProductIndex,quoteRowListino,rowListinoInputError} from "@/lib/quote-row-listino";
+import QuoteRowListinoFields from "@/components/QuoteRowListinoFields";
 import {quoteCostCompleteness,withCostCompleteness} from "@/lib/quote-cost-completeness";
 import QuoteSeriesFields from "@/components/QuoteSeriesFields";
 import {isSeries,isFixedPrice,seriesProductError} from "@/lib/quote-series";
@@ -47,49 +50,6 @@ const val = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n
 const euro = (v: unknown) => val(v).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const euroDetailed = (v: unknown) => val(v).toLocaleString("it-IT", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 
-
-function factorFromDiscount(text: string): number {
-  const parts = text.replace(/\s/g, "").replace(/%/g, "").split("+");
-  if (!parts.length || parts.some(p => !/^\d+(?:[.,]\d+)?$/.test(p))) throw Error("Inserire uno sconto valido (es. 40+10%)");
-  let f = 1;
-  for (const part of parts) {
-    const p = Number(part.replace(",", "."));
-    if (p < 0 || p >= 100) throw Error("Sconto fuori intervallo");
-    f *= 1 - p / 100;
-  }
-  return f;
-}
-function buildListino(previous: Record<string, any>, quote: QuoteDocument, productIndex: number) {
-  const chosen = quote.prodotti?.[productIndex] as Product | undefined;
-  if (!chosen) throw Error("Selezionare un prodotto di riferimento");
-  if(isFixedPrice(chosen))return undefined;
-  const discount = String(previous.sconto_riferimento ?? "").trim();
-  if (!discount) throw Error("Inserire lo sconto cliente");
-  const factor = factorFromDiscount(discount);
-  const requestedNet = val(chosen.prezzo_netto_unitario_finale);
-  if (!Number.isFinite(requestedNet) || requestedNet <= 0) throw Error("Prezzo netto di riferimento non valido");
-  const theoretical = requestedNet / factor;
-  // Round UP to the next cent: the discounted price must not drop below target.
-  const gross = Math.ceil((theoretical - 1e-10) * 100) / 100;
-  const resultNet = gross * factor;
-  const full = val(chosen.full_cost);
-  return {
-    ...previous,
-    descrizione_riferimento: String(chosen.descrizione ?? ""),
-    codice_riferimento: String(chosen.codice ?? ""),
-    product_index_riferimento: productIndex,
-    fonte: "prodotto selezionato nel preventivo",
-    prezzo_minimo_riferimento: requestedNet,
-    full_cost_riferimento: full,
-    prezzo_listino_minimo_teorico: theoretical,
-    prezzo_listino_generato: gross,
-    sconto_riferimento: discount,
-    rows: [{
-      sconto: discount, fattore_netto: factor, prezzo_listino: gross,
-      netto: resultNet, margine_netto: resultNet > 0 ? (resultNet - full) / resultNet * 100 : null,
-    }],
-  };
-}
 
 const fields: Array<{key:string;label:string;shortLabel:string;kind:QuoteNumericKind;optional?:boolean}> = [
   {key:"quantita",label:"Quantità (pezzi)",shortLabel:"Quantità",kind:"decimal"},
@@ -151,14 +111,8 @@ export default function PreventivoEditorPage() {
   const [ralUpgradeNotice,setRalUpgradeNotice]=useState(false);
   const [readOnly, setReadOnly] = useState(!isNew);
   const [dirtyCalculation, setDirtyCalculation] = useState(false);
-  const [listinoModified, setListinoModified] = useState(false);
-  const [hideDocumentTotalInPdf, setHideDocumentTotalInPdf] = useState(false);
-  const [priceProductIndex, setPriceProductIndex] = useState(0);
   const hasStandardProducts=(doc.prodotti as Product[]).some(p=>!isFixedPrice(p));
-  useEffect(()=>{
-    if(isFixedPrice(doc.prodotti[priceProductIndex]) && hasStandardProducts)
-      setPriceProductIndex(doc.prodotti.findIndex((p:Product)=>!isFixedPrice(p)));
-  },[doc.prodotti,priceProductIndex,hasStandardProducts]);
+  const [hideDocumentTotalInPdf, setHideDocumentTotalInPdf] = useState(false);
   const [error, setError] = useState("");
   const [renamedEditToken,setRenamedEditToken]=useState<string>();
   const [copyMessage, setCopyMessage] = useState("");
@@ -214,8 +168,6 @@ export default function PreventivoEditorPage() {
       setOriginalJson(data.dataJson ?? "");
       setBaseline(JSON.stringify(parsed));
       setDirtyCalculation(false);
-      setListinoModified(false);
-      setPriceProductIndex(Number.isInteger(parsed.listino?.product_index_riferimento) ? parsed.listino.product_index_riferimento : 0);
       const isDraft=parsed.stato_preventivo==="bozza";
       draftIdRef.current=isDraft?numericId:null;
       setReadOnly(!isDraft);
@@ -307,10 +259,9 @@ export default function PreventivoEditorPage() {
   };
   const withRowIds=(rows:Product[])=>rows.map(p=>p._rowId?p:{...p,_rowId:crypto.randomUUID()});
   function remapReferences(map:(index:number)=>number){
-    setPriceProductIndex(map);
     setNewGroupIndex(i=>i===null?null:map(i));
-    setDoc(prev=>prev.listino && Number.isInteger(prev.listino.product_index_riferimento)
-      ?{...prev,listino:{...prev.listino,product_index_riferimento:map(prev.listino.product_index_riferimento)}}:prev);
+    const selected=listinoProductIndex(doc);
+    if(selected>=0)setDoc(prev=>({...prev,listino:map(selected)<0?undefined:{...prev.listino,product_index_riferimento:map(selected)}}));
   }
   async function copyProduct(index:number):Promise<boolean>{
     if(copyingRef.current || savingRef.current || draftSaving || (readOnly&&!isNew))return false;
@@ -343,7 +294,7 @@ export default function PreventivoEditorPage() {
   function removeProduct(index:number){
     if(copyingRef.current || savingRef.current || (readOnly&&!isNew))return;
     update("prodotti",withRowIds(doc.prodotti).filter((_:Product,i:number)=>i!==index),true);
-    remapReferences(i=>i>index?i-1:i===index?Math.max(0,index-1):i);
+    remapReferences(i=>i>index?i-1:i===index?-1:i);
   }
   // A draft is stored in MySQL even with missing client, product group or
   // commercial values. Server-side validations still apply to final quotes.
@@ -429,8 +380,6 @@ export default function PreventivoEditorPage() {
       const descriptionError=quoteProductDescriptionError(doc.prodotti);
       if((isNew || changed) && descriptionError)throw new Error(descriptionError);
       const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
-      if (listinoModified && String(doc.listino?.sconto_riferimento ?? "").trim())
-        computed.listino = buildListino(computed.listino ?? {}, computed, priceProductIndex);
       const text = formatQuoteForCopy(computed);
       await navigator.clipboard.writeText(text);
       setCopyMessage("Dati del preventivo copiati. Puoi incollarli in un'email o documento.");
@@ -488,7 +437,10 @@ export default function PreventivoEditorPage() {
         if(error)return setError(`Prodotto ${i+1}: ${error}`);
         continue;
       }
+      const listinoError=rowListinoInputError(p);if(listinoError)return setError(`Prodotto ${i+1}: ${listinoError}`);
       const inoxError=quoteInoxError(p);if(inoxError)return setError(`Prodotto ${i+1}: ${inoxError}`);
+      const hasDocumentRal=!!doc.verniciatura_ral;
+      const ottoneError=quoteOttoneError(p,hasDocumentRal);if(ottoneError)return setError(`Prodotto ${i+1}: ${ottoneError}`);
       if (!String(p.gruppo_merceologico ?? "").trim())
         return setError("Indicare un gruppo merceologico per il prodotto " + (i+1));
       if (!["ferro","ottone","inox","alluminio"].includes(String(p.materiale_prodotto ?? "")))
@@ -501,7 +453,6 @@ export default function PreventivoEditorPage() {
     savingRef.current = true;
     try {
       const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
-      if (listinoModified) computed.listino = buildListino(computed.listino ?? {}, computed, priceProductIndex);
       const assessment=quoteCostCompleteness(computed);
       if(assessment.issues.length&&computed.costi_incompleti_conferma!==assessment.signature){
         if(!window.confirm("Attribuzione dei costi incompleta:\n"+assessment.issues.join("\n")+"\n\nProcedere comunque? Il preventivo resterà segnalato come incompleto nei costi."))return;
@@ -533,7 +484,6 @@ export default function PreventivoEditorPage() {
         setBaseline(JSON.stringify(computed));
         setOriginalJson(json);
         setDirtyCalculation(false);
-        setListinoModified(false);
         setReadOnly(true);
         draftIdRef.current=null;
         void utils.quote.list.invalidate().catch(()=>{});
@@ -554,7 +504,6 @@ export default function PreventivoEditorPage() {
         setBaseline(JSON.stringify(persisted));
         setOriginalJson(result.dataJson);
         setDirtyCalculation(false);
-        setListinoModified(false);
         setReadOnly(true);
         setDraftMessage("Versione attuale sovrascritta. Numero e revisione restano invariati.");
         void utils.quote.get.invalidate({id:numericId}).catch(()=>{});
@@ -594,7 +543,6 @@ export default function PreventivoEditorPage() {
     try {
       setDoc(migrateQuoteToEngineeringHours(doc));
       setDirtyCalculation(true);
-      setListinoModified(Boolean(String(doc.listino?.sconto_riferimento ?? "").trim()));
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Conversione non riuscita");
@@ -602,7 +550,7 @@ export default function PreventivoEditorPage() {
   };
   const pdfLanguageSettings=<label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
     <input type="checkbox" className="h-4 w-4 accent-emerald-600" checked={doc.pdf_in_inglese===true} disabled={locked}
-      onChange={e=>update("pdf_in_inglese",e.target.checked)}/> Elabora diciture preventivo in inglese
+      onChange={e=>update("pdf_in_inglese",e.target.checked)}/> <span aria-hidden="true" className="text-base leading-none">🇬🇧</span> Elabora diciture preventivo in inglese
   </label>;
   return <Layout mobileWizard={wizardMode}>
     <div className={wizardMode?"w-full min-w-0":"w-full max-w-screen-2xl mx-auto space-y-5 pb-10"}>
@@ -651,7 +599,6 @@ export default function PreventivoEditorPage() {
           onUnsavedLocalChange={setWizardLocalDirty}
           hideDocumentTotalInPdf={hideDocumentTotalInPdf}
           onHideDocumentTotalInPdfChange={setHideDocumentTotalInPdf}
-          priceProductIndex={priceProductIndex}
           customObjects={Array.isArray(doc.oggetti_modifica_personalizzati)?(doc.oggetti_modifica_personalizzati as string[]):[]}
           onRenameObject={handleRenameObject}
           onUpdate={update} onUpdateProduct={updateProduct}
@@ -673,14 +620,6 @@ export default function PreventivoEditorPage() {
           onTemporaryCode={(index, code, ral)=>{ updateProduct(index,"codice",code.code); updateProduct(index,"codice_temporaneo",code); updateProduct(index,"materiale_prodotto",({I:"ferro",X:"inox","6":"inox",B:"ottone",A:"alluminio"} as Record<string,string>)[code.material]); update("verniciatura_ral",ral,true); }}
           ralSettings={<RalSettings value={doc.verniciatura_ral??null} disabled={locked} onChange={value=>update("verniciatura_ral",value,true)} result={preview?.ral_riepilogo} standardFinish={<StandardBlackFinishGroup rows={doc.prodotti} disabled={locked} onChange={value=>update("prodotti",withStandardBlackFinish(doc.prodotti,value))}/>}/> }
           attachments={<QuoteAttachments key={id??"new"} quoteId={isNew?null:numericId} ensureQuoteId={persistDraft} disabled={draftSaving}/> }
-          onPriceProductIndex={index=>{
-            setPriceProductIndex(index);
-            setListinoModified(Boolean(String(doc.listino?.sconto_riferimento??"").trim()));
-          }}
-          onListinoDiscount={value=>{
-            update("listino",{...(doc.listino??{}),sconto_riferimento:value});
-            setListinoModified(Boolean(value.trim()));
-          }}
           onSave={()=>void save()} onSaveOverwrite={()=>void save("overwrite")} onSaveDraft={()=>void saveDraftOnly()}
           onCopy={()=>void copyQuote()} onExportPdf={exportCustomerPdf} onEdit={()=>setReadOnly(false)}
           onUpgrade={upgradeCosts} onDesktop={()=>chooseMobileView(false)}
@@ -914,39 +853,7 @@ export default function PreventivoEditorPage() {
         </section>
       ))}
       {doc.prodotti.some((p:Product)=>!isForfait(p)) && <RalSettings value={doc.verniciatura_ral??null} disabled={locked} onChange={value=>update("verniciatura_ral",value,true)} result={preview?.ral_riepilogo} standardFinish={<StandardBlackFinishGroup rows={doc.prodotti} disabled={locked} onChange={value=>update("prodotti",withStandardBlackFinish(doc.prodotti,value))}/>}/>}
-      {hasStandardProducts && <section className="bg-white border rounded-xl p-3 md:p-4 space-y-2">
-        <h2 className="font-semibold text-lg">Prezzo di listino da sconto cliente</h2>
-        <p className="text-xs text-slate-600">Il listino lordo viene ricavato dal prezzo netto finale dell'articolo selezionato, applicando gli sconti successivi (es. 40+10% = fattore 0,54). Il listino è arrotondato in eccesso al centesimo; il prezzo netto del preventivo non viene cambiato.</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <label className="flex flex-col gap-1 text-sm">
-            <span>Prodotto di riferimento</span>
-            <select disabled={locked} className="border rounded p-2 disabled:bg-slate-100" value={priceProductIndex}
-              onChange={e=>{setPriceProductIndex(Number(e.target.value));setListinoModified(Boolean(String(doc.listino?.sconto_riferimento??"").trim()));}}>
-              {(doc.prodotti as Product[]).map((p,i)=>!isFixedPrice(p)&&<option key={i} value={i}>{i+1}. {p.descrizione||"(senza descrizione)"}</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span>Sconto cliente (es. 40+10%)</span>
-            <input disabled={locked} className="border rounded p-2 disabled:bg-slate-100"
-              value={doc.listino?.sconto_riferimento ?? ""}
-              onChange={e=>{update("listino",{...(doc.listino ?? {}),sconto_riferimento:e.target.value});setListinoModified(true);}}/>
-          </label>
-        </div>
-        {(() => {
-          const discount = String(doc.listino?.sconto_riferimento ?? "").trim();
-          if (!discount) return <p className="text-sm text-slate-500">Inserire lo sconto cliente per calcolare il listino lordo.</p>;
-          try {
-            const data = listinoModified
-              ? buildListino(doc.listino ?? {}, preview ?? doc, priceProductIndex)
-              : doc.listino;
-            return <div className="grid grid-cols-1 md:grid-cols-3 gap-2 bg-slate-50 rounded p-3 text-sm">
-              <span>Netto di riferimento: <b>€ {euro(data.prezzo_minimo_riferimento)}<FormulaTooltip label="Netto di riferimento del prodotto" formula={CALCULATION_FORMULAS.quote.productFinalPrice}/></b></span>
-              <span>Listino lordo: <b>€ {euro(data.prezzo_listino_generato)}<FormulaTooltip label="Listino lordo" formula={CALCULATION_FORMULAS.quote.listPrice}/></b></span>
-              <span>Netto dopo sconto: <b>€ {euro(data.rows?.[0]?.netto)}<FormulaTooltip label="Netto dopo sconto" formula={CALCULATION_FORMULAS.quote.netAfterDiscount}/></b></span>
-            </div>;
-          } catch (err) { return <p className="text-red-700 text-sm">{err instanceof Error?err.message:"Sconto non valido"}</p>; }
-        })()}
-      </section>}
+
       <div className="flex justify-between items-center">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <h2 className="font-semibold text-xl">Prodotti ({doc.prodotti?.length ?? 0})</h2>
@@ -963,7 +870,7 @@ export default function PreventivoEditorPage() {
               <h3 className="text-base font-bold">Prodotto {index+1}</h3>
               <label className="flex items-center gap-2 text-sm font-semibold">
                 <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isForfait(p)}
-                  onChange={e=>{if(newGroupIndex===index)setNewGroupIndex(null);updateProduct(index,"a_forfait",e.target.checked);}}/> A forfait
+                  onChange={e=>{if(newGroupIndex===index)setNewGroupIndex(null);updateProduct(index,"a_forfait",e.target.checked);}}/> Preventiva a forfait
               </label>
               <label className="flex items-center gap-2 text-sm font-semibold">
                 <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isSeries(p)}
@@ -1129,6 +1036,9 @@ export default function PreventivoEditorPage() {
                 className={compactInputClass+" "+normalInputClass+" max-w-36"}
                 onChange={value=>updateProduct(index,"prezzo_manuale",value)}/>
             </label>
+            <QuoteRowListinoFields product={p} net={preview?.prodotti?.[index]?.prezzo_netto_unitario_finale}
+              disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}
+              historical={p.genera_listino==null?quoteRowListino(doc,index):null}/>
             <span>Totale riga €: <b>{euro(preview?.prodotti?.[index]?.totale_finale)}<FormulaTooltip label="Totale riga prodotto" formula={CALCULATION_FORMULAS.quote.productTotal}/></b></span>
           </div></div>
           </>}

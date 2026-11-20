@@ -54,7 +54,7 @@ it("protects a generated brass prefix when editing and saving its custom finish"
 it("saves the standard black finish separately for each product without changing prices",async()=>{
   const doc=calculateQuote({...blankQuote(),stato_preventivo:"bozza",prodotti:[0,1].map(()=>({...blankProduct(),materiale_cad:10}))});
   mount(doc);
-  const checkboxes=await screen.findAllByRole("checkbox",{name:"Nero standard RAL 9005 goffrato"});
+  const checkboxes=await screen.findAllByRole("checkbox",{name:"Goffrato"});
   fireEvent.click(checkboxes[1]);
   fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
   await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
@@ -304,7 +304,7 @@ it("keeps the original mobile PDF available for an unchanged long historical des
 it("completes and reopens a forfait with description and fixed sale value only",async()=>{
   const initial={...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),quantita:"",materiale_cad:12.34,lavoro_h:16}]};
   mount(initial);
-  fireEvent.click(await screen.findByRole("checkbox",{name:"A forfait"}));
+  fireEvent.click(await screen.findByRole("checkbox",{name:"Preventiva a forfait"}));
   expect(screen.queryByLabelText("Codice articolo")).toBeNull();
   expect(screen.queryByLabelText("Materiale *")).toBeNull();
   expect(screen.queryByRole("group",{name:"Oggetto della modifica *"})).toBeNull();
@@ -321,7 +321,7 @@ it("completes and reopens a forfait with description and fixed sale value only",
   expect(saved.prodotti[0]).toMatchObject({a_forfait:true,valore_forfait:125.5,materiale_cad:12.34,lavoro_h:16,quantita:""});
   expect(saved.totale_finale).toBe(125.5);
   cleanup();mount(saved);
-  const toggle=await screen.findByRole("checkbox",{name:"A forfait"}) as HTMLInputElement;
+  const toggle=await screen.findByRole("checkbox",{name:"Preventiva a forfait"}) as HTMLInputElement;
   expect(toggle.checked).toBe(true);expect(toggle.disabled).toBe(true);
   expect((screen.getByLabelText("Valore di vendita a forfait € *") as HTMLInputElement).value).toBe("125,50");
   fireEvent.click(screen.getByRole("button",{name:"Modifica"}));fireEvent.click(toggle);
@@ -330,7 +330,7 @@ it("completes and reopens a forfait with description and fixed sale value only",
 });
 it("keeps standard fields on mixed quotes while showing only the forfait amount on its row",async()=>{
   mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),a_forfait:true,descrizione:"Forfait",valore_forfait:200},blankProduct()]});
-  const toggles=await screen.findAllByRole("checkbox",{name:"A forfait"}) as HTMLInputElement[];
+  const toggles=await screen.findAllByRole("checkbox",{name:"Preventiva a forfait"}) as HTMLInputElement[];
   expect(toggles.map(c=>c.checked)).toEqual([true,false]);
   expect(screen.getAllByLabelText("Materiale *")).toHaveLength(1);
   expect(screen.getAllByRole("group",{name:"Oggetto della modifica *"})).toHaveLength(1);
@@ -342,7 +342,7 @@ it("switches the mobile product header to forfait, validates its amount and reac
   mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Lavorazione speciale"}]},true);
   await screen.findByTestId("quote-mobile-wizard");
   for(let i=0;i<3;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
-  fireEvent.click(screen.getByRole("checkbox",{name:"A forfait"}));
+  fireEvent.click(screen.getByRole("checkbox",{name:"Preventiva a forfait"}));
   expect(screen.getByRole("heading",{name:"Che prodotto vuoi preventivare?"})).toBeTruthy();
   expect(screen.queryByRole("button",{name:"Genera codice temporaneo"})).toBeNull();
   fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
@@ -370,7 +370,7 @@ it("reopens an old inox code with P, preserves its recorded prices and saves the
   expect(code.value).toBe("TBC00000056P");
   expect(screen.getByLabelText("Totale preventivo").textContent).toContain("3.113,44");
   fireEvent.click(screen.getByRole("button",{name:"Modifica"}));
-  fireEvent.click(screen.getByRole("checkbox",{name:"Goffrato — nero standard RAL 9005 (tutti i prodotti)"}));
+  fireEvent.click(screen.getByRole("checkbox",{name:"Goffrato (tutti i prodotti)"}));
   expect(screen.getByLabelText("Totale preventivo").textContent).toContain("3.113,44");
   fireEvent.click(screen.getByRole("button",{name:"Salva e sovrascrivi versione attuale"}));
   await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.update")).toBe(true));
@@ -382,16 +382,16 @@ it("offers the no-surcharge black textured flag beside RAL, supports mixed finis
   const d=calculateQuote({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),materiale_cad:2},{...blankProduct(),materiale_cad:3},
     {...blankProduct(),a_forfait:true,descrizione:"Forfait",valore_forfait:40}]});
   mount(d);
-  const bulk=await screen.findByRole("checkbox",{name:"Goffrato — nero standard RAL 9005 (tutti i prodotti)"}) as HTMLInputElement;
+  const bulk=await screen.findByRole("checkbox",{name:"Goffrato (tutti i prodotti)"}) as HTMLInputElement;
   fireEvent.click(bulk);
-  const rows=screen.getAllByRole("checkbox",{name:"Nero standard RAL 9005 goffrato"}) as HTMLInputElement[];
+  const rows=screen.getAllByRole("checkbox",{name:"Goffrato"}) as HTMLInputElement[];
   expect(rows).toHaveLength(2);expect(rows.every(c=>c.checked)).toBe(true);
   fireEvent.click(rows[1]);expect(bulk.indeterminate).toBe(true);
   expect(screen.getByText(/Finiture diverse/)).toBeTruthy();
-  const ral=screen.getByRole("checkbox",{name:"Verniciatura RAL sul netto cliente"});
-  fireEvent.click(ral);expect(screen.queryByRole("checkbox",{name:"Goffrato — nero standard RAL 9005 (tutti i prodotti)"})).toBeNull();
+  const ral=screen.getByRole("checkbox",{name:"RAL"});
+  fireEvent.click(ral);expect(screen.queryByRole("checkbox",{name:"Goffrato (tutti i prodotti)"})).toBeNull();
   fireEvent.click(ral);
-  expect((screen.getByRole("checkbox",{name:"Goffrato — nero standard RAL 9005 (tutti i prodotti)"}) as HTMLInputElement).indeterminate).toBe(true);
+  expect((screen.getByRole("checkbox",{name:"Goffrato (tutti i prodotti)"}) as HTMLInputElement).indeterminate).toBe(true);
   fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
   await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
   const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
@@ -400,9 +400,9 @@ it("offers the no-surcharge black textured flag beside RAL, supports mixed finis
 });
 it("exposes the black textured bulk choice in the mobile wizard without enabling RAL",async()=>{
   mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Bandella",gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",oggetto_modifica:["occhio"]}]},true);
-  const bulk=await screen.findByRole("checkbox",{name:"Goffrato — nero standard RAL 9005 (tutti i prodotti)"});
+  const bulk=await screen.findByRole("checkbox",{name:"Goffrato (tutti i prodotti)"});
   fireEvent.click(bulk);
-  expect((screen.getByRole("checkbox",{name:"Verniciatura RAL sul netto cliente"}) as HTMLInputElement).checked).toBe(false);
+  expect((screen.getByRole("checkbox",{name:"RAL"}) as HTMLInputElement).checked).toBe(false);
   for(let i=0;i<30 && !screen.queryByRole("heading",{name:"Riepilogo finale"});i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
   expect(screen.getByRole("heading",{name:"Riepilogo finale"})).toBeTruthy();
   fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
@@ -442,11 +442,11 @@ it("completes and reopens a series product with four required fields and optiona
  expect((screen.getByLabelText("Prezzo unitario base €/pz *") as HTMLInputElement).value).toBe("12,50");
  fireEvent.click(screen.getByRole("button",{name:"Modifica"}));fireEvent.click(toggle);
  expect((screen.getByLabelText("Materiale €/pz") as HTMLInputElement).value).toBe("12,34");
- fireEvent.click(screen.getByRole("checkbox",{name:"A forfait"}));
+ fireEvent.click(screen.getByRole("checkbox",{name:"Preventiva a forfait"}));
  fireEvent.click(toggle);
- expect((screen.getByRole("checkbox",{name:"A forfait"}) as HTMLInputElement).checked).toBe(false);
+ expect((screen.getByRole("checkbox",{name:"Preventiva a forfait"}) as HTMLInputElement).checked).toBe(false);
  expect((screen.getByLabelText("Prezzo unitario base €/pz *") as HTMLInputElement).value).toBe("12,50");
- fireEvent.click(screen.getByRole("checkbox",{name:"A forfait"}));expect(toggle.checked).toBe(false);
+ fireEvent.click(screen.getByRole("checkbox",{name:"Preventiva a forfait"}));expect(toggle.checked).toBe(false);
 });
 it("offers five series fields in the mobile wizard with a required base price and optional discount",async()=>{
  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Serie",codice:"STD-1",quantita:10}]},true);
@@ -551,7 +551,7 @@ it('searches groups, confirms global rename and keeps unsaved quote fields',asyn
 });
 it('shows RAL on a series-only quote and searches a color by its full name',async()=>{
   mount({...blankQuote(),stato_preventivo:'bozza',prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'TFP0000001In',descrizione:'Serie',quantita:10,prezzo_serie:10,sconto_serie:'40+15+5%'}]});
-  fireEvent.click(await screen.findByRole('checkbox',{name:'Verniciatura RAL sul netto cliente'}));
+  fireEvent.click(await screen.findByRole('checkbox',{name:'RAL'}));
   const input=screen.getByRole('combobox',{name:'Colore RAL'});
   fireEvent.change(input,{target:{value:'Bianco puro'}});
   fireEvent.click(screen.getByRole('option',{name:/RAL 9010.*Bianco puro/}));

@@ -1,3 +1,5 @@
+import {quoteOttoneError} from "./quote-ottone";
+import {rowListinoInputError} from "./quote-row-listino";
 import {quoteInoxError} from "./quote-inox";
 import {isSeries,isFixedPrice,seriesPriceError} from "./quote-series";
 import {seriesDiscount} from "./series-discount";
@@ -88,6 +90,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
     if(advanced){
       add("ricarico_spese","Spese generali (%)","Ricarico dei costi diretti di questo prodotto.",{kind:"number",numeric:"percent",advanced:true});
       add("prezzo_manuale","Prezzo manuale per pezzo","Facoltativo: prevale sul prezzo calcolato.",{kind:"number",numeric:"euro",advanced:true});
+      add("genera_listino","Listino lordo del prodotto","Facoltativo: genera il lordo dal netto finale e dallo sconto cliente senza modificare il netto.",{kind:"checkbox",advanced:true});
       add("quadrabile","Prezzo modificabile dalla quadratura?","Disattivando, il prezzo della riga non viene rettificato.",{kind:"checkbox",advanced:true});
     }
   });
@@ -127,8 +130,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
   )));
   if(advanced){
     if(hasStandard)steps.push(step("target_totale",doc.verniciatura_ral?"Totale desiderato prima RAL (€)":"Totale desiderato (€)","Opzioni avanzate","Facoltativo: la quadratura adatta i prezzi delle righe non bloccate, prima dell’eventuale verniciatura RAL.",{field:"target_totale",kind:"number",numeric:"euro",advanced:true}));
-    if(hasStandard)steps.push(step("listino_prodotto","Prodotto di riferimento per il listino","Opzioni avanzate","Scegli il prodotto a cui riferire lo sconto del cliente.",{kind:"select",advanced:true}));
-    if(hasStandard)steps.push(step("listino_sconto","Sconto cliente","Opzioni avanzate","Ad esempio 40+10%. Il listino lordo viene ricavato dal prezzo netto.",{kind:"text",advanced:true}));
+
     for(const [key,title,hint] of [
       ["note_generali","Note generali","Informazioni interne sul preventivo."],
       ["note_cliente","Note cliente","Queste note possono comparire nella copia destinata al cliente."],
@@ -147,6 +149,8 @@ export function quoteWizardStepError(step:QuoteWizardStep,doc:QuoteDocument):str
     if(value==null || String(value).trim()==="")return null;
     try{seriesDiscount(value);return null;}catch(e){return (e as Error).message;}
   }
+  if(step.field==="genera_listino"&&obj)return rowListinoInputError(obj);
+  if(step.field==="materiale_prodotto"&&obj){const error=quoteOttoneError(obj,Boolean(doc.verniciatura_ral));if(error)return error;}
   if(!step.required)return null;
   if(step.maxLength!==undefined && String(value??"").length>step.maxLength)
     return `Massimo ${step.maxLength} caratteri, spazi inclusi.`;

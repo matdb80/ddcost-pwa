@@ -66,7 +66,7 @@ describe("Una Tantum mobile wizard step sequencing",()=>{
     const full=buildQuoteWizardSteps(blankQuote(),true);
     expect(full.length).toBeGreaterThan(basic.length);
     for(const s of basic)expect(full.some(x=>x.id===s.id)).toBe(true);
-    for(const id of ["target_totale","listino_prodotto","listino_sconto","note_cliente",
+    for(const id of ["target_totale","note_cliente",
       "note_generali","note_fornitori","p:0:margine","p:0:prezzo_manuale",
       "p:0:quadrabile","p:0:attrezzaggi_h","p:0:costo_lavoro"])
       expect(full.some(s=>s.id===id)).toBe(true);
@@ -320,8 +320,9 @@ it("asks for geometry first and only for dimensions of the chosen shape",()=>{
 });
 
 describe("series discount validation",()=>{
+  const seriesFixture=()=>({...blankProduct(),prodotto_di_serie:true,codice:"ART",descrizione:"D",quantita:1,prezzo_serie:10,sconto_serie:undefined as string|undefined});
   it("accepts empty or missing discount",()=>{
-    const d={...blankQuote(),prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:"ART",descrizione:"D",quantita:1,prezzo_serie:10,sconto_serie:undefined as string|undefined}]},steps=buildQuoteWizardSteps(d);
+    const d={...blankQuote(),prodotti:[seriesFixture()]},steps=buildQuoteWizardSteps(d);
     const discountStep=steps.find(s=>s.field==="sconto_serie")!;
     expect(quoteWizardStepError(discountStep,d)).toBeNull();
     d.prodotti[0].sconto_serie="";
@@ -330,7 +331,7 @@ describe("series discount validation",()=>{
     expect(quoteWizardStepError(discountStep,d)).toBeNull();
   });
   it("accepts valid single, double and triple discounts",()=>{
-    const d={...blankQuote(),prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:"ART",descrizione:"D",quantita:1,prezzo_serie:10,sconto_serie:undefined as string|undefined}]},steps=buildQuoteWizardSteps(d);
+    const d={...blankQuote(),prodotti:[seriesFixture()]},steps=buildQuoteWizardSteps(d);
     const discountStep=steps.find(s=>s.field==="sconto_serie")!;
     for(const discount of ["50","50%","0","100","50+15","50+12+15","40","30+5+2","40+15+5%"]){
       d.prodotti[0].sconto_serie=discount;
@@ -338,7 +339,7 @@ describe("series discount validation",()=>{
     }
   });
   it("rejects invalid discount syntax",()=>{
-    const d={...blankQuote(),prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:"ART",descrizione:"D",quantita:1,prezzo_serie:10,sconto_serie:undefined as string|undefined}]},steps=buildQuoteWizardSteps(d);
+    const d={...blankQuote(),prodotti:[seriesFixture()]},steps=buildQuoteWizardSteps(d);
     const discountStep=steps.find(s=>s.field==="sconto_serie")!;
     for(const discount of ["abc","50++15","50+","-10","101","50+15+10+5"]){
       d.prodotti[0].sconto_serie=discount;

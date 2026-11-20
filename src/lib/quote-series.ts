@@ -11,7 +11,7 @@ export function seriesPriceError(value: unknown): string | null {
     ? "Inserisci il prezzo unitario del prodotto di serie, maggiore o uguale a zero." : null;
 }
 export function seriesProductError(product: Row): string | null {
-  if (isForfait(product)) return "Prodotto di serie e A forfait sono alternativi.";
+  if (isForfait(product)) return "Prodotto di serie e Preventiva a forfait sono alternativi.";
   if (!String(product.codice ?? "").trim()) return "Inserisci il codice articolo del prodotto di serie.";
   if (!String(product.descrizione ?? "").trim()) return "Inserisci la descrizione del prodotto di serie.";
   if (String(product.descrizione).length > QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH)

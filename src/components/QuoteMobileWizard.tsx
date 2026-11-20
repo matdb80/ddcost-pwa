@@ -1,3 +1,5 @@
+import QuoteRowListinoFields from "./QuoteRowListinoFields";
+import {quoteRowListino} from "@/lib/quote-row-listino";
 import ProductGroupRename,{type GroupRenameResult} from "./ProductGroupRename";
 import SearchableSelect from "./SearchableSelect";
 import QuoteInoxChoice from "./QuoteInoxChoice";
@@ -57,7 +59,6 @@ type Props={
   onUnsavedLocalChange:(dirty:boolean)=>void;
   hideDocumentTotalInPdf:boolean;
   onHideDocumentTotalInPdfChange:(hide:boolean)=>void;
-  priceProductIndex:number;
   /** Oggetti personalizzati del preventivo, condivisi fra editor e wizard. */
   customObjects?:string[];
   /** Callback quando un oggetto personalizzato viene rinominato. */
@@ -71,8 +72,6 @@ type Props={
   onGroupRenamed:(result:GroupRenameResult)=>void;
   quoteEditToken?:string;
   onCreateGroup:(index:number,name:string)=>Promise<void>;
-  onPriceProductIndex:(value:number)=>void;
-  onListinoDiscount:(value:string)=>void;
   onSave:()=>void;
   onSaveOverwrite:()=>void;
   onSaveDraft:()=>void;
@@ -85,8 +84,8 @@ type Props={
 export default function QuoteMobileWizard(props:Props){
   const {
     doc,preview,locked,isNew,numericId,isSavedDraft,groups,loadingGroups,error,draftMessage,
-    copyMessage,busy,unsavedChanges,onUnsavedLocalChange,priceProductIndex,onUpdate,onUpdateProduct,
-    onAddProduct,onCopyProductAndScaleLot,onRemoveProduct,onCreateGroup,onPriceProductIndex,onListinoDiscount,
+    copyMessage,busy,unsavedChanges,onUnsavedLocalChange,onUpdate,onUpdateProduct,
+    onAddProduct,onCopyProductAndScaleLot,onRemoveProduct,onCreateGroup,
     hideDocumentTotalInPdf,onHideDocumentTotalInPdfChange,
     customObjects=[],onRenameObject,
     onSave,onSaveOverwrite,onSaveDraft,onCopy,onExportPdf,onEdit,onUpgrade,onDesktop,
@@ -208,7 +207,7 @@ export default function QuoteMobileWizard(props:Props){
           <span>{current.section}</span>
           {productIndex!==undefined && <label className="ml-3 inline-flex items-center gap-2 text-sm normal-case">
             <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isForfait(product)}
-              onChange={e=>{onUpdateProduct(productIndex,"a_forfait",e.target.checked);setAddingGroup(false);goto(`p:${productIndex}:descrizione`);}}/> A forfait
+              onChange={e=>{onUpdateProduct(productIndex,"a_forfait",e.target.checked);setAddingGroup(false);goto(`p:${productIndex}:descrizione`);}}/> Preventiva a forfait
           </label>}
           {productIndex!==undefined && <label className="ml-3 inline-flex items-center gap-2 text-sm normal-case">
             <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isSeries(product)}
@@ -331,15 +330,10 @@ export default function QuoteMobileWizard(props:Props){
             </label>
             </div>
           </div>
-        ):current.id==="listino_prodotto" ? (
-          <select id="wizard-input" value={priceProductIndex} disabled={locked}
-            onChange={e=>onPriceProductIndex(Number(e.target.value))} className={inputClass}>
-            {(doc.prodotti as Product[]).map((p,i)=>!isFixedPrice(p)&&<option value={i} key={i}>{i+1}. {p.descrizione||"Prodotto"}</option>)}
-          </select>
-        ):current.id==="listino_sconto" ? (
-          <input id="wizard-input" className={inputClass} disabled={locked}
-            placeholder="40+10%" value={doc.listino?.sconto_riferimento??""}
-            onChange={e=>onListinoDiscount(e.target.value)}/>
+        ):field==="genera_listino" && productIndex!==undefined && product ? (
+          <QuoteRowListinoFields product={product} net={preview?.prodotti?.[productIndex]?.prezzo_netto_unitario_finale}
+            disabled={locked} onChange={(key,value)=>onUpdateProduct(productIndex,key,value)}
+            historical={product.genera_listino==null?quoteRowListino(doc,productIndex):null}/>
         ):field==="gruppo_merceologico" && productIndex!==undefined ? (
           <div className="space-y-3">
             <SearchableSelect id="wizard-input" label="Gruppo merceologico" className={inputClass} disabled={locked}

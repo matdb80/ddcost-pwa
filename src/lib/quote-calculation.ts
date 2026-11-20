@@ -1,3 +1,5 @@
+import {buildRowListino,rowListinoInputError} from "./quote-row-listino";
+import {quoteOttoneError} from "./quote-ottone";
 import {isSeries,isFixedPrice,seriesProductError,seriesNetPrice} from "./quote-series";
 import {normalizeDocumentTemporaryCodes} from "./document-product-fields";
 import { isForfait, forfaitProductError } from "./quote-forfait";
@@ -15,6 +17,7 @@ export const blankProduct = (): Product => ({
   costo_materiale_kg: 0, oggetto_modifica: [], lavoro_h: 0, costo_lavoro: 24,
   trattamenti_cad: 0, attrezzaggi_h: 0, nero_standard_goffrato: false,
   ricarico_spese: 0.75, margine: 0.2, prezzo_manuale: null, quadrabile: true,
+  listino_lordo: null, sconto_cliente: null,
 });
 export const blankQuote = (): QuoteDocument => ({
   tipo: "Prezzo per articolo unatantum", cliente: "", riferimento_preventivo: "",
@@ -96,6 +99,10 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
   const d = normalizeDocumentTemporaryCodes(structuredClone(document),"prodotti");
   if (!Array.isArray(d.prodotti) || !d.prodotti.length) throw new Error("Inserire almeno un prodotto");
   const standardProducts = (d.prodotti as Product[]).filter(p=>!isFixedPrice(p));
+  for(const [i,p] of (d.prodotti as Product[]).entries()){
+    const error=quoteOttoneError(p,Boolean(d.verniciatura_ral))||rowListinoInputError(p);
+    if(error)throw new Error(`Prodotto ${i+1}: ${error}`);
+  }
   const hasStandard = standardProducts.length > 0;
   const hasForfait = (d.prodotti as Product[]).some(isForfait);
   const hasSeries = (d.prodotti as Product[]).some(isSeries);
@@ -227,6 +234,11 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
   } else {
     delete d.ral_riepilogo;
     for (const p of d.prodotti) { delete p.netto_prima_ral; delete p.ral_ricarico_cad; delete p.ral_percentuale; }
+  }
+  // Derive list prices only after all net-price adjustments (including RAL).
+  for(const p of d.prodotti as Product[]){
+    if(!isFixedPrice(p)&&p.genera_listino===true)
+      p.listino_lordo=buildRowListino(Number(p.prezzo_netto_unitario_finale),String(p.sconto_cliente))!.listino;
   }
   if (shared) {
     d.costi_comuni_riepilogo = {
