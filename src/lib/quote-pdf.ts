@@ -2,6 +2,7 @@ import { ralPrintSwatch } from "./ral-print-swatch";
 import {
   quotePrintLabels,
   printLocale,
+  translateClientNotes,
   type PrintLanguage,
 } from "./quote-print-language";
 import { refreshQuoteSeriesRal } from "./quote-series-ral-refresh";
@@ -19,6 +20,8 @@ import {
   documentPrintColor,
   documentPrintFinish,
 } from "./document-print-color";
+import { saleConditionsLabels, visibleContribution } from "./quote-sale-conditions";
+import { SALE_CONDITIONS_PAGE_IMAGE } from "./sale-conditions-417-assets";
 
 const COMPANY = {
   name: "DIDIEFFE GROUP srl",
@@ -34,7 +37,13 @@ export function buildOneTimeQuotePrintHtml(
   quote: QuoteDocument,
   quoteId?: number,
   logoUrl = "/images/ddf-logo.png",
-  options: { hideDocumentTotal?: boolean; revision?: number | null } = {}
+  options: {
+    hideDocumentTotal?: boolean;
+    revision?: number | null;
+    /** Visibilità del contributo a totale nascosto (separata dal totale);
+     * default: SHOW_CONTRIBUTION_WHEN_TOTAL_HIDDEN, in attesa della decisione di Matteo. */
+    showContributionWhenTotalHidden?: boolean;
+  } = {}
 ): string {
   quote = refreshQuoteSeriesRal(quote);
   // The selected database row takes precedence over an older JSON snapshot.
@@ -117,9 +126,26 @@ export function buildOneTimeQuotePrintHtml(
           0
         )
       : number(storedTotal);
-  const totalBlock = options.hideDocumentTotal
+  // Requisito prossima release: contributo "spese di evasione" di 15 € una
+  // tantum sotto i 150 € di imponibile. La sua visibilità è SEPARATA dal
+  // totale documento; SCELTA ANCORA APERTA in attesa della decisione di
+  // Matteo (SHOW_CONTRIBUTION_WHEN_TOTAL_HIDDEN in quote-sale-conditions.ts).
+  const sc = saleConditionsLabels(language);
+  const contribution = visibleContribution(
+    total, options.hideDocumentTotal, options.showContributionWhenTotalHidden
+  );
+  const totalBlock = (options.hideDocumentTotal && !contribution)
     ? ""
-    : `<div class="total">${t.total}: € ${money(total)}</div>`;
+    : (options.hideDocumentTotal
+        ? ""
+        : `<div class="total">${t.total}: € ${money(total)}</div>`) +
+      (contribution
+        ? `<div class="contribution">${sc.contribution}: € ${money(contribution)}</div>` +
+          // a totale nascosto il totale con spese di evasione non si mostra
+          (options.hideDocumentTotal
+            ? ""
+            : `<div class="total contribution-total">${sc.totalWithContribution}: € ${money(total + contribution)}</div>`)
+        : "");
   const client = escapeHtml(quote.cliente || "");
   const reference = escapeHtml(quote.riferimento_preventivo || "");
   const enteredTitle = String(quote.titolo_preventivo ?? "").trim();
@@ -129,7 +155,9 @@ export function buildOneTimeQuotePrintHtml(
       ? t.title
       : enteredTitle
   );
-  const clientNotes = String(quote.note_cliente ?? "").trim();
+  // R2 (TKT-20261119-86210002): la nota fissa sui prodotti custom esce in inglese
+  // quando è spuntata l'opzione "elabora diciture preventivo in inglese".
+  const clientNotes = translateClientNotes(String(quote.note_cliente ?? "").trim(), language);
   const companyDetails = [
     COMPANY.address.replace(/Italia$/, t.country),
     COMPANY.vat.replace("P. IVA / C.F.", t.vat),
@@ -166,6 +194,10 @@ export function buildOneTimeQuotePrintHtml(
   .special-product { color: #005eb8; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .special-legend { margin-top: 20px; padding-top: 8px; border-top: 1px solid #cbd1d5; font-size: 9pt; break-inside: avoid; }
   .total { text-align: right; font-size: 14pt; font-weight: 700; margin-top: 16px; }
+  .contribution { text-align: right; font-size: 9.5pt; margin-top: 6px; }
+  .contribution-total { font-size: 12pt; margin-top: 4px; }
+  .sale-conditions { break-before: page; page-break-before: always; margin: 0; }
+  .sale-conditions img { width: 100%; height: auto; display: block; }
   .notes { margin-top: 22px; border-top: 1px solid #cbd1d5; padding-top: 8px; }
   .notes h2 { margin-top: 6px; }
   @media screen { body { padding: 18px; max-width: 900px; margin: 0 auto; } }
@@ -185,6 +217,7 @@ ${ralPrintSummary(ral, undefined, false, language)}
 ${totalBlock}
 ${noteBlock}
 ${products.some(p => !isSeries(p)) ? `<footer class="special-legend">${specialMark} ${t.special}</footer>` : ""}
+<section class="sale-conditions"><img src="${SALE_CONDITIONS_PAGE_IMAGE}" alt="Condizioni di vendita — pagina 417"></section>
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>
 </body></html>`;
 }

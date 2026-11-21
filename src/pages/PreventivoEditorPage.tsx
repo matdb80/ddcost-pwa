@@ -16,10 +16,13 @@ import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import Layout from "@/components/Layout";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { trpc } from "@/providers/trpc";
-import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy, FileText } from "lucide-react";
+import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy, FileText, Mail } from "lucide-react";
 import QuoteProductOrder from "@/components/QuoteProductOrder";
 import { formatQuoteForCopy } from "@/lib/quote-copy";
 import { buildOneTimeQuotePrintHtml } from "@/lib/quote-pdf";
+import { CUSTOM_PRODUCTS_NOTE } from "@/lib/quote-print-language";
+import { buildQuoteMailto, openMailClient, canShareFiles, shareQuotePdfFile, downloadQuotePdfFile, QUOTE_EMAIL_BODY } from "@/lib/quote-email";
+import { buildQuotePdfFile } from "@/lib/quote-pdf-file";
 import { openCommercialOfferPrintWindow } from "@/lib/commercial-offer-pdf";
 import { buildQuoteWizardSteps, quoteWizardStepError } from "@/lib/quote-wizard-steps";
 import QuoteNumericInput, {type QuoteNumericKind} from "@/components/QuoteNumericInput";
@@ -88,10 +91,22 @@ function isPhoneWidth():boolean {
 
 export default function PreventivoEditorPage() {
   const { id } = useParams();
+  // A different document needs fresh editor state, including leave/save guards.
+  return <PreventivoEditor key={id ?? "new"} />;
+}
+
+function newQuoteWithClientNote(): QuoteDocument {
+  return { ...blankQuote(), note_cliente: CUSTOM_PRODUCTS_NOTE.it };
+}
+
+function PreventivoEditor() {
+  const { id } = useParams();
   const navigate = useNavigate();
   const isNew = !id;
   const numericId = Number(id ?? 0);
-  const [doc, setDoc] = useState<QuoteDocument>(blankQuote());
+  // R2 (TKT-20261119-86210002): i nuovi preventivi unatantum nascono con la nota
+  // fissa sui prodotti custom in "Note cliente"; resta editabile e sostituibile.
+  const [doc, setDoc] = useState<QuoteDocument>(() => isNew ? newQuoteWithClientNote() : blankQuote());
   const [viewOverride,setViewOverride]=useState<boolean|null>(readMobileViewChoice);
   const [phoneWidth,setPhoneWidth]=useState(isPhoneWidth);
   const wizardMode=viewOverride ?? phoneWidth;
@@ -114,6 +129,13 @@ export default function PreventivoEditorPage() {
   const hasStandardProducts=(doc.prodotti as Product[]).some(p=>!isFixedPrice(p));
   const [hideDocumentTotalInPdf, setHideDocumentTotalInPdf] = useState(false);
   const [error, setError] = useState("");
+  const errorAlertRef = useRef<HTMLDivElement>(null);
+  // R1 (TKT-20261119-86210001): il banner di errore principale sta in cima a una
+  // pagina lunga; quando un'operazione (es. copia prodotto) fallisce mentre
+  // l'utente è sceso sulle righe, l'errore deve essere portato nel viewport.
+  useEffect(()=>{
+    if(error)errorAlertRef.current?.scrollIntoView?.({behavior:"smooth",block:"center"});
+  },[error]);
   const [renamedEditToken,setRenamedEditToken]=useState<string>();
   const [copyMessage, setCopyMessage] = useState("");
   const [newGroupIndex, setNewGroupIndex] = useState<number | null>(null);
@@ -178,7 +200,7 @@ export default function PreventivoEditorPage() {
     }
   }, [data, isNew]);
   const changed=isNew
-    ? JSON.stringify(doc)!==JSON.stringify(blankQuote())
+    ? JSON.stringify(doc)!==JSON.stringify(newQuoteWithClientNote())
     : Boolean(data) && JSON.stringify(doc)!==baseline;
   const hasPendingLocalInput=Boolean(newGroupIndex!==null&&newGroupName.trim())||wizardLocalDirty;
   const unsavedChanges=(changed && (isNew || !readOnly))||hasPendingLocalInput;
@@ -398,7 +420,34 @@ export default function PreventivoEditorPage() {
       // Reading/exporting an unchanged historical document must not rewrite it.
       (step.field!=="oggetto_modifica" || isNew || changed) && quoteWizardStepError(
         !isNew && !changed ? {...step,maxLength:undefined} : step,doc));
-  const exportCustomerPdf = () => {
+  const prepareCustomerPrint = (): QuoteDocument | null => {
+    if (isSavedDraft) {
+      setError("Prima completa il preventivo: una bozza incompleta non va inviata al cliente.");
+      return null;
+    }
+    if (!canExportPdf) {
+      setError("Completa i campi obbligatori prima di esportare il PDF cliente.");
+      return null;
+    }
+    setError("");
+    try {
+      const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
+      openCommercialOfferPrintWindow(buildOneTimeQuotePrintHtml(computed,numericId || undefined,undefined,{
+        hideDocumentTotal: hideDocumentTotalInPdf,
+        revision: data?.rev,
+      }));
+      return computed;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Impossibile esportare il PDF cliente");
+      return null;
+    }
+  };
+  const exportCustomerPdf = () => { prepareCustomerPrint(); };
+  // R3: condivisione del VERO file PDF (stesso documento cliente dell'export,
+  // pagina 417 in coda). Dove il browser non accetta file, il mailto resta con
+  // allegato MANUALE esplicito: il PDF viene scaricato e va allegato a mano.
+  const emailCustomerPdf = async () => {
+    setCopyMessage("");
     if (isSavedDraft) {
       setError("Prima completa il preventivo: una bozza incompleta non va inviata al cliente.");
       return;
@@ -408,14 +457,42 @@ export default function PreventivoEditorPage() {
       return;
     }
     setError("");
+    let computed: QuoteDocument;
     try {
-      const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
-      openCommercialOfferPrintWindow(buildOneTimeQuotePrintHtml(computed,numericId || undefined,undefined,{
-        hideDocumentTotal: hideDocumentTotalInPdf,
-        revision: data?.rev,
-      }));
+      computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Impossibile esportare il PDF cliente");
+      return;
+    }
+    let file: File;
+    try {
+      const pdf = buildQuotePdfFile(computed, numericId || undefined, {
+        revision: data?.rev,
+        hideDocumentTotal: hideDocumentTotalInPdf,
+      });
+      file = new File([pdf.bytes.buffer as ArrayBuffer], pdf.fileName, { type: "application/pdf" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Impossibile generare il file PDF del preventivo");
+      return;
+    }
+    if (canShareFiles(file)) {
+      try {
+        await shareQuotePdfFile(file, QUOTE_EMAIL_BODY);
+        setCopyMessage("PDF condiviso come file: completa l'invio dall'app di posta scelta (es. Outlook).");
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError")
+          setCopyMessage("Condivisione annullata: il PDF non è stato inviato.");
+        else
+          setError(err instanceof Error ? err.message : "Condivisione del PDF non riuscita");
+      }
+      return;
+    }
+    try {
+      downloadQuotePdfFile(file);
+      openMailClient(buildQuoteMailto(computed, numericId || undefined));
+      setCopyMessage("Download del PDF richiesto. Allega manualmente il file nel programma di posta.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Impossibile preparare l'email con il PDF");
     }
   };
   async function save(mode: "revision" | "overwrite" = "revision") {
@@ -621,7 +698,7 @@ export default function PreventivoEditorPage() {
           ralSettings={<RalSettings value={doc.verniciatura_ral??null} disabled={locked} onChange={value=>update("verniciatura_ral",value,true)} result={preview?.ral_riepilogo} standardFinish={<StandardBlackFinishGroup rows={doc.prodotti} disabled={locked} onChange={value=>update("prodotti",withStandardBlackFinish(doc.prodotti,value))}/>}/> }
           attachments={<QuoteAttachments key={id??"new"} quoteId={isNew?null:numericId} ensureQuoteId={persistDraft} disabled={draftSaving}/> }
           onSave={()=>void save()} onSaveOverwrite={()=>void save("overwrite")} onSaveDraft={()=>void saveDraftOnly()}
-          onCopy={()=>void copyQuote()} onExportPdf={exportCustomerPdf} onEdit={()=>setReadOnly(false)}
+          onCopy={()=>void copyQuote()} onExportPdf={exportCustomerPdf} onEmailPdf={emailCustomerPdf} onEdit={()=>setReadOnly(false)}
           onUpgrade={upgradeCosts} onDesktop={()=>chooseMobileView(false)}
         />
       ) : (
@@ -662,6 +739,11 @@ export default function PreventivoEditorPage() {
               className="flex h-9 w-full items-center justify-center gap-2 rounded border border-slate-300 px-2 text-xs text-slate-700 disabled:opacity-40"
               title="Esporta il documento con i soli dati destinati al cliente">
               <FileText size={16}/> Esporta PDF cliente
+            </button>
+            <button type="button" onClick={emailCustomerPdf} disabled={!canExportPdf}
+              className="flex h-9 w-full items-center justify-center gap-2 rounded border border-emerald-600 px-2 text-xs text-emerald-700 disabled:opacity-40"
+              title="Apre la stampa e richiede l'apertura della posta. Salva il PDF e allegalo manualmente prima di inviare">
+              <Mail size={16}/> Prepara email (PDF da allegare)
             </button>
             <label className="flex h-9 w-full cursor-pointer items-center gap-2 rounded border border-slate-200 px-2 text-xs font-medium leading-4"
               title="Nascondi totale documento nel PDF cliente">
@@ -710,7 +792,7 @@ export default function PreventivoEditorPage() {
       </div>
       {draftMessage && <div role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{draftMessage}</div>}
       {copyMessage && <div role="status" className="text-sm bg-emerald-50 border border-emerald-200 text-emerald-900 rounded p-3">{copyMessage}</div>}
-      {error && <div role="alert" className="border border-red-400 bg-red-50 p-3 rounded text-red-800">{error}</div>}
+      {error && <div role="alert" ref={errorAlertRef} className="border border-red-400 bg-red-50 p-3 rounded text-red-800">{error}</div>}
       {!isNew && <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 p-3 rounded">
         {isSavedDraft
           ? "BOZZA: puoi completare i campi mancanti oppure salvarla ancora. Solo «Completa preventivo» applica le verifiche obbligatorie e rende il documento definitivo."

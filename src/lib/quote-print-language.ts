@@ -55,3 +55,13 @@ export const quotePrintLabels = (language: PrintLanguage) =>
   language === "en" ? english : italian;
 export const printLocale = (language: PrintLanguage) =>
   language === "en" ? "en-GB" : "it-IT";
+
+/** R2 (TKT-20261119-86210002): nota fissa precompilata nei preventivi unatantum. */
+export const CUSTOM_PRODUCTS_NOTE = {
+  it: "Il preventivo contiene prodotti custom realizzati su specifiche del cliente. La variazione delle quantità può comportare variazioni del prezzo finale dovute alla gestione dei costi fissi di approntamento. Non considerare valida l'offerta se le quantità dovessero variare.",
+  en: "This quotation contains custom products made to the customer's specifications. Any change in the quantities may affect the final price due to the fixed setup costs involved. The offer shall not be considered valid if the quantities vary.",
+} as const;
+/** Traduce la nota fissa sui prodotti custom lasciando invariato il testo libero dell'utente. */
+export function translateClientNotes(notes: string, language: PrintLanguage): string {
+  return language === "en" ? notes.split(CUSTOM_PRODUCTS_NOTE.it).join(CUSTOM_PRODUCTS_NOTE.en) : notes;
+}

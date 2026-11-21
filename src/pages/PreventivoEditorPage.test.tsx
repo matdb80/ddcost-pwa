@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { createMemoryRouter, RouterProvider } from "react-router";
 import type { ReactNode } from "react";
 import { blankProduct, blankQuote, calculateQuote } from "../lib/quote-calculation";
+import { temporaryCode } from "../lib/ral-pricing";
 const state=vi.hoisted(()=>({data:null as any,groups:[] as Array<{id:number;name:string}>,calls:[] as Array<{path:string;input:any}>,failDuplicate:false,duplicateGate:null as null|Promise<void>}));
 vi.mock("@/components/Layout",()=>({default:({children}:{children:ReactNode})=><div>{children}</div>}));
 vi.mock("@/components/SalesHandoffPanel",()=>({default:({disabled}:{disabled:boolean})=><button disabled={disabled}>Invia al commerciale (test)</button>}));
@@ -20,6 +21,8 @@ vi.mock("@/providers/trpc",()=>{
         if(state.failDuplicate){state.failDuplicate=false;throw new Error("Connessione interrotta");}
         return {sequence:77,family:"BC",material:"6",color:null,code:"TBC000007760"};
       }
+      if(path.join(".")==="temporaryProduct.reserve")return {sequence:42,requestKey:input.requestKey};
+      if(path.join(".")==="temporaryProduct.complete")return {sequence:42,family:input.family,material:input.material,color:input.color??null,code:temporaryCode(42,input.family,input.material,input.color??null,undefined,input.natural)};
       if(path.join(".")==="productGroup.rename")return {id:input.id,oldName:input.expectedName,name:input.name,updatedQuotes:3};
       return {id:123,...(path.join(".")==="quote.update"?{dataJson:input.dataJson}:{})};
     }});
@@ -32,6 +35,11 @@ function mount(doc:Record<string,any>,mobile=false,revision=1){
   state.data={id:123,rev:revision,editToken:"test-version",dataJson:JSON.stringify(doc),client:"Cliente prova",reference:"Test"};
   window.localStorage.setItem("ddcost.quote.mobile-view",mobile?"1":"0");
   const router=createMemoryRouter([{path:"/preventivi/:id",element:<Editor/>}],{initialEntries:["/preventivi/123"]});
+  return render(<RouterProvider router={router}/>);
+}
+function mountNew(mobile=false){
+  window.localStorage.setItem("ddcost.quote.mobile-view",mobile?"1":"0");
+  const router=createMemoryRouter([{path:"/preventivi/new",element:<Editor/>},{path:"/preventivi/:id",element:<Editor/>}],{initialEntries:["/preventivi/new"]});
   return render(<RouterProvider router={router}/>);
 }
 beforeEach(()=>{
@@ -698,4 +706,128 @@ it.each([false,true])("sets an exact product position and retains it after savin
   cleanup();mount(saved);
   expect((await screen.findAllByLabelText("Descrizione *")).map(e=>(e as HTMLInputElement).value)).toEqual(["Terzo","Primo","Secondo","Quinto","Quarto"]);
   expect(screen.getAllByRole("textbox",{name:/Posizione prodotto/}).map(e=>(e as HTMLInputElement).value)).toEqual(["1","2","3","4","5"]);
+});
+
+// Regressione TKT-20261119-86210001: la copia prodotto su /preventivi/new deve
+// sempre aggiungere la riga; se fallisce, l'errore deve essere portato nel viewport.
+it("copies a product row on /preventivi/new without calling the server (regression TKT-20261119-86210001)",async()=>{
+  mountNew();
+  fireEvent.click(await screen.findByRole("button",{name:"Copia prodotto 1"}));
+  await waitFor(()=>expect(screen.getAllByLabelText("Descrizione *")).toHaveLength(2));
+  expect(state.calls.filter(c=>c.path==="temporaryProduct.duplicate")).toHaveLength(0);
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+it("copies a row with an issued temporary code on /preventivi/new (regression TKT-20261119-86210001)",async()=>{
+  mountNew();
+  fireEvent.click(await screen.findByRole("button",{name:"Genera codice temporaneo"}));
+  fireEvent.change(await screen.findByLabelText("Famiglia"),{target:{value:"BC"}});
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="temporaryProduct.reserve")).toBe(true));
+  fireEvent.click(await screen.findByRole("button",{name:"Usa questo codice"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="temporaryProduct.complete")).toBe(true));
+  const codeField=(await screen.findByLabelText("Codice articolo")) as HTMLInputElement;
+  expect(codeField.value).toBe("TBC0000042In");
+  fireEvent.click(screen.getByRole("button",{name:"Copia prodotto 1"}));
+  await waitFor(()=>expect(screen.getAllByLabelText("Descrizione *")).toHaveLength(2));
+  const duplicate=state.calls.filter(c=>c.path==="temporaryProduct.duplicate");
+  expect(duplicate).toHaveLength(1);
+  expect(duplicate[0].input.currentCode).toBe("TBC0000042In");
+  const fields=screen.getAllByLabelText("Codice articolo") as HTMLInputElement[];
+  expect(fields.map(f=>f.value)).toEqual(["TBC0000042In","TBC000007760"]);
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+it("shows the copy error and scrolls it into view when duplicating fails (regression TKT-20261119-86210001)",async()=>{
+  const generated={sequence:1,family:"BC",material:"6",color:null,code:"TBC000000160"};
+  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Originale",codice:generated.code,codice_temporaneo:generated,materiale_prodotto:"inox",inox_aisi:"316",quantita:10}]});
+  state.failDuplicate=true;
+  fireEvent.click(await screen.findByRole("button",{name:"Copia prodotto 1"}));
+  const alert=await screen.findByRole("alert");
+  expect(alert.textContent).toContain("Connessione interrotta");
+  await waitFor(()=>expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
+  expect(vi.mocked(Element.prototype.scrollIntoView).mock.calls.at(-1)?.[0]).toMatchObject({block:"center"});
+  expect(screen.getAllByLabelText("Descrizione *")).toHaveLength(1);
+});
+it("shows the copy error and scrolls it into view in the mobile wizard (regression TKT-20261119-86210001)",async()=>{
+  const generated={sequence:1,family:"BC",material:"6",color:null,code:"TBC000000160"};
+  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Originale",codice:generated.code,codice_temporaneo:generated,materiale_prodotto:"inox",inox_aisi:"316",quantita:10}]},true);
+  for(let i=0;i<8&&!screen.queryByRole("button",{name:"Copia prodotto 1"});i++)fireEvent.click(await screen.findByRole("button",{name:"Avanti"}));
+  state.failDuplicate=true;
+  fireEvent.click(await screen.findByRole("button",{name:"Copia prodotto 1"}));
+  const alert=await screen.findByRole("alert");
+  expect(alert.textContent).toContain("Connessione interrotta");
+  await waitFor(()=>expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
+  expect(screen.queryByRole("button",{name:"Copia prodotto 2"})).toBeNull();
+});
+
+// Regressione TKT-20261119-86210002: nota fissa prodotti custom precompilata,
+// editabile, solo sui preventivi nuovi.
+it("prefills the fixed custom-products note on /preventivi/new and lets the user replace it (regression TKT-20261119-86210002)",async()=>{
+  mountNew();
+  const field=(await screen.findByLabelText("Note cliente")) as HTMLTextAreaElement;
+  expect(field.value).toContain("Il preventivo contiene prodotti custom realizzati su specifiche del cliente.");
+  expect(field.value).toContain("Non considerare valida l'offerta se le quantità dovessero variare.");
+  fireEvent.change(field,{target:{value:"Nota sostituita dall'utente"}});
+  expect(((await screen.findByLabelText("Note cliente")) as HTMLTextAreaElement).value).toBe("Nota sostituita dall'utente");
+});
+it("does not inject the custom-products note into an existing quote (regression TKT-20261119-86210002)",async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza",note_cliente:""});
+  const field=(await screen.findByLabelText("Note cliente")) as HTMLTextAreaElement;
+  expect(field.value).toBe("");
+});
+
+// Regressione TKT-20261117-84210001: invio del PDF preventivo via email.
+it("downloads a real PDF and requests a prefilled email with an explicit manual attachment reminder (regression TKT-20261117-84210001)",async()=>{
+  mount({...blankQuote(),stato_preventivo:'completo',numero_preventivo:'DDC00042/2026',cliente:'Cliente prova',totale_finale:40,
+    prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'FCA00504HBIN',descrizione:'Serie',prezzo_serie:10,quantita:2,prezzo_netto_unitario_finale:10,totale_finale:20}]});
+  const button=await screen.findByRole('button',{name:'Prepara email (PDF da allegare)'});
+  expect((button as HTMLButtonElement).disabled).toBe(false);
+  let mailto="";
+  const downloads:Array<{href:string;name:string}>=[];
+  const anchorClick=vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(function(this:HTMLAnchorElement){
+    if(this.download)downloads.push({href:this.href,name:this.download});else mailto=this.href;
+  });
+  const createObjectURL=vi.fn(()=>'blob:mock-pdf');
+  const revoke=vi.fn();
+  Object.defineProperty(URL,'createObjectURL',{configurable:true,value:createObjectURL});
+  Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:revoke});
+  try{
+    fireEvent.click(button);
+    await screen.findByText(/Allega manualmente il file nel programma di posta/);
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0].name).toBe('2026_DDC00042_REV.1.pdf');
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(mailto.startsWith('mailto:?subject=')).toBe(true);
+    const decoded=decodeURIComponent(mailto);
+    expect(decoded).toContain('Preventivo DDC00042/2026 - Cliente prova');
+    expect(decoded).toContain('Gentile Cliente,');
+    expect(decoded).toContain('in allegato il preventivo richiesto, restiamo a disposizione per eventuali chiarimenti');
+    expect(decoded).toContain('Cordiali saluti');
+  }finally{anchorClick.mockRestore();Reflect.deleteProperty(URL,'createObjectURL');Reflect.deleteProperty(URL,'revokeObjectURL');}
+});
+it("shares the real quote PDF as a file when the browser supports it (regression TKT-20261117-84210001)",async()=>{
+  mount({...blankQuote(),stato_preventivo:'completo',numero_preventivo:'DDC00042/2026',cliente:'Cliente prova',totale_finale:40,
+    prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'FCA00504HBIN',descrizione:'Serie',prezzo_serie:10,quantita:2,prezzo_netto_unitario_finale:10,totale_finale:20}]});
+  const button=await screen.findByRole('button',{name:'Prepara email (PDF da allegare)'});
+  let shared:{files:File[];text:string}|null=null;
+  const nav=navigator as Navigator&{canShare?:(d:{files:File[]})=>boolean;share?:(d:{files:File[];text:string})=>Promise<void>};
+  nav.canShare=vi.fn(()=>true);
+  nav.share=vi.fn(async data=>{shared=data as {files:File[];text:string};});
+  try{
+    fireEvent.click(button);
+    await screen.findByText(/PDF condiviso come file/);
+    expect(shared).not.toBeNull();
+    const file=(shared as unknown as {files:File[];text:string}).files[0];
+    expect(file.name).toBe('2026_DDC00042_REV.1.pdf');
+    expect(file.type).toBe('application/pdf');
+    expect((shared as unknown as {files:File[];text:string}).text).toContain('Gentile Cliente,');
+    const content=await file.text();
+    expect(content).toContain('%PDF-');
+    expect(content).toContain('DDC00042/2026');
+    expect(content).toContain('Cliente prova');
+    expect(content).toContain('FCA00504HBIN');
+  }finally{Reflect.deleteProperty(nav,'canShare');Reflect.deleteProperty(nav,'share');}
+});
+it("keeps send-by-email disabled for an incomplete draft (regression TKT-20261117-84210001)",async()=>{
+  mount({...blankQuote(),stato_preventivo:'bozza',prodotti:[{...blankProduct(),descrizione:'Bozza'}]});
+  const button=await screen.findByRole('button',{name:'Prepara email (PDF da allegare)'});
+  expect((button as HTMLButtonElement).disabled).toBe(true);
 });

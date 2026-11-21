@@ -16,7 +16,8 @@ export const RAL_FAMILY_NAMES: Record<string, string> = {
   AM: "Accessori per mobili",
   AA: "Accessori d’arredo",
 };
-const ENGLISH_FAMILIES: Record<string, string> = {
+/** Dizionario condiviso stampa/PDF email: non duplicarlo altrove. */
+export const RAL_FAMILY_NAMES_EN: Record<string, string> = {
   AS: "Rods",
   FP: "Shutter stops",
   SP: "Espagnolette hardware",
@@ -108,7 +109,7 @@ export function ralPrintSummary(
     }
     const family = row.family.toUpperCase(),
       name =
-        (en ? ENGLISH_FAMILIES : RAL_FAMILY_NAMES)[family] ??
+        (en ? RAL_FAMILY_NAMES_EN : RAL_FAMILY_NAMES)[family] ??
         `${en ? "Other items" : "Altri articoli"} (${family})`;
     const label =
       name +

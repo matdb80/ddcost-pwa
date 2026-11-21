@@ -1,5 +1,6 @@
 import {describe, expect, it, vi} from "vitest";
 import {buildOneTimeQuotePrintHtml} from "./quote-pdf";
+import {CUSTOM_PRODUCTS_NOTE} from "./quote-print-language";
 
 describe("customer PDF for one-time quotes",()=>{
   it("shows the saved shared document number while retaining the legacy ID fallback",()=>{
@@ -173,4 +174,68 @@ it.each([false,true])('shows colour text but no colour swatch in product rows; h
   expect(meta).toContain('class="ral-swatch"');
   expect(meta).toContain('aria-label="RAL 3000"');
   expect(html.match(/class="ral-swatch"/g)).toHaveLength(1);
+});
+
+describe("fixed custom-products note (TKT-20261119-86210002)",()=>{
+  it("prints the fixed note in Italian in the Italian PDF",()=>{
+    const html=buildOneTimeQuotePrintHtml({prodotti:[],note_cliente:CUSTOM_PRODUCTS_NOTE.it},991);
+    expect(html).toContain("Il preventivo contiene prodotti custom realizzati su specifiche del cliente.");
+    expect(html).toContain("Non considerare valida l&#39;offerta se le quantità dovessero variare.");
+  });
+  it("translates the fixed note when printing in English",()=>{
+    const html=buildOneTimeQuotePrintHtml({prodotti:[],note_cliente:CUSTOM_PRODUCTS_NOTE.it,pdf_in_inglese:true},991);
+    expect(html).toContain("custom products made to the customer&#39;s specifications");
+    expect(html).toContain("The offer shall not be considered valid if the quantities vary.");
+    expect(html).not.toContain("prodotti custom realizzati");
+  });
+  it("translates only the fixed sentence and keeps the surrounding user text",()=>{
+    const html=buildOneTimeQuotePrintHtml({prodotti:[],note_cliente:CUSTOM_PRODUCTS_NOTE.it+"\nConsegna franco destinatario.",pdf_in_inglese:true},991);
+    expect(html).toContain("The offer shall not be considered valid if the quantities vary.");
+    expect(html).toContain("Consegna franco destinatario.");
+  });
+  it("leaves a fully user-replaced note untouched in the English PDF",()=>{
+    const html=buildOneTimeQuotePrintHtml({prodotti:[],note_cliente:"Nota libera del cliente",pdf_in_inglese:true},991);
+    expect(html).toContain("Nota libera del cliente");
+  });
+});
+
+describe("sale conditions and small-order contribution (next release)",()=>{
+  const quote=(total:number)=>({cliente:"Cliente",prodotti:[{codice:"A-101",descrizione:"Maniglia",quantita:1,prezzo_netto_unitario_finale:total,totale_finale:total}],totale_finale:total});
+  it("adds the 15 euro spese di evasione contribution once when the taxable total is below 150",()=>{
+    const html=buildOneTimeQuotePrintHtml(quote(100));
+    expect(html).toContain('Contributo "spese di evasione"');
+    expect(html).toContain("€ 15,00");
+    expect(html).toContain("€ 115,00");
+    expect((html.match(/spese di evasione/g)||[]).length).toBeGreaterThan(0);
+  });
+  it("does not add the contribution at or above 150 euro",()=>{
+    expect(buildOneTimeQuotePrintHtml(quote(150))).not.toContain("spese di evasione");
+    expect(buildOneTimeQuotePrintHtml(quote(500))).not.toContain("spese di evasione");
+  });
+  it("hides the contribution together with the document total (current commercial setting)",()=>{
+    const html=buildOneTimeQuotePrintHtml(quote(120),undefined,undefined,{hideDocumentTotal:true});
+    expect(html).not.toContain("Totale netto preventivo");
+    expect(html).not.toContain("spese di evasione");
+    expect(html).not.toContain("135,00");
+  });
+  // Visibilità del contributo SEPARATA dal totale (decisione di Matteo in sospeso):
+  // con showContributionWhenTotalHidden la voce da 15 € compare senza il totale di 135 €.
+  it("can show the 15 euro contribution alone while the document total stays hidden",()=>{
+    const html=buildOneTimeQuotePrintHtml(quote(120),undefined,undefined,{hideDocumentTotal:true,showContributionWhenTotalHidden:true});
+    expect(html).toContain('Contributo "spese di evasione"');
+    expect(html).toContain("€ 15,00");
+    expect(html).not.toContain("Totale netto preventivo");
+    expect(html).not.toContain("135,00");
+  });
+  it("appends the original sale-conditions page exactly once",()=>{
+    const html=buildOneTimeQuotePrintHtml(quote(500));
+    expect((html.match(/<section class="sale-conditions">/g)||[]).length).toBe(1);
+    expect(html.indexOf('<section class="sale-conditions">')).toBeGreaterThan(html.indexOf("Totale netto preventivo"));
+    expect(html).toContain("data:image/png;base64,");
+  });
+  it("uses the English contribution label when the quote is in English",()=>{
+    const html=buildOneTimeQuotePrintHtml({...quote(100),pdf_in_inglese:true});
+    expect(html).toContain('"Spese di evasione" handling contribution');
+    expect(html).toContain("Total net quotation including handling contribution");
+  });
 });

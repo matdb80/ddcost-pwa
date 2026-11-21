@@ -11,7 +11,7 @@ import {useEffect, useMemo, useRef, useState, type ReactNode} from "react";
 import {Link} from "react-router";
 import {
   ArrowLeft, ArrowRight, Check, ChevronLeft, Copy, FileText,
-  Plus, Save, Settings2, Trash2,
+  Mail, Plus, Save, Settings2, Trash2,
 } from "lucide-react";
 import QuoteProductOrder from "./QuoteProductOrder";
 import TemporaryProductCode, {type GeneratedProductCode} from "./TemporaryProductCode";
@@ -77,6 +77,8 @@ type Props={
   onSaveDraft:()=>void;
   onCopy:()=>void;
   onExportPdf:()=>void;
+  /** R3 (TKT-20261117-84210001): esporta il PDF e apre la email precompilata. */
+  onEmailPdf:()=>void;
   onEdit:()=>void;
   onUpgrade:()=>void;
   onDesktop:()=>void;
@@ -88,11 +90,17 @@ export default function QuoteMobileWizard(props:Props){
     onAddProduct,onCopyProductAndScaleLot,onRemoveProduct,onCreateGroup,
     hideDocumentTotalInPdf,onHideDocumentTotalInPdfChange,
     customObjects=[],onRenameObject,
-    onSave,onSaveOverwrite,onSaveDraft,onCopy,onExportPdf,onEdit,onUpgrade,onDesktop,
+    onSave,onSaveOverwrite,onSaveDraft,onCopy,onExportPdf,onEmailPdf,onEdit,onUpgrade,onDesktop,
   }=props;
   const [advanced,setAdvanced]=useState(false);
   const [stepId,setStepId]=useState("cliente");
   const [localError,setLocalError]=useState("");
+  // R1 (TKT-20261119-86210001): anche nel wizard il banner di errore può restare
+  // fuori dal viewport (es. copia prodotto fallita dal riepilogo); lo portiamo in vista.
+  const errorAlertRef=useRef<HTMLParagraphElement>(null);
+  useEffect(()=>{
+    if(error)errorAlertRef.current?.scrollIntoView?.({behavior:"smooth",block:"center"});
+  },[error]);
   const [newGroup,setNewGroup]=useState("");
   const [addingGroup,setAddingGroup]=useState(false);
   const [groupBusy,setGroupBusy]=useState(false);
@@ -322,6 +330,10 @@ export default function QuoteMobileWizard(props:Props){
               className={actionClass+" w-full border border-slate-300 text-slate-700 disabled:opacity-40"}>
               <FileText size={18}/> Esporta PDF cliente
             </button>
+            <button type="button" onClick={onEmailPdf} disabled={busy||!canShare}
+              className={actionClass+" w-full border border-emerald-600 text-emerald-700 disabled:opacity-40"}>
+              <Mail size={18}/> Prepara email (PDF da allegare)
+            </button>
             <label className="flex w-full min-h-12 items-center gap-3 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-700">
               <input type="checkbox" checked={hideDocumentTotalInPdf}
                 onChange={e=>onHideDocumentTotalInPdfChange(e.target.checked)}
@@ -466,7 +478,7 @@ export default function QuoteMobileWizard(props:Props){
       </div>
     </section>
 
-    {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+    {error && <p role="alert" ref={errorAlertRef} className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {draftMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{draftMessage}</p>}
     {copyMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{copyMessage}</p>}
 
