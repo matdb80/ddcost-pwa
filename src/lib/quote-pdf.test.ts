@@ -209,13 +209,15 @@ describe("sale conditions and small-order contribution (next release)",()=>{
     expect((html.match(/spese di evasione/g)||[]).length).toBeGreaterThan(0);
   });
   it("does not add the contribution at or above 150 euro",()=>{
-    expect(buildOneTimeQuotePrintHtml(quote(150))).not.toContain("spese di evasione");
-    expect(buildOneTimeQuotePrintHtml(quote(500))).not.toContain("spese di evasione");
+    // La pagina condizioni testuale cita il contributo: l'assenza si verifica
+    // sull'etichetta del blocco totali (maiuscola iniziale), non sul testo citato.
+    expect(buildOneTimeQuotePrintHtml(quote(150))).not.toContain('Contributo "spese di evasione"');
+    expect(buildOneTimeQuotePrintHtml(quote(500))).not.toContain('Contributo "spese di evasione"');
   });
   it("hides the contribution together with the document total (current commercial setting)",()=>{
     const html=buildOneTimeQuotePrintHtml(quote(120),undefined,undefined,{hideDocumentTotal:true});
     expect(html).not.toContain("Totale netto preventivo");
-    expect(html).not.toContain("spese di evasione");
+    expect(html).not.toContain('Contributo "spese di evasione"');
     expect(html).not.toContain("135,00");
   });
   // Visibilità del contributo SEPARATA dal totale (decisione di Matteo in sospeso):
@@ -227,11 +229,16 @@ describe("sale conditions and small-order contribution (next release)",()=>{
     expect(html).not.toContain("Totale netto preventivo");
     expect(html).not.toContain("135,00");
   });
-  it("appends the original sale-conditions page exactly once",()=>{
+  it("appends the clean text sale-conditions page exactly once",()=>{
     const html=buildOneTimeQuotePrintHtml(quote(500));
     expect((html.match(/<section class="sale-conditions">/g)||[]).length).toBe(1);
     expect(html.indexOf('<section class="sale-conditions">')).toBeGreaterThan(html.indexOf("Totale netto preventivo"));
-    expect(html).toContain("data:image/png;base64,");
+    // Solo il testo dello screenshot ufficiale: niente immagine raster della pagina 417
+    expect(html).not.toContain("data:image/png;base64,");
+    expect(html).toContain("CONDIZIONI DI VENDITA - CONDITIONS OF SALE");
+    expect(html).toContain("un aumento del 20%");
+    expect(html).toContain("An increase of 20% shall be applied");
+    expect(html).toContain("Il presente listino annulla e sostituisce il precedente");
   });
   it("uses the English contribution label when the quote is in English",()=>{
     const html=buildOneTimeQuotePrintHtml({...quote(100),pdf_in_inglese:true});

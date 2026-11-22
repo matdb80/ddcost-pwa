@@ -21,7 +21,7 @@ import {
   documentPrintFinish,
 } from "./document-print-color";
 import { saleConditionsLabels, visibleContribution } from "./quote-sale-conditions";
-import { SALE_CONDITIONS_PAGE_IMAGE } from "./sale-conditions-417-assets";
+import { SALE_CONDITIONS_TITLE, SALE_CONDITIONS_SECTIONS, SALE_CONDITIONS_CLOSING } from "./sale-conditions-text";
 
 const COMPANY = {
   name: "DIDIEFFE GROUP srl",
@@ -197,7 +197,12 @@ export function buildOneTimeQuotePrintHtml(
   .contribution { text-align: right; font-size: 9.5pt; margin-top: 6px; }
   .contribution-total { font-size: 12pt; margin-top: 4px; }
   .sale-conditions { break-before: page; page-break-before: always; margin: 0; }
-  .sale-conditions img { width: 100%; height: auto; display: block; }
+  .sale-conditions h1.sale-conditions-title { font-size: 12pt; text-align: center; letter-spacing: 0.03em; margin: 0 0 14px; color: #303a40; }
+  .sale-conditions-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; font-size: 8pt; line-height: 1.4; text-align: justify; }
+  .sale-conditions-cols h3 { font-size: 8pt; text-transform: uppercase; margin: 7px 0 2px; color: #303a40; }
+  .sale-conditions-cols p { margin: 0 0 6px; }
+  .sale-conditions-cols .closing p { margin: 0 0 8px; }
+  .sale-conditions-cols .closing p:first-child { font-weight: 700; }
   .notes { margin-top: 22px; border-top: 1px solid #cbd1d5; padding-top: 8px; }
   .notes h2 { margin-top: 6px; }
   @media screen { body { padding: 18px; max-width: 900px; margin: 0 auto; } }
@@ -217,7 +222,7 @@ ${ralPrintSummary(ral, undefined, false, language)}
 ${totalBlock}
 ${noteBlock}
 ${products.some(p => !isSeries(p)) ? `<footer class="special-legend">${specialMark} ${t.special}</footer>` : ""}
-<section class="sale-conditions"><img src="${SALE_CONDITIONS_PAGE_IMAGE}" alt="Condizioni di vendita — pagina 417"></section>
+<section class="sale-conditions"><h1 class="sale-conditions-title">${SALE_CONDITIONS_TITLE}</h1><div class="sale-conditions-cols">${(["it", "en"] as const).map(lang => `<div lang="${lang}">${SALE_CONDITIONS_SECTIONS.map(s => `<h3>${escapeHtml(s[lang].title)}</h3><p>${escapeHtml(s[lang].body)}</p>`).join("")}<div class="closing">${SALE_CONDITIONS_CLOSING[lang].map(line => `<p>${escapeHtml(line)}</p>`).join("")}</div></div>`).join("")}</div></section>
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script>
 </body></html>`;
 }

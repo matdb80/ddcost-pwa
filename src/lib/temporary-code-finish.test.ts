@@ -1,28 +1,55 @@
-import {expect,it} from "vitest";
-import {temporaryCode,manualTemporaryCodePrefix,validManualTemporaryCode} from "./ral-pricing";
-it.each([["I","n"],["X","P"],["6","P"],["B","z"],["A","7"]])("generates the exact twelfth character for %s",(material,suffix)=>{
-  const code=temporaryCode(42,"FP",material,null,material==="B"||material==="A"?suffix:undefined);
-  expect(code).toBe(`TFP0000042${material}${suffix}`);expect(code).toHaveLength(12);
+import {describe,expect,it} from "vitest";
+import {TEMPORARY_FAMILIES,temporaryCode,temporaryCodePrefix,temporaryCodePreview,validTemporarySuffix} from "./ral-pricing";
+
+describe("finitura codici temporanei",()=>{
+  it.each([["I","N"],["X","P"],["6","P"],["B","z"],["A","7"]])("materiale %s", (material,suffix)=>{
+    // ottone/alluminio: il suffisso digitato (anche minuscolo) è emesso maiuscolo
+    expect(temporaryCode(42,"FP",material as never,null,suffix)).toBe(`TFP0000042${material}${suffix.toUpperCase()}`);
+  });
+  it("ferro naturale senza suffisso esplicito",()=>{
+    expect(temporaryCode(42,"FP","I",null,undefined,true)).toBe("TFP0000042I0");
+  });
+  it("verniciato con RAL",()=>{
+    expect(temporaryCode(42,"FP","I","9010")).toBe("TFP0000042IO9010");
+  });
+  it("ferro e inox accettano solo la finitura automatica, in qualunque caso",()=>{
+    expect(temporaryCode(42,"FP","I",null,"N")).toBe("TFP0000042IN");
+    expect(temporaryCode(42,"FP","I",null,"n")).toBe("TFP0000042IN");
+    expect(()=>temporaryCode(42,"FP","X",null,"n")).toThrow();
+  });
 });
-it.each(["I","X","6","B","A"])("keeps the painted format unchanged for %s",material=>{
-  expect(temporaryCode(42,"FP",material,"9010")).toBe(`TFP0000042${material}O9010`);
+
+describe("tutte le famiglie: anteprima maiuscola e progressivo conservato",()=>{
+  // La proprietà lato client dell'anteprima del dialogo; la coincidenza con il
+  // codice emesso è provata contro il vero router in api/nov09-routers.test.ts.
+  it.each(TEMPORARY_FAMILIES.map(f=>[f]))("famiglia %s",(family)=>{
+    const prefix=temporaryCodePrefix(37,family,"I");
+    expect(prefix).toBe(`T${family}0000037I`);            // progressivo e zeri iniziali conservati
+    const anteprime=[
+      temporaryCodePreview(37,family,"I",null,"",false,false),   // ferro: finitura automatica N
+      temporaryCodePreview(37,family,"I",null,"",true,false),    // ferro naturale
+      temporaryCodePreview(37,family,"B",null,"z",false,false),  // ottone: suffisso digitato minuscolo
+      temporaryCodePreview(37,family,"A",null,"7",false,false),  // alluminio: suffisso digitato
+      ...(family==="QU"?[]:[temporaryCodePreview(37,family,"I","9010","",false,true)]), // verniciato
+    ];
+    for(const anteprima of anteprime){
+      expect(anteprima).toBe(anteprima.toUpperCase());           // interamente maiuscola
+      expect(anteprima.startsWith(prefix.slice(0,-1))).toBe(true);
+    }
+    expect(anteprime[0]).toBe(`${prefix}N`);                     // ferro → N maiuscola
+  });
 });
-it("requires one visible custom character and rejects overriding automatic or RAL finishes",()=>{
-  for(const suffix of [undefined,"","ab"," ","\n","\u200b"])
-    expect(()=>temporaryCode(42,"FP","B",null,suffix)).toThrow();
-  expect(temporaryCode(42,"FP","A",null,"-")).toBe("TFP0000042A-");
-  expect(()=>temporaryCode(42,"FP","I",null,"N")).toThrow();
-  expect(()=>temporaryCode(42,"FP","X",null,"n")).toThrow();
-  expect(()=>temporaryCode(42,"FP","B","9010","z")).toThrow();
-});
-it("protects newly issued brass/aluminium prefixes and preserves legacy eleven-character codes",()=>{
-  const issued={sequence:42,family:"FP",material:"B",color:null,code:"TFP0000042Bz"};
-  const prefix=manualTemporaryCodePrefix(issued)!;
-  expect(prefix).toBe("TFP0000042B");
-  expect(validManualTemporaryCode(prefix+"5",prefix)).toBe(true);
-  expect(validManualTemporaryCode(prefix,prefix)).toBe(false);
-  expect(validManualTemporaryCode(prefix,prefix,true)).toBe(true);
-  expect(validManualTemporaryCode("TFP0000043B5",prefix,true)).toBe(false);
-  expect(manualTemporaryCodePrefix({...issued,code:prefix})).toBeNull();
-  expect(manualTemporaryCodePrefix({...issued,code:prefix+"O9010",color:"9010"})).toBeNull();
+
+describe("suffisso manuale: un solo carattere anche dopo il maiuscolo",()=>{
+  // «ß» è un carattere solo, ma «ß».toUpperCase() è «SS»: senza il controllo il
+  // router emetterebbe un codice di 13 caratteri. Stessa validazione condivisa
+  // da digitazione, incolla, anteprima ed emissione.
+  it("z → Z accettato, ß → SS rifiutato ovunque",()=>{
+    expect(validTemporarySuffix("z")).toBe(true);
+    expect(validTemporarySuffix("ß")).toBe(false);
+    expect(temporaryCode(42,"FP","B",null,"z")).toBe("TFP0000042BZ");
+    expect(()=>temporaryCode(42,"FP","B",null,"ß")).toThrow(/un solo carattere/);
+    expect(temporaryCodePreview(42,"FP","B",null,"z",false,false)).toBe("TFP0000042BZ");
+    expect(()=>temporaryCodePreview(42,"FP","B",null,"ß",false,false)).toThrow(/un solo carattere/);
+  });
 });

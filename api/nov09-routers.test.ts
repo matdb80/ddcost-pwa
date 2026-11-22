@@ -7,6 +7,7 @@ const connection = vi.hoisted(() => ({ db: undefined as any }));
 vi.mock("./queries/connection", () => ({ getDb: () => connection.db }));
 import { quoteAttachmentRouter, decodeQuoteFile } from "./quote-attachment-router";
 import { temporaryProductRouter } from "./temporary-product-router";
+import { TEMPORARY_FAMILIES, temporaryCodePreview } from "../src/lib/ral-pricing";
 import { validateTemporaryProductDocument } from "./temporary-code-validation";
 import { assertNov09Staging } from "./staging-nov09-release";
 
@@ -58,7 +59,7 @@ it.each(["prodotti","righe"] as const)("validates custom finishes against the is
   const input={requestKey,family:"FP" as const,material:"B" as const,color:null};
   await expect(codes().complete(input)).rejects.toMatchObject({code:"BAD_REQUEST"});
   const issued=await codes().complete({...input,suffix:"a"});
-  expect(issued.code).toBe("TFP0000001Ba");
+  expect(issued.code).toBe("TFP0000001BA");
   expect(await codes().complete({...input,suffix:"a"})).toEqual(issued);
   await expect(codes().complete({...input,suffix:"b"})).rejects.toMatchObject({code:"CONFLICT"});
   const doc=(code:string)=>JSON.stringify({[rowKey]:[{codice:code,codice_temporaneo:issued}]});
@@ -66,18 +67,106 @@ it.each(["prodotti","righe"] as const)("validates custom finishes against the is
   for(const invalid of ["TFP0000002Bz","TFP0000001Az","TFP0000001B","TFP0000001Bzz"])
     await expect(validateTemporaryProductDocument(doc(invalid),rowKey)).rejects.toThrow(/primi 11/);
   await expect(validateTemporaryProductDocument(doc("TFP0000001B"),rowKey,true)).resolves.toBeUndefined();
-  expect(store.rows.temporary_product_codes[0].code).toBe("TFP0000001Ba");
+  expect(store.rows.temporary_product_codes[0].code).toBe("TFP0000001BA");
   expect(store.rows.temporary_product_sequence[0].lastNumber).toBe(1);
 });
-it("preserves legacy eleven-character issuance while new iron codes use lowercase n",async()=>{
+it("preserves legacy eleven-character issuance while new iron codes use uppercase N",async()=>{
   const legacy={sequence:99,family:"FP",material:"B",color:null,code:"TFP0000099B"};
   store.rows.temporary_product_codes.push({id:99,userId:1,requestKey:randomUUID(),...legacy});
   await expect(validateTemporaryProductDocument(JSON.stringify({prodotti:[{codice:legacy.code,codice_temporaneo:legacy}]}),"prodotti")).resolves.toBeUndefined();
   const requestKey=randomUUID();await codes().reserve({family:"FP",requestKey});
   const issued=await codes().complete({requestKey,family:"FP",material:"I",color:null});
-  expect(issued.code).toBe("TFP0000001In");
+  expect(issued.code).toBe("TFP0000001IN");
   await expect(validateTemporaryProductDocument(JSON.stringify({prodotti:[{codice:issued.code,codice_temporaneo:issued}]}),"prodotti")).resolves.toBeUndefined();
   await expect(validateTemporaryProductDocument(JSON.stringify({prodotti:[{codice:"TFP0000001IP",codice_temporaneo:issued}]}),"prodotti")).rejects.toThrow(/non corrisponde/);
+});
+// Anteprima del dialogo (stessa helper della UI) contro il codice realmente
+// restituito dal router di emissione, per ognuna delle 14 famiglie configurate.
+it.each(TEMPORARY_FAMILIES.map(f=>[f]))("family %s: dialog preview matches the code issued by the router",async family=>{
+  store.rows.temporary_product_sequence[0].lastNumber=36; // il prossimo progressivo è 37
+  const issue=async(material:"I"|"B"|"A",color:string|null,suffix:string,natural:boolean,painted:boolean)=>{
+    const requestKey=randomUUID();
+    const reservation=await codes().reserve({family:family as never,requestKey});
+    const preview=temporaryCodePreview(reservation.sequence,family,material,color,suffix,natural,painted);
+    const issued=await codes().complete({requestKey,family:family as never,material,color,natural,...(suffix?{suffix}:{})});
+    return {preview,issued};
+  };
+  const iron=await issue("I",null,"",false,false);
+  expect(iron.preview).toBe(`T${family}0000037IN`);      // progressivo e zeri iniziali dal router
+  expect(iron.issued.code).toBe(iron.preview);
+  const naturalRow=await issue("I",null,"",true,false);
+  expect(naturalRow.issued.code).toBe(naturalRow.preview);
+  expect(naturalRow.issued.code).toMatch(/0$/);
+  const brass=await issue("B",null,"z",false,false);     // suffisso digitato minuscolo
+  expect(brass.issued.code).toBe(brass.preview);
+  expect(brass.issued.code).toMatch(/Z$/);
+  const aluminium=await issue("A",null,"7",false,false);
+  expect(aluminium.issued.code).toBe(aluminium.preview);
+  if(family!=="QU"){
+    const painted=await issue("I","9010","",false,true);
+    expect(painted.issued.code).toBe(painted.preview);
+    expect(painted.issued.code).toMatch(/O9010$/);
+  }
+  for(const {issued} of [iron,naturalRow,brass,aluminium])expect(issued.code).toBe(issued.code.toUpperCase());
+});
+// Caso storico: codice emesso TRN0000037I (11 caratteri), riga con la
+// finitura minuscola TRN0000037In. La copia riceve un nuovo progressivo e
+// termina in IN; famiglia, materiale e progressivo restano controllati e il
+// documento originario non cambia.
+it("copies a historical row whose iron finish was stored lowercase, issuing a fresh uppercase code",async()=>{
+  store.rows.temporary_product_codes.push({id:9,userId:1,requestKey:randomUUID(),sequence:37,family:"RN",material:"I",color:null,code:"TRN0000037I"});
+  const copy=await codes().duplicate({requestKey:randomUUID(),sourceCode:"TRN0000037I",currentCode:"TRN0000037In"});
+  expect(copy.sequence).toBe(1);
+  expect(copy.code).toBe("TRN0000001IN");
+  expect(copy.code).toBe(copy.code.toUpperCase());
+  // controlli su famiglia, materiale e progressivo conservati
+  await expect(codes().duplicate({requestKey:randomUUID(),sourceCode:"TRN0000037I",currentCode:"TRN0000037XN"})).rejects.toThrow();
+  await expect(codes().duplicate({requestKey:randomUUID(),sourceCode:"TRN0000037I",currentCode:"TRN0000038IN"})).rejects.toThrow();
+  await expect(codes().duplicate({requestKey:randomUUID(),sourceCode:"TRN0000037I",currentCode:"TFP0000037IN"})).rejects.toThrow();
+  // il record originario è conservato com'era
+  expect(store.rows.temporary_product_codes.find(r=>r.sequence===37)).toMatchObject({family:"RN",material:"I",code:"TRN0000037I"});
+});
+// Intero percorso del caso storico lato salvataggio: il documento contiene sia
+// la riga originale (TRN0000037In) sia la copia con nuovo progressivo (…IN).
+// Il validatore — usato da saveDraft (bozza) e create/update (definitivo) — deve
+// accettare la «n» minuscola storica senza rinunciare ai controlli su famiglia,
+// progressivo, materiale e record di emissione.
+it("saves and revalidates a document with the historical lowercase row and its uppercase copy, as draft and as final",async()=>{
+  store.rows.temporary_product_codes.push({id:9,userId:1,requestKey:randomUUID(),sequence:37,family:"RN",material:"I",color:null,code:"TRN0000037I"});
+  const copy=await codes().duplicate({requestKey:randomUUID(),sourceCode:"TRN0000037I",currentCode:"TRN0000037In"});
+  expect(copy.code).toBe("TRN0000001IN");
+  const originalRecord={sequence:37,family:"RN",material:"I",color:null,code:"TRN0000037I"};
+  const row=(codice:string,codice_temporaneo:Record<string,unknown>|null=originalRecord,extra:Record<string,unknown>={})=>
+    ({codice,codice_temporaneo,descrizione:"Riga",materiale_prodotto:"ferro",...extra});
+  const doc=(originalCode:string,metadata:Record<string,unknown>|null=originalRecord)=>
+    JSON.stringify({prodotti:[row(originalCode,metadata),row(copy.code,copy as unknown as Record<string,unknown>)]});
+  // bozza (draft=true) e definitivo (draft=false): entrambe accettano la riga storica
+  await expect(validateTemporaryProductDocument(doc("TRN0000037In"),"prodotti",true)).resolves.toBeUndefined();
+  await expect(validateTemporaryProductDocument(doc("TRN0000037In"),"prodotti")).resolves.toBeUndefined();
+  // accettata anche la forma maiuscola rigenerata (documenti già normalizzati)
+  await expect(validateTemporaryProductDocument(doc("TRN0000037IN"),"prodotti")).resolves.toBeUndefined();
+  // controlli conservati: famiglia, progressivo e materiale del codice riga
+  await expect(validateTemporaryProductDocument(doc("TFP0000037In"),"prodotti")).rejects.toThrow(/non corrisponde/);
+  await expect(validateTemporaryProductDocument(doc("TRN0000038In"),"prodotti")).rejects.toThrow(/non corrisponde/);
+  await expect(validateTemporaryProductDocument(doc("TRN0000037Xn"),"prodotti")).rejects.toThrow(/non corrisponde/);
+  // materiale della riga incoerente con il record di emissione
+  await expect(validateTemporaryProductDocument(
+    JSON.stringify({prodotti:[{...row("TRN0000037In"),materiale_prodotto:"ottone"},row(copy.code,copy as unknown as Record<string,unknown>)]}),
+    "prodotti")).rejects.toThrow(/materiale non corrisponde/);
+  // metadati non emessi dal contatore (codice manomesso)
+  await expect(validateTemporaryProductDocument(doc("TRN0000037In",{...originalRecord,code:"TRN0000037IX"}),"prodotti")).rejects.toThrow(/non emesso/);
+  // il record di emissione originario resta intatto
+  expect(store.rows.temporary_product_codes.find(r=>r.sequence===37)).toMatchObject({family:"RN",material:"I",code:"TRN0000037I"});
+});
+// Il suffisso manuale resta di UN solo carattere anche dopo la conversione in
+// maiuscolo: «z» → «Z» accettato, «ß» → «SS» rifiutato (mai codici di 13).
+it("accepts suffix z as Z and rejects ß, which would uppercase to SS",async()=>{
+  const first=randomUUID();await codes().reserve({family:"FP",requestKey:first});
+  const issued=await codes().complete({requestKey:first,family:"FP",material:"B",color:null,suffix:"z"});
+  expect(issued.code).toBe("TFP0000001BZ");
+  const second=randomUUID();await codes().reserve({family:"FP",requestKey:second});
+  await expect(codes().complete({requestKey:second,family:"FP",material:"B",color:null,suffix:"ß"})).rejects.toMatchObject({code:"BAD_REQUEST"});
+  expect(store.rows.temporary_product_codes.filter(c=>typeof c.code==="string"&&c.code.length>12)).toHaveLength(0);
 });
 const file={quoteId:1,fileName:"../disegno.txt",dataBase64:Buffer.from("prova à").toString("base64")};
 it("stores exact bytes outside quote JSON, reopens from another revision and lists metadata only",async()=>{
@@ -192,9 +281,20 @@ it("copies painted and custom finishes and rolls back a failed copy without cons
   await expect(codes().duplicate(input)).rejects.toThrow(/injected/);
   expect(store.rows.temporary_product_sequence[0].lastNumber).toBe(1);
   store.failInsert="";
-  expect((await codes().duplicate(input)).code).toBe("TBC0000002Ba");
+  expect((await codes().duplicate(input)).code).toBe("TBC0000002BA");
   await expect(codes().duplicate({...input,requestKey:randomUUID(),currentCode:"TBC0000009Ba"})).rejects.toMatchObject({code:"BAD_REQUEST"});
   const key=randomUUID();await codes().reserve({family:"BC",requestKey:key});
   const painted=await codes().complete({requestKey:key,family:"BC",material:"6",color:"6021"});
   expect((await codes().duplicate({requestKey:randomUUID(),sourceCode:painted.code,currentCode:painted.code})).code).toBe("TBC00000046O6021");
+});
+it("v9: historical lower-case finish never authorizes an altered eleven-character prefix",async()=>{
+ const original={sequence:37,family:"RN",material:"I",color:null,code:"TRN0000037I"};
+ store.rows.temporary_product_codes.push({id:9,userId:1,requestKey:randomUUID(),...original});
+ const source={codice:"TRN0000037ın",materiale_prodotto:"ferro",codice_temporaneo:original};
+ await expect(validateTemporaryProductDocument(JSON.stringify({prodotti:[source]}),"prodotti",true)).rejects.toThrow();
+});
+it("v9: copying must verify the eleven-character prefix exactly",async()=>{
+ const original={sequence:37,family:"RN",material:"I",color:null,code:"TRN0000037I"};
+ store.rows.temporary_product_codes.push({id:9,userId:1,requestKey:randomUUID(),...original});
+ await expect(codes().duplicate({requestKey:randomUUID(),sourceCode:original.code,currentCode:"trn0000037in"})).rejects.toThrow();
 });

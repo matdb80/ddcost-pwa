@@ -1,6 +1,6 @@
 import {buildRowListino,rowListinoInputError} from "./quote-row-listino";
 import {quoteOttoneError} from "./quote-ottone";
-import {isSeries,isFixedPrice,seriesProductError,seriesNetPrice} from "./quote-series";
+import {isSeries,isFixedPrice,seriesProductError,seriesNetPriceWithSurcharge} from "./quote-series";
 import {normalizeDocumentTemporaryCodes} from "./document-product-fields";
 import { isForfait, forfaitProductError } from "./quote-forfait";
 import { calculateRal, validRal, ralSourceCode } from "./ral-pricing";
@@ -12,7 +12,7 @@ const val = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n
 const euro = (v: unknown) => val(v).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const blankProduct = (): Product => ({
   gruppo_merceologico: "", materiale_prodotto: "",
-  codice: "", descrizione: "", a_forfait: false, valore_forfait: null, prodotto_di_serie: false, prezzo_serie: null, quantita: 1, materiale_cad: 0,
+  codice: "", descrizione: "", a_forfait: false, valore_forfait: null, prodotto_di_serie: false, prezzo_serie: null, supplemento_sconfezionamento: false, quantita: 1, materiale_cad: 0,
   costo_materiale_noto: true, geometria_materiale: "", diametro_mm: 0, diametro_interno_mm: 0, lunghezza_mm: 0, larghezza_mm: 0, spessore_mm: 0,
   costo_materiale_kg: 0, oggetto_modifica: [], lavoro_h: 0, costo_lavoro: 24,
   trattamenti_cad: 0, attrezzaggi_h: 0, nero_standard_goffrato: false,
@@ -143,7 +143,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
       const series = isSeries(p);
       const error = series ? seriesProductError(p) : forfaitProductError(p);
       if (error) throw new Error(`Prodotto ${productIndex + 1}: ${error}`);
-      const amount = series ? Number(p.quantita) * seriesNetPrice(p) : Number(p.valore_forfait);
+      const amount = series ? Number(p.quantita) * seriesNetPriceWithSurcharge(p) : Number(p.valore_forfait);
       // Preserve user inputs for toggling back, but clear all inactive derived costs.
       for (const key of ["materiale_calcolato_cad", "peso_teorico_kg", "materiale_tot", "lavoro_ore_totali", "lavoro_tot",
         "trattamenti_tot", "attrezzaggi_tot", "progettazione_tot", "progettazione_comune_cad", "trattamenti_globali_cad",
@@ -151,7 +151,7 @@ export function calculateQuote(document: QuoteDocument): QuoteDocument {
         "prezzo_netto_unitario_finale", "netto_prima_ral", "ral_ricarico_cad", "ral_percentuale"])
         delete p[key];
       Object.assign(p, {totale: amount, totale_vendita_pre_quadratura: amount, totale_finale: amount, rettifica_unitaria: 0});
-      if (series) Object.assign(p, {prezzo_netto_unitario: seriesNetPrice(p), prezzo_vendita_pre_quadratura: seriesNetPrice(p), prezzo_netto_unitario_finale: seriesNetPrice(p)});
+      if (series) Object.assign(p, {prezzo_netto_unitario: seriesNetPriceWithSurcharge(p), prezzo_vendita_pre_quadratura: seriesNetPriceWithSurcharge(p), prezzo_netto_unitario_finale: seriesNetPriceWithSurcharge(p)});
       baseTotal += amount;
       saleBefore += amount;
       continue;

@@ -16,7 +16,12 @@ export function temporaryCodePrefix(sequence: number, family: string, material: 
   return `T${family}${String(sequence).padStart(7, "0")}${material}`;
 }
 export function validTemporarySuffix(value: unknown): value is string {
-  return typeof value==="string" && Array.from(value).length===1 && !/[\s\p{C}]/u.test(value);
+  // Un solo carattere ANCHE dopo la conversione in maiuscolo: «ß» è un
+  // carattere solo, ma «ß».toUpperCase() è «SS» e produrrebbe un codice di
+  // 13 caratteri. La stessa regola vale per digitazione, incolla, anteprima
+  // (temporaryCodePreview → temporaryCode) ed emissione del router.
+  return typeof value==="string" && Array.from(value).length===1 && !/[\s\p{C}]/u.test(value)
+    && Array.from(value.toUpperCase()).length===1;
 }
 export function temporaryCode(sequence: number, family: string, material: string, color?: string | null, suffix?: string | null, natural=false): string {
   const prefix=temporaryCodePrefix(sequence,family,material);
@@ -29,13 +34,30 @@ export function temporaryCode(sequence: number, family: string, material: string
     if(!knownColors.has(color)||suffix)throw new Error("Colore RAL non valido o carattere finale incompatibile con il RAL");
     return prefix+"O"+color;
   }
-  const fixed=material==="I"?"n":material==="X"||material==="6"?"P":null;
+  // Ogni nuovo codice temporaneo è INTERAMENTE MAIUSCOLO (tutte le famiglie):
+  // la finitura automatica del ferro è «N» maiuscola e l'eventuale suffisso
+  // digitato dall'utente (ottone/alluminio) è convertito in maiuscolo.
+  const fixed=material==="I"?"N":material==="X"||material==="6"?"P":null;
   if(fixed){
-    if(suffix!=null&&suffix!==fixed)throw new Error("Il carattere finale è automatico per ferro e inox");
+    if(suffix!=null&&suffix.toUpperCase()!==fixed)throw new Error("Il carattere finale è automatico per ferro e inox");
     return prefix+fixed;
   }
   if(!validTemporarySuffix(suffix))throw new Error("Inserisci un solo carattere finale per ottone o alluminio");
-  return prefix+suffix;
+  return prefix+suffix.toUpperCase();
+}
+/**
+ * Anteprima del codice mostrata dal dialogo (TemporaryProductCode): stessa
+ * composizione del codice che il router emetterà con quei parametri, suffisso
+ * manuale maiuscolo incluso. Unica fonte condivisa da UI e test.
+ */
+export function temporaryCodePreview(sequence:number,family:string,material:string,color:string|null,suffix:string,natural:boolean,painted:boolean):string{
+  const manualSuffix=!natural&&!painted&&(material==="B"||material==="A");
+  // Entrambi i rami passano da temporaryCode: anteprima ed emissione usano
+  // letteralmente la stessa validazione (suffisso «ß» rifiutato anche qui).
+  // A suffisso ancora vuoto il dialogo mostra il prefisso da completare.
+  return manualSuffix
+    ? (suffix?temporaryCode(sequence,family,material,null,suffix):temporaryCodePrefix(sequence,family,material))
+    : temporaryCode(sequence,family,material,painted?color:null,undefined,natural);
 }
 /** Only newly completed unpainted brass/aluminium codes permit suffix edits.
  * Legacy eleven-character codes and painted codes keep their prior behaviour. */
@@ -51,18 +73,39 @@ export function manualTemporaryCodePrefix(metadata: unknown): string | null {
 export function validManualTemporaryCode(code: string, prefix: string, allowEmpty=false): boolean {
   return code.startsWith(prefix) && ((allowEmpty && code===prefix)||validTemporarySuffix(code.slice(prefix.length)));
 }
-/** The explicit natural finish belongs to the temporary SKU, including after reopening. */
-export function isNaturalTemporaryCode(value:unknown):boolean {
+/** The explicit natural finish belongs to the temporary SKU, including after reopening. */export function isNaturalTemporaryCode(value:unknown):boolean {
   const match=/^T([A-Z]{2})(\d{7})([IX6BA])0$/.exec(String(value??"").trim().toUpperCase());
   return Boolean(match && Number(match[2])>0 && TEMPORARY_FAMILIES.includes(match[1] as typeof TEMPORARY_FAMILIES[number]));
+}
+/**
+ * Rigenera il codice con la finitura fissa di un record di emissione storico a
+ * 11 caratteri (ferro/inox senza colore, es. «TRN0000037I» → «TRN0000037IN»).
+ * Restituisce null per ogni altro record. Condiviso da copia e validatore di
+ * salvataggio: le righe storiche con la lettera finale minuscola
+ * (es. «TRN0000037In») vengono riconosciute confrontando in maiuscolo.
+ */
+export function legacyFixedFinishCode(record:{sequence:number;family:string;material:string|null;color:string|null;code:string|null}):string|null{
+  const material=record.material??"";
+  try{
+    if(record.color || !["I","X","6"].includes(material))return null;
+    if(record.code!==temporaryCodePrefix(record.sequence,record.family,material))return null;
+    return temporaryCode(record.sequence,record.family,material);
+  }catch{return null;}
+}
+/** Older rows may differ from the issued prefix plus finish only in the case of the finish. */
+export function matchesLegacyFixedFinish(code: string, expected: string | null): boolean {
+  return expected !== null && (code === expected || code === expected.slice(0, -1) + expected.slice(-1).toLowerCase());
 }
 /** Preserve the selected finish, but never change the issued prefix when copying. */
 export function temporaryCodeCopyOptions(record:{sequence:number;family:string;material:string|null;color:string|null;code:string|null},currentCode:string){
   const material=record.material??"",prefix=temporaryCodePrefix(record.sequence,record.family,material);
   const code=currentCode.trim();
   const manual=manualTemporaryCodePrefix(record);
-  const legacyFixed=record.code===prefix && ["I","X","6"].includes(material) && !record.color;
-  if(manual ? !validManualTemporaryCode(code,prefix) : code!==record.code && !(legacyFixed && code===temporaryCode(record.sequence,record.family,material)))
+  const legacyFixed=legacyFixedFinishCode(record);
+  // Il confronto con la finitura rigenerata è case-insensitive: le righe storiche
+  // con la lettera finale minuscola (es. TRN0000037In) restano copiabili e la
+  // copia riceve un nuovo progressivo con la finitura maiuscola (…IN).
+  if(manual ? !validManualTemporaryCode(code,prefix) : code!==record.code && !matchesLegacyFixedFinish(code,legacyFixed))
     throw new Error("Il codice da copiare non corrisponde al codice temporaneo emesso");
   const natural=isNaturalTemporaryCode(code);
   const suffix=!record.color && !natural && (material==="B"||material==="A")?code.slice(prefix.length):undefined;

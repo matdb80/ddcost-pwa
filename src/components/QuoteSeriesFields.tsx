@@ -1,5 +1,5 @@
 import {ralCodeInfo} from "@/lib/ral-pricing";
-import {seriesNetPrice} from "@/lib/quote-series";
+import {seriesNetPriceWithSurcharge} from "@/lib/quote-series";
 import {seriesDiscount} from "@/lib/series-discount";
 import QuoteNumericInput from "./QuoteNumericInput";
 import {QUOTE_PRODUCT_DESCRIPTION_MAX_LENGTH} from "@/lib/quote-product-description";
@@ -7,7 +7,7 @@ import type {Product} from "@/lib/quote-calculation";
 export default function QuoteSeriesFields({product,calculated,ralEnabled,disabled,onChange}:{product:Product;calculated?:Product;ralEnabled?:boolean;disabled:boolean;onChange:(key:string,value:unknown)=>void}) {
   const inputClass="h-10 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-2 disabled:bg-slate-100";
   let net=NaN,error="";
-  try{net=seriesNetPrice(product);}catch{error="Prezzo base o sconto non valido: verifica i valori inseriti.";}
+  try{net=seriesNetPriceWithSurcharge(product);}catch{error="Prezzo base o sconto non valido: verifica i valori inseriti.";}
   const finalNet=ralEnabled?calculated?.prezzo_netto_unitario_finale:net;
   const total=Number(product.quantita)*finalNet;
   const valid=product.prezzo_serie!=null && product.prezzo_serie!=="" && Number(product.quantita)>0 && Number.isFinite(total);
@@ -38,6 +38,13 @@ export default function QuoteSeriesFields({product,calculated,ralEnabled,disable
           onChange={e=>onChange("sconto_serie",e.target.value||undefined)}/>
       </label>
     </div>
+    <label className="flex items-center gap-2 text-sm">
+      <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={disabled}
+        checked={product.supplemento_sconfezionamento===true}
+        onChange={e=>onChange("supplemento_sconfezionamento",e.target.checked)}/>
+      Applica supplemento per sconfezionamento (+20%)
+    </label>
+    {product.supplemento_sconfezionamento===true&&<p className="text-xs text-slate-600">Maggiorazione del 20% per confezioni non conformi ai quantitativi della colonna «pack» (condizioni di vendita allegate).</p>}
     {ralEnabled&&ralCodeInfo(String(product.codice??" ")).paintable&&!/^[a-z0-9]{11}/i.test(String(product.codice??""))&&<p className="text-sm text-amber-800">Codice articolo incompleto: inserisci il codice completo, compreso il materiale, per ottenere la versione RAL.</p>}
     {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
     {discountError&&<p role="alert" className="text-sm text-red-700">{discountError}</p>}

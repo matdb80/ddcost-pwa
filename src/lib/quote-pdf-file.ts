@@ -5,8 +5,9 @@
  *
  * Il documento riproduce la copia cliente di quote-pdf.ts (stessa lingua,
  * revisione, colori, finiture, riepilogo RAL, note tradotte, scelta di
- * nascondere il totale) e accoda UNA SOLA VOLTA la pagina originale delle
- * condizioni di vendita (pagina 417, vedi sale-conditions-417-assets.ts).
+ * nascondere il totale) e accoda UNA SOLA VOLTA la pagina delle condizioni
+ * di vendita: solo il testo ufficiale bilingue (sale-conditions-text.ts),
+ * senza intestazioni o grafiche di listino.
  * Per gli ordini con imponibile inferiore a 150 € aggiunge il contributo
  * "spese di evasione" di 15 € una tantum (quote-sale-conditions.ts).
  *
@@ -33,8 +34,7 @@ import { documentPrintColor, documentPrintFinish } from "./document-print-color"
 import { ralColors } from "./ral-pricing";
 import { RAL_FAMILY_NAMES, RAL_FAMILY_NAMES_EN } from "./ral-print-summary";
 import { saleConditionsLabels, visibleContribution } from "./quote-sale-conditions";
-import { appendPdfPages } from "./pdf-merge";
-import { saleConditionsPdfBytes } from "./sale-conditions-417-assets";
+import { SALE_CONDITIONS_TITLE, SALE_CONDITIONS_SECTIONS, SALE_CONDITIONS_CLOSING } from "./sale-conditions-text";
 import { QUOTE_LOGO_JPEG_BASE64, QUOTE_LOGO_WIDTH, QUOTE_LOGO_HEIGHT } from "./ddf-logo-asset";
 
 const PAGE_W = 595.28;
@@ -438,10 +438,51 @@ export function buildQuotePdfFile(
     ], { size: 8.5 });
   }
 
-  const quoteBytes = assemblePdf(c.pages);
-  // Pagina 417 originale delle condizioni di vendita: accodata una sola volta.
-  const merged = appendPdfPages(quoteBytes, saleConditionsPdfBytes());
-  return { bytes: merged, fileName };
+  renderSaleConditionsPage(c);
+  return { bytes: assemblePdf(c.pages), fileName };
+}
+
+/**
+ * Pagina «Condizioni di vendita» allegata UNA SOLA VOLTA in coda al PDF:
+ * riproduce fedelmente il testo dello screenshot ufficiale (due colonne
+ * IT/EN), senza intestazioni, loghi o piè di pagina del listino.
+ * Testo condiviso con la stampa: vedi sale-conditions-text.ts.
+ */
+function renderSaleConditionsPage(c: Canvas) {
+  c.newPage();
+  // Titolo centrato (stima larghezza Helvetica grassetto, come textRight).
+  const titleSize = 12.5;
+  const titleWidth = SALE_CONDITIONS_TITLE.length * 0.55 * titleSize;
+  c.text(Math.max(MARGIN, (PAGE_W - titleWidth) / 2), c.y, SALE_CONDITIONS_TITLE, { bold: true, size: titleSize });
+  c.y += 24;
+
+  const gutter = 18;
+  const colW = (CONTENT_W - gutter) / 2;
+  const headSize = 8, bodySize = 7.5, headStep = 11, lineStep = 9.4, gap = 5;
+  const renderColumn = (x: number, lang: "it" | "en") => {
+    let y = c.y;
+    for (const section of SALE_CONDITIONS_SECTIONS) {
+      c.text(x, y, section[lang].title.toUpperCase(), { bold: true, size: headSize });
+      y += headStep;
+      for (const line of wrap(section[lang].body, bodySize, colW)) {
+        c.text(x, y, line, { size: bodySize });
+        y += lineStep;
+      }
+      y += gap;
+    }
+    y += 4;
+    SALE_CONDITIONS_CLOSING[lang].forEach((line, i) => {
+      for (const wrapped of wrap(line, bodySize, colW, i === 0)) {
+        c.text(x, y, wrapped, { size: bodySize, bold: i === 0 });
+        y += lineStep;
+      }
+      y += 3;
+    });
+    return y;
+  };
+  const endIt = renderColumn(MARGIN, "it");
+  void endIt;
+  renderColumn(MARGIN + colW + gutter, "en");
 }
 
 /** Serializza gli oggetti PDF: catalogo, font WinAnsi, logo JPEG, pagine. */

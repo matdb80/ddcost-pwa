@@ -132,7 +132,7 @@ describe("series discounts and RAL", () => {
     ).toThrow(/inox/);
   });
   it("retains unpainted QU but excludes it from RAL and allows AS and SP", () => {
-    expect(temporaryCode(1, "QU", "I")).toBe("TQU0000001In");
+    expect(temporaryCode(1, "QU", "I")).toBe("TQU0000001IN");
     expect(() => temporaryCode(1, "QU", "I", "9010")).toThrow(/esclusa/);
     expect(ralRate("TQU0000001In", false).percent).toBe(0);
     for (const f of ["AS", "SP"])

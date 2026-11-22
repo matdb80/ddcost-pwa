@@ -221,6 +221,10 @@ export default function QuoteMobileWizard(props:Props){
             <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={isSeries(product)}
               onChange={e=>{onUpdateProduct(productIndex,"prodotto_di_serie",e.target.checked);setAddingGroup(false);goto(`p:${productIndex}:descrizione`);}}/> Prodotto di serie
           </label>}
+          {productIndex!==undefined && isSeries(product) && <label className="ml-3 inline-flex items-center gap-2 text-sm normal-case">
+            <input type="checkbox" className="h-4 w-4 accent-emerald-700" disabled={locked} checked={product?.supplemento_sconfezionamento===true}
+              onChange={e=>onUpdateProduct(productIndex,"supplemento_sconfezionamento",e.target.checked)}/> Supplemento sconfezionamento +20%
+          </label>}
         {productIndex!==undefined&&!locked&&<div className="ml-auto flex max-w-full flex-wrap items-center gap-1">{orderButtons(productIndex,true)}<button type="button" aria-label={`Copia prodotto ${productIndex+1}`} title="Copia subito sotto con un nuovo codice temporaneo" className="rounded p-2 text-violet-800" onClick={()=>void copyProductAndScaleLot(productIndex)}><Copy size={18}/></button>
           {doc.prodotti.length>1&&<button type="button" aria-label={`Elimina prodotto ${productIndex+1}`} className="rounded p-2 text-red-800" onClick={()=>{onRemoveProduct(productIndex);goto("riepilogo");}}><Trash2 size={18}/></button>}</div>}
         </div>

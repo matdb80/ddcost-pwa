@@ -4,7 +4,7 @@ import {isFixedPrice} from "../src/lib/quote-series";
 import { inArray } from "drizzle-orm";
 import { temporaryProductCodes } from "@db/schema";
 import { getDb } from "./queries/connection";
-import { validRal, calculateRal, ralSourceCode, manualTemporaryCodePrefix, validManualTemporaryCode } from "../src/lib/ral-pricing";
+import { validRal, calculateRal, ralSourceCode, manualTemporaryCodePrefix, validManualTemporaryCode, legacyFixedFinishCode, matchesLegacyFixedFinish } from "../src/lib/ral-pricing";
 import { assertPaintedTemporaryCodes } from "../src/lib/ral-documents";
 
 /** Verify the issuance record, not a user-supplied claim that a code was generated. */
@@ -38,6 +38,15 @@ export async function validateTemporaryProductDocument(raw: string | undefined, 
     if(prefix){
       if(!validManualTemporaryCode(String(row.codice??""),prefix,draft))
         throw new Error("Mantieni i primi 11 caratteri del codice temporaneo e inserisci un solo carattere finale");
-    }else if(row.codice!==record.code && row.codice!==documentProductCode({...row,codice:record.code,codice_temporaneo:record},doc))throw new Error("Il codice non corrisponde al codice temporaneo emesso");
+    }else{
+      // Riga storica con la finitura minuscola (es. TRN0000037In, emesso
+      // TRN0000037I): riconosciuta dal confronto in maiuscolo con il codice
+      // rigenerato dal record di emissione. Famiglia, progressivo, materiale e
+      // metadati restano controllati sopra; il documento storico non cambia.
+      const legacy=legacyFixedFinishCode(record);
+      if(row.codice!==record.code && row.codice!==documentProductCode({...row,codice:record.code,codice_temporaneo:record},doc)
+        && !matchesLegacyFixedFinish(String(row.codice??""),legacy))
+        throw new Error("Il codice non corrisponde al codice temporaneo emesso");
+    }
   }
 }

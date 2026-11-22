@@ -241,7 +241,10 @@ function PreventivoEditor() {
       prodotti[index] = { ...before, [key]: value };
       // Non cancellare lo sconto quando cambia il prezzo base; lo sconto è gestito separatamente.
       if(key==="prodotto_di_serie" && value===true)prodotti[index].a_forfait=false;
-      if(key==="a_forfait" && value===true)prodotti[index].prodotto_di_serie=false;
+      // Il supplemento per sconfezionamento esiste solo sulle righe di serie:
+      // disattivando «Di serie» (o passando a forfait) il flag viene azzerato.
+      if(key==="prodotto_di_serie" && value!==true)prodotti[index].supplemento_sconfezionamento=false;
+      if(key==="a_forfait" && value===true){prodotti[index].prodotto_di_serie=false;prodotti[index].supplemento_sconfezionamento=false;}
       if(key==="costo_materiale_noto" && value===false && before.costo_materiale_noto!==false && before.geometria_materiale===undefined)
         prodotti[index].geometria_materiale="";
       if(key==="gruppo_merceologico"){const selected=groupsQuery.data?.find(g=>g.name===value);prodotti[index].gruppo_merceologico_id=selected?.id;}

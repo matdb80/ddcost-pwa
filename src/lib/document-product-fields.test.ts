@@ -7,7 +7,7 @@ import {salesDocument} from "./commercial-handoff";
 import {blankProduct,blankQuote,calculateQuote} from "./quote-calculation";
 const legacy=(material="6",sequence=5)=>({sequence,family:"BC",material,color:null,code:`TBC${String(sequence).padStart(7,"0")}${material}`});
 const row=(material="6")=>({...blankProduct(),codice:legacy(material).code,codice_temporaneo:legacy(material),materiale_prodotto:material==="I"?"ferro":"inox",descrizione:"ANGOLARE INFERIORE SX",quantita:25,prezzo_netto_unitario_finale:61.8464,totale_finale:1546.16});
-it.each([["I","n"],["X","P"],["6","P"]])("completes old %s codes without changing their issuance record",(material,suffix)=>{
+it.each([["I","N"],["X","P"],["6","P"]])("completes old %s codes without changing their issuance record",(material,suffix)=>{
   const input=row(material);const before=structuredClone(input);
   const doc={prodotti:[input],totale_finale:1546.16};
   expect(documentProductCode(input,doc)).toBe(input.codice+suffix);

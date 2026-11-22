@@ -49,15 +49,17 @@ beforeEach(()=>{
 });
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 it("protects a generated brass prefix when editing and saving its custom finish",async()=>{
-  const generated={sequence:42,family:"FP",material:"B",color:null,code:"TFP0000042Ba"};
+  const generated={sequence:42,family:"FP",material:"B",color:null,code:"TFP0000042BA"};
   mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),materiale_prodotto:"ottone",codice:generated.code,codice_temporaneo:generated}]});
   const input=await screen.findByLabelText("Codice articolo") as HTMLInputElement;
   fireEvent.change(input,{target:{value:""}});expect(input.value).toBe(generated.code);
+  // la finitura digitata minuscola è convertita subito in maiuscolo (regola v8)
   fireEvent.change(input,{target:{value:"TFP0000042Bz"}});
+  expect(input.value).toBe("TFP0000042BZ");
   fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
   await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
   const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
-  expect(saved.prodotti[0].codice).toBe("TFP0000042Bz");expect(saved.prodotti[0].codice_temporaneo).toEqual(generated);
+  expect(saved.prodotti[0].codice).toBe("TFP0000042BZ");expect(saved.prodotti[0].codice_temporaneo).toEqual(generated);
 });
 it("saves the standard black finish separately for each product without changing prices",async()=>{
   const doc=calculateQuote({...blankQuote(),stato_preventivo:"bozza",prodotti:[0,1].map(()=>({...blankProduct(),materiale_cad:10}))});
@@ -568,6 +570,76 @@ it('shows RAL on a series-only quote and searches a color by its full name',asyn
   fireEvent.change(input,{target:{value:'9005'}});expect(screen.getByRole('option',{name:/RAL 9005/})).toBeTruthy();
 });
 
+it('shows the unpacking surcharge flag only on series rows and clears it when series is off',async()=>{
+  mount({...blankQuote(),stato_preventivo:'bozza',prodotti:[
+    {...blankProduct(),descrizione:'Standard',quantita:1},
+    {...blankProduct(),prodotto_di_serie:true,codice:'FSP001012NIN',descrizione:'Serie',quantita:2,prezzo_serie:50},
+  ]});
+  // il flag esiste solo sulla riga di serie: sulla riga standard non è né visibile né selezionabile
+  const flag=await screen.findByRole('checkbox',{name:/Applica supplemento per sconfezionamento/});
+  expect(screen.getAllByRole('checkbox',{name:/Applica supplemento per sconfezionamento/})).toHaveLength(1);
+  expect(screen.getByLabelText('Totale preventivo').textContent).toContain('100,00');
+  fireEvent.click(flag);
+  await waitFor(()=>expect(screen.getByLabelText('Totale preventivo').textContent).toContain('120,00'));
+  // disattivando «Prodotto di serie» il flag sparisce e viene azzerato
+  fireEvent.click(screen.getAllByRole('checkbox',{name:'Prodotto di serie'})[1]);
+  await waitFor(()=>expect(screen.queryByRole('checkbox',{name:/Applica supplemento per sconfezionamento/})).toBeNull());
+  fireEvent.click(screen.getAllByRole('checkbox',{name:'Prodotto di serie'})[1]);
+  const again=await screen.findByRole('checkbox',{name:/Applica supplemento per sconfezionamento/});
+  expect((again as HTMLInputElement).checked).toBe(false);
+  expect(screen.getByLabelText('Totale preventivo').textContent).toContain('100,00');
+});
+
+it('uppercases the manual suffix typed or pasted in the row code field, through save, reopen and print',async()=>{
+  const temporary={sequence:37,family:'RN',material:'B',color:null,code:'TRN0000037BZ'};
+  const doc={...blankQuote(),cliente:'Prova',stato_preventivo:'bozza',prodotti:[{...blankProduct(),descrizione:'Ottone',quantita:1,prezzo_netto_unitario_finale:10,totale_finale:10,codice:'TRN0000037BZ',codice_temporaneo:temporary}]};
+  mount(doc);
+  const field=await screen.findByRole('textbox',{name:'Codice articolo'});
+  expect((field as HTMLInputElement).value).toBe('TRN0000037BZ');
+  // digitazione minuscola → maiuscola immediata
+  fireEvent.change(field,{target:{value:'TRN0000037Bz'}});
+  expect((field as HTMLInputElement).value).toBe('TRN0000037BZ');
+  // incolla minuscolo → maiuscolo immediato
+  fireEvent.change(field,{target:{value:'TRN0000037B'}});
+  fireEvent.focus(field);fireEvent.paste(field,{clipboardData:{getData:()=>'z'}});
+  expect((field as HTMLInputElement).value).toBe('TRN0000037BZ');
+  // il codice è tornato al valore iniziale: rendo il documento «modificato» con la descrizione
+  fireEvent.change(screen.getByLabelText('Descrizione *'),{target:{value:'Ottone lavorato'}});
+  // salvataggio
+  fireEvent.click(screen.getByRole('button',{name:'Salva bozza'}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==='quote.saveDraft')).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==='quote.saveDraft')!.input.dataJson);
+  expect(saved.prodotti[0].codice).toBe('TRN0000037BZ');
+  expect(saved.prodotti[0].codice_temporaneo).toBeTruthy();
+  // riapertura
+  cleanup();mount(saved);
+  expect(((await screen.findByRole('textbox',{name:'Codice articolo'})) as HTMLInputElement).value).toBe('TRN0000037BZ');
+  // PDF: una bozza salvata non è esportabile per regola dell'app, quindi la
+  // stampa si verifica sul documento completato che conserva lo stesso codice.
+  const printable={...saved,stato_preventivo:'completo',prodotti:saved.prodotti.map((p:any)=>({...p,oggetto_modifica:['occhio'],gruppo_merceologico:'Bandelle',materiale_prodotto:'ferro'}))};
+  cleanup();mount(printable);
+  await screen.findByRole('button',{name:'Modifica'});
+  const write=vi.fn();vi.spyOn(window,'open').mockReturnValue({document:{open:vi.fn(),write,close:vi.fn()}} as unknown as Window);
+  fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
+  expect(write).toHaveBeenCalledOnce();
+  expect(write.mock.calls[0][0]).toContain('TRN0000037BZ');
+  expect(write.mock.calls[0][0]).not.toContain('TRN0000037Bz');
+});
+
+it('wizard: the row code field uppercases the manual suffix as well',async()=>{
+  const temporary={sequence:37,family:'RN',material:'B',color:null,code:'TRN0000037BZ'};
+  mount({...blankQuote(),cliente:'Prova',stato_preventivo:'bozza',prodotti:[{...blankProduct(),descrizione:'Ottone',oggetto_modifica:['occhio'],quantita:1,codice:'TRN0000037BZ',codice_temporaneo:temporary}]},true);
+  fireEvent.click(await screen.findByLabelText('Opzioni avanzate'));
+  for(let i=0;i<40&&!screen.queryByRole('textbox',{name:'Codice articolo'});i++)fireEvent.click(screen.getByRole('button',{name:'Avanti'}));
+  const field=await screen.findByRole('textbox',{name:'Codice articolo'});
+  expect((field as HTMLInputElement).value).toBe('TRN0000037BZ');
+  fireEvent.change(field,{target:{value:'TRN0000037Bz'}});
+  expect((field as HTMLInputElement).value).toBe('TRN0000037BZ');
+  fireEvent.change(field,{target:{value:'TRN0000037B'}});
+  fireEvent.focus(field);fireEvent.paste(field,{clipboardData:{getData:()=>'z'}});
+  expect((field as HTMLInputElement).value).toBe('TRN0000037BZ');
+});
+
 it.each([false,true])('recovers an old series RAL quote in mobile=%s, exports the new codes and persists only after explicit save',async mobile=>{
   const old={...blankQuote(),stato_preventivo:'completo',verniciatura_ral:{color:'6021',textured:false},totale_finale:40,
     prodotti:['FCA00504HBIN','FSP001012NIN'].map(codice=>({...blankProduct(),prodotto_di_serie:true,codice,descrizione:'Serie',prezzo_serie:10,quantita:2,prezzo_netto_unitario_finale:10,totale_finale:20}))};
@@ -725,14 +797,14 @@ it("copies a row with an issued temporary code on /preventivi/new (regression TK
   fireEvent.click(await screen.findByRole("button",{name:"Usa questo codice"}));
   await waitFor(()=>expect(state.calls.some(c=>c.path==="temporaryProduct.complete")).toBe(true));
   const codeField=(await screen.findByLabelText("Codice articolo")) as HTMLInputElement;
-  expect(codeField.value).toBe("TBC0000042In");
+  expect(codeField.value).toBe("TBC0000042IN");
   fireEvent.click(screen.getByRole("button",{name:"Copia prodotto 1"}));
   await waitFor(()=>expect(screen.getAllByLabelText("Descrizione *")).toHaveLength(2));
   const duplicate=state.calls.filter(c=>c.path==="temporaryProduct.duplicate");
   expect(duplicate).toHaveLength(1);
-  expect(duplicate[0].input.currentCode).toBe("TBC0000042In");
+  expect(duplicate[0].input.currentCode).toBe("TBC0000042IN");
   const fields=screen.getAllByLabelText("Codice articolo") as HTMLInputElement[];
-  expect(fields.map(f=>f.value)).toEqual(["TBC0000042In","TBC000007760"]);
+  expect(fields.map(f=>f.value)).toEqual(["TBC0000042IN","TBC000007760"]);
   expect(screen.queryByRole("alert")).toBeNull();
 });
 it("shows the copy error and scrolls it into view when duplicating fails (regression TKT-20261119-86210001)",async()=>{

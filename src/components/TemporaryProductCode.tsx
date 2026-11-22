@@ -3,7 +3,7 @@ import { trpc } from "@/providers/trpc";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { RalColorSelect } from "./RalSettings";
 import ArticleCodeInput from "./ArticleCodeInput";
-import { TEMPORARY_FAMILIES, TEMPORARY_MATERIALS, temporaryCode, temporaryCodePrefix, validTemporarySuffix, type RalOptions } from "@/lib/ral-pricing";
+import { TEMPORARY_FAMILIES, TEMPORARY_MATERIALS, temporaryCodePrefix, temporaryCodePreview, validTemporarySuffix, type RalOptions } from "@/lib/ral-pricing";
 export type GeneratedProductCode = { sequence: number; family: string; material: string; color: string | null; code: string };
 export default function TemporaryProductCode({ disabled, ral, onApply }: {
   disabled: boolean; ral: RalOptions | null; onApply: (code: GeneratedProductCode, ral: RalOptions | null) => void;
@@ -47,7 +47,8 @@ export default function TemporaryProductCode({ disabled, ral, onApply }: {
   let preview = "",prefix="";
   try { if (sequence){
     prefix=temporaryCodePrefix(sequence,family,material);
-    preview=manualSuffix?prefix+suffix:temporaryCode(sequence, family, material, painted ? color : null,undefined,natural);
+    // anteprima interamente maiuscola, identica al codice emesso dal server
+    preview=temporaryCodePreview(sequence,family,material,color,suffix,natural,painted);
   }} catch { /* fields incomplete */ }
   return <>
     <button type="button" disabled={disabled} className="rounded border border-sky-600 px-2 py-1 text-xs text-sky-800 disabled:opacity-40" onClick={() => {
@@ -71,7 +72,7 @@ export default function TemporaryProductCode({ disabled, ral, onApply }: {
           Codice temporaneo completo
           <ArticleCodeInput aria-label="Codice temporaneo completo" value={preview} protectedPrefix={prefix} disabled={busy}
             className="w-full rounded border border-sky-400 bg-sky-50 p-3 font-mono text-lg font-bold"
-            onChange={value=>setSuffix(value.slice(prefix.length))}/>
+            onChange={value=>setSuffix(value.slice(prefix.length).toUpperCase())}/>
           <span className="text-xs text-slate-600">Aggiungi il dodicesimo carattere. I primi 11 caratteri sono protetti.</span>
         </label>:<output aria-label="Codice temporaneo completo" className="break-all rounded bg-sky-50 p-3 font-mono text-lg font-bold">{preview}</output>)}
         {error && <p role="alert" className="text-sm text-red-700">{error}</p>}

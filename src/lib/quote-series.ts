@@ -41,3 +41,24 @@ export function seriesPriceForInput(product:Row):number|null {
     return Number.isFinite(price)?price:null;
   }catch{return null;}
 }
+
+/**
+ * Maggiorazione per sconfezionamento, dalle condizioni di vendita allegate
+ * (sezione CONFEZIONI/PACKAGES, sale-conditions-text.ts): «Sulle confezioni
+ * non conformi ai quantitativi espressi nella colonna "pack" verrà applicato
+ * un aumento del 20%». Si applica SOLO alle righe con flag "Di Serie" attivo
+ * e con il flag di riga "Applica supplemento per sconfezionamento" spuntato.
+ */
+export const UNPACKING_SURCHARGE_PERCENT = 20;
+export const UNPACKING_SURCHARGE_FACTOR = 1 + UNPACKING_SURCHARGE_PERCENT / 100;
+
+/** Il supplemento è attivo solo su righe di serie con il flag spuntato: altrove è inerte. */
+export const isUnpackingSurchargeActive = (product: Row | null | undefined): boolean =>
+  isSeries(product) && product?.supplemento_sconfezionamento === true;
+
+/** Netto di serie con l'eventuale supplemento per sconfezionamento (+20%). */
+export function seriesNetPriceWithSurcharge(product:Row):number {
+  const net=seriesNetPrice(product);
+  if(!isUnpackingSurchargeActive(product))return net;
+  return Math.round((net*UNPACKING_SURCHARGE_FACTOR+Number.EPSILON)*10000)/10000;
+}

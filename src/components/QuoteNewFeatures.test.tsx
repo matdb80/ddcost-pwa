@@ -19,7 +19,7 @@ import QuoteAttachments from "./QuoteAttachments";
 import TemporaryProductCode from "./TemporaryProductCode";
 beforeEach(()=>{mock.files=[];mock.calls=[];mock.failReserve=false;URL.createObjectURL=vi.fn(()=>"blob:test");URL.revokeObjectURL=vi.fn();});
 afterEach(()=>cleanup());
-it.each([["I","n"],["X","P"],["6","P"]])("generates the automatic unpainted finish for %s",async(material,suffix)=>{
+it.each([["I","N"],["X","P"],["6","P"]])("generates the automatic unpainted finish for %s",async(material,suffix)=>{
   const apply=vi.fn();render(<TemporaryProductCode disabled={false} ral={null} onApply={apply}/>);
   fireEvent.click(screen.getByRole("button",{name:"Genera codice temporaneo"}));
   fireEvent.change(screen.getByLabelText("Famiglia"),{target:{value:"FP"}});
@@ -39,15 +39,16 @@ it.each(["B","A"])("lets users enter only one final character for unpainted %s",
   const prefix=`TFP0000042${material}`;
   expect(code.value).toBe(prefix);
   expect((screen.getByRole("button",{name:"Usa questo codice"}) as HTMLButtonElement).disabled).toBe(true);
-  for(const invalid of ["",prefix.slice(1),prefix+"ab",prefix+" ","TFP0000043"+material+"z"]){
+  for(const invalid of ["",prefix.slice(1),prefix+"ab",prefix+" ","TFP0000043"+material+"z",prefix+"ß"]){
     fireEvent.change(code,{target:{value:invalid}});expect(code.value).toBe(prefix);
   }
   fireEvent.focus(code);
   fireEvent.paste(code,{clipboardData:{getData:()=>"z"}});
-  expect(code.value).toBe(prefix+"z");
+  // il suffisso digitato (anche minuscolo) è convertito in maiuscolo in anteprima e in emissione
+  expect(code.value).toBe(prefix+"Z");
   fireEvent.click(screen.getByRole("button",{name:"Usa questo codice"}));
-  await waitFor(()=>expect(apply).toHaveBeenCalledWith(expect.objectContaining({code:prefix+"z"}),null));
-  expect(mock.calls.find(c=>c.name==="complete")!.input.suffix).toBe("z");
+  await waitFor(()=>expect(apply).toHaveBeenCalledWith(expect.objectContaining({code:prefix+"Z"}),null));
+  expect(mock.calls.find(c=>c.name==="complete")!.input.suffix).toBe("Z");
 });
 it("keeps the RAL code read-only even for brass when the document flag is selected",async()=>{
   render(<TemporaryProductCode disabled={false} ral={{color:"9006",textured:false}} onApply={vi.fn()}/>);

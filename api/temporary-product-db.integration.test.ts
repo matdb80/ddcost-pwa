@@ -58,7 +58,9 @@ import { sql } from "drizzle-orm";
 import { getDb } from "./queries/connection";
 import { temporaryProductRouter } from "./temporary-product-router";
 import { quoteRouter } from "./quote-router";
+import { validateTemporaryProductDocument } from "./temporary-code-validation";
 import { blankProduct, blankQuote } from "../src/lib/quote-calculation";
+import { quoteCostCompleteness } from "../src/lib/quote-cost-completeness";
 import type { TrpcContext } from "./context";
 
 const ctx = (): TrpcContext => ({
@@ -101,6 +103,8 @@ describe.skipIf(!TEST_URL)("temporaryProduct + bozza su database reale dedicato 
     });
     expect(copy1.code).toMatch(/^TBC\d{7}6/);
     expect(copy2.code).toMatch(/^TBC\d{7}6/);
+    // ogni nuovo codice emesso dal server è interamente maiuscolo (finitura N inclusa)
+    for (const emitted of [issued.code, copy1.code, copy2.code]) expect(emitted).toBe(emitted.toUpperCase());
     expect(new Set([issued.code, copy1.code, copy2.code]).size).toBe(3);
     expect(copy1.sequence).toBeGreaterThan(issued.sequence);
     expect(copy2.sequence).toBeGreaterThan(copy1.sequence);
@@ -124,6 +128,9 @@ describe.skipIf(!TEST_URL)("temporaryProduct + bozza su database reale dedicato 
     });
     expect(copy.code).not.toBe(original.code);
     expect(copy.code).toMatch(/^TBC\d{7}I/);
+    // ferro: la finitura automatica è N maiuscola sia sull'originale sia sulla copia
+    expect(original.code).toBe(original.code.toUpperCase());
+    expect(copy.code).toBe(copy.code.toUpperCase());
 
     const toRow = (
       issued: { sequence: number; family: string; material: string | null; color: string | null; code: string | null },
@@ -163,6 +170,63 @@ describe.skipIf(!TEST_URL)("temporaryProduct + bozza su database reale dedicato 
     // e i record del contatore restano intatti dopo salvataggio e riapertura
     const persisted = (await rows()).map(r => r.code);
     expect(persisted).toContain(original.code);
+    expect(persisted).toContain(copy.code);
+  });
+
+  it("caso storico TRN0000037I/TRN0000037In: copia, salvataggio bozza, riapertura e validazione da definitivo", async () => {
+    const api = caller();
+    const db = getDb();
+    // record di emissione storico a 11 caratteri, precedente alla regola maiuscola
+    await db.execute(sql.raw(
+      `INSERT INTO temporary_product_codes (sequence, requestKey, userId, family, material, color, code)
+       VALUES (37, '${crypto.randomUUID()}', 1, 'RN', 'I', NULL, 'TRN0000037I')`));
+    // la riga originale contiene la finitura minuscola; la copia riceve un nuovo progressivo maiuscolo
+    const copy = await api.duplicate({
+      requestKey: crypto.randomUUID(), sourceCode: "TRN0000037I", currentCode: "TRN0000037In",
+    });
+    expect(copy.code).toMatch(/^TRN\d{7}IN$/);
+    expect(copy.sequence).not.toBe(37);
+    const originalRecord = { sequence: 37, family: "RN", material: "I", color: null, code: "TRN0000037I" };
+    // gruppo merceologico presente nel catalogo condiviso: serve al completamento
+    await db.execute(sql.raw("INSERT IGNORE INTO product_groups (name, createdBy) VALUES ('Cerniere', 1)"));
+    const toRow = (codice: string, metadata: Record<string, unknown>, descrizione: string) => ({
+      ...blankProduct(), codice, codice_temporaneo: metadata, materiale_prodotto: "ferro", descrizione,
+      gruppo_merceologico: "Cerniere", oggetto_modifica: ["occhio"],
+    });
+    const document = {
+      ...blankQuote(), cliente: "Cliente caso storico",
+      prodotti: [toRow("TRN0000037In", originalRecord, "Riga storica"), toRow(String(copy.code), copy as unknown as Record<string, unknown>, "Copia")],
+    };
+    // bozza: salvataggio sul router di produzione e riapertura dal database
+    const saved = await quoteCaller().saveDraft({
+      client: "Cliente caso storico", reference: "RIF-STORICO", dataJson: JSON.stringify(document),
+    });
+    const reopened = await quoteCaller().get({ id: saved.id });
+    const parsed = JSON.parse(String(reopened!.dataJson));
+    // la riga storica conserva il suo codice con la «n» minuscola; il documento non cambia
+    expect((parsed.prodotti as Array<Record<string, any>>).map(p => String(p.codice))).toEqual(["TRN0000037In", copy.code]);
+    // definitivo: la bozza viene completata dal router (validazione finale sul
+    // database reale) e il documento viene riletto una seconda volta. I costi
+    // del documento di prova sono volutamente vuoti: come nel flusso reale,
+    // il completamento richiede la conferma esplicita dell'attribuzione.
+    const toFinalize = JSON.parse(String(reopened!.dataJson)) as Record<string, unknown>;
+    toFinalize.costi_incompleti_conferma = quoteCostCompleteness(toFinalize).signature;
+    await quoteCaller().finalizeDraft({
+      draftId: saved.id, client: "Cliente caso storico", reference: "RIF-STORICO",
+      dataJson: JSON.stringify(toFinalize),
+    });
+    const finalized = await quoteCaller().get({ id: saved.id });
+    const finalDoc = JSON.parse(String(finalized!.dataJson)) as Record<string, any>;
+    expect(finalDoc.stato_preventivo).toBe("completo");
+    // dopo la seconda riapertura entrambi i codici sono immutati: la «n»
+    // minuscola della riga storica e il nuovo progressivo della copia con finale IN
+    expect((finalDoc.prodotti as Array<Record<string, any>>).map(p => String(p.codice))).toEqual(["TRN0000037In", copy.code]);
+    expect(String(copy.code)).toMatch(/IN$/);
+    // la stessa validazione in modalità non-bozza accetta entrambe le righe
+    await expect(validateTemporaryProductDocument(String(finalized!.dataJson), "prodotti", false)).resolves.toBeUndefined();
+    // i record di emissione restano intatti
+    const persisted = (await rows()).map(r => r.code);
+    expect(persisted).toContain("TRN0000037I");
     expect(persisted).toContain(copy.code);
   });
 

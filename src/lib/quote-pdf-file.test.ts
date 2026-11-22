@@ -64,10 +64,12 @@ describe("quote PDF file (TKT-20261117-84210001)", () => {
     expect(withContribution).toContain("15,00");
     expect(withContribution).toContain("135,00");
     const atThreshold = latin1(buildQuotePdfFile(fixture({ totale_finale: 150 })).bytes);
-    expect(atThreshold).not.toContain("spese di evasione");
+    // La pagina condizioni testuale cita il contributo: l'assenza si verifica
+    // sull'etichetta del blocco totali (maiuscola iniziale), non sul testo citato.
+    expect(atThreshold).not.toContain('Contributo "spese di evasione"');
     const hidden = latin1(buildQuotePdfFile(fixture({ totale_finale: 120 }), undefined, { hideDocumentTotal: true }).bytes);
     expect(hidden).not.toContain("Totale netto preventivo");
-    expect(hidden).not.toContain("spese di evasione");
+    expect(hidden).not.toContain('Contributo "spese di evasione"');
     expect(hidden).not.toContain("135,00");
   });
 
@@ -84,12 +86,21 @@ describe("quote PDF file (TKT-20261117-84210001)", () => {
     expect(text).not.toContain("135,00");
   });
 
-  it("appends the original sale-conditions page exactly once", () => {
-    const text = latin1(buildQuotePdfFile(fixture()).bytes);
-    const pageObjects = text.match(/\/Type\s*\/Page(?![a-zs])/g) ?? [];
-    // 1 pagina di preventivo + 1 pagina condizioni originale (una sola volta)
+  it("appends the clean text sale-conditions page exactly once", () => {
+    const bytes = buildQuotePdfFile(fixture()).bytes;
+    const raw = latin1(bytes);
+    const pageObjects = raw.match(/\/Type\s*\/Page(?![a-zs])/g) ?? [];
+    // 1 pagina di preventivo + 1 pagina condizioni testuale (una sola volta)
     expect(pageObjects.length).toBe(2);
-    expect(text).toContain("/Count 2");
+    expect(raw).toContain("/Count 2");
+    // Solo il testo dello screenshot ufficiale, bilingue, senza la pagina raster originale
+    const text = plain(bytes);
+    expect(text).toContain("CONDIZIONI DI VENDITA - CONDITIONS OF SALE");
+    for (const heading of ["COMMISSIONI", "CONFEZIONI", "TERMINI DI CONSEGNA", "RISCHI IMBALLI", "RESI", "DISEGNI", "PAGAMENTI", "PORTO", "RECLAMI", "DOMICILIO LEGALE",
+      "COMMISSIONS", "PACKAGES", "TERMS OF DELIVERY", "PACKAGING RISKS", "RETURNED GOODS", "DRAWINGS", "PAYMENT", "PORT", "COMPLAINTS", "LEGAL DOMICILE"])
+      expect(text).toContain(heading);
+    // la maggiorazione per sconfezionamento citata in entrambe le lingue (token mai spezzato dal wrapping)
+    expect((text.match(/20%/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
   it("translates the document into English when requested", () => {

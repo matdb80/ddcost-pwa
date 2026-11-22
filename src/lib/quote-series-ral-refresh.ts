@@ -1,5 +1,5 @@
 import { calculateRal, ralSourceCode, validRal } from "./ral-pricing";
-import { isSeries, seriesNetPrice, seriesPriceError } from "./quote-series";
+import { isSeries, seriesNetPriceWithSurcharge, seriesPriceError } from "./quote-series";
 import { isForfait } from "./quote-forfait";
 type Doc = Record<string, any>;
 /** Old saved quotes charged RAL only on costed rows. Detect the missing layer,
@@ -34,7 +34,7 @@ export function refreshQuoteSeriesRal<T extends Doc>(doc: T): T {
       if (isSeries(p)) {
         const error = seriesPriceError(p.prezzo_serie);
         if (error) throw new Error(error);
-        net = seriesNetPrice(p);
+        net = seriesNetPriceWithSurcharge(p);
       } else {
         if (p.netto_prima_ral == null || p.netto_prima_ral === "")
           throw new Error(
