@@ -492,3 +492,79 @@ describe("quote PDF file — v15: prezzo unitario di serie a capo nella cella", 
     expect(rowBottom - baselineFromTop).toBeLessThan(13.5);
   });
 });
+
+
+describe("quote PDF file — v16: allegati nel PDF cliente", () => {
+  const jpeg = (w: number, h: number) =>
+    ({ imageBytes: Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]), imageWidth: w, imageHeight: h });
+  const attachmentPages = [
+    { caption: "Allegato: foto.png", ...jpeg(800, 600) },
+    { caption: "Allegato: disegno.pdf — pagina 1 di 2", ...jpeg(1654, 2339) },
+    { caption: "Allegato: disegno.pdf — pagina 2 di 2", ...jpeg(1654, 2339) },
+  ];
+  const pageCount = (bytes: Uint8Array) => (latin1(bytes).match(/\/Type \/Page \//g) ?? []).length;
+
+  it("inserisce le pagine-allegato tra il preventivo e le condizioni, in coda e una sola volta", () => {
+    const pdf = buildQuotePdfFile(fixture(), 991, { revision: 1, attachmentPages });
+    const text = plain(pdf.bytes);
+    // 1 pagina preventivo + 3 allegati + 1 condizioni
+    expect(pageCount(pdf.bytes)).toBe(5);
+    expect(text).toContain("Allegato: foto.png");
+    expect(text).toContain("Allegato: disegno.pdf — pagina 1 di 2");
+    expect(text).toContain("Allegato: disegno.pdf — pagina 2 di 2");
+    const lastAttachment = text.lastIndexOf("Allegato: disegno.pdf — pagina 2 di 2");
+    const conditions = text.indexOf("CONDIZIONI DI VENDITA - CONDITIONS OF SALE");
+    expect(conditions).toBeGreaterThan(lastAttachment);
+    // le condizioni compaiono una sola volta
+    expect(text.split("CONDIZIONI DI VENDITA - CONDITIONS OF SALE").length - 1).toBe(1);
+  });
+
+  it("incorpora ogni immagine come XObject JPEG e la dichiara solo nella sua pagina", () => {
+    const text = latin1(buildQuotePdfFile(fixture(), 991, { revision: 1, attachmentPages }).bytes);
+    expect(text).toContain("/Att0 6 0 R");
+    expect(text).toContain("/Att1 7 0 R");
+    expect(text).toContain("/Att2 8 0 R");
+    expect(text).toContain("6 0 obj\n<< /Type /XObject /Subtype /Image /Width 800 /Height 600 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length 9 >>");
+    // la prima pagina (preventivo) dichiara solo il logo, non gli allegati
+    const firstPageDict = text.match(/9 0 obj\n(<< \/Type \/Page [\s\S]*?>>)\nendobj/);
+    expect(firstPageDict?.[1]).toContain("/XObject << /Logo 5 0 R >>");
+  });
+
+  it("adatta l'immagine al riquadro utile mantenendo le proporzioni", () => {
+    const text = latin1(buildQuotePdfFile(fixture(), 991, {
+      revision: 1,
+      attachmentPages: [{ caption: "Allegato: foto.png", ...jpeg(800, 600) }],
+    }).bytes);
+    // box: larghezza utile 515.28; altezza = 841.89-40-(40+11+10) = 740.89
+    // scala = min(515.28/800, 740.89/600) = 0.6441 → 515.28 × 386.46, centrato
+    const op = text.match(/q ([\d.]+) 0 0 ([\d.]+) ([\d.]+) ([\d.]+) cm \/Att0 Do Q/);
+    expect(op).not.toBeNull();
+    expect(Number(op![1])).toBeCloseTo(515.28, 2);
+    expect(Number(op![2])).toBeCloseTo(386.46, 2);
+    expect(Number(op![3])).toBeCloseTo(40, 2);
+  });
+
+  it("manda a capo la didascalia lunga entro i margini", () => {
+    const longName = `Allegato: ${"disegno-tecnico-".repeat(12)}.pdf`;
+    const text = plain(buildQuotePdfFile(fixture(), 991, {
+      revision: 1,
+      attachmentPages: [{ caption: longName, ...jpeg(800, 600) }],
+    }).bytes);
+    const ops = [...text.matchAll(/BT 0 g \/F1 9 Tf 1 0 0 1 ([\d.]+) ([\d.]+) Tm \((.*?)\) Tj ET/g)]
+      .filter(m => m[3].includes("disegno-tecnico"));
+    expect(ops.length).toBeGreaterThanOrEqual(2);
+    for (const m of ops) expect(Number(m[1])).toBeCloseTo(40, 2);
+  });
+
+  it("è deterministico: stesse pagine-allegato → stessi byte", () => {
+    const a = buildQuotePdfFile(fixture(), 991, { revision: 1, attachmentPages });
+    const b = buildQuotePdfFile(fixture(), 991, { revision: 1, attachmentPages });
+    expect(latin1(a.bytes)).toBe(latin1(b.bytes));
+  });
+
+  it("senza allegati il documento resta identico a prima (array vuoto = opzione assente)", () => {
+    const plain1 = buildQuotePdfFile(fixture(), 991, { revision: 1 });
+    const empty = buildQuotePdfFile(fixture(), 991, { revision: 1, attachmentPages: [] });
+    expect(latin1(empty.bytes)).toBe(latin1(plain1.bytes));
+  });
+});

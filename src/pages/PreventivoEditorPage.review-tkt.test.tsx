@@ -10,7 +10,7 @@ vi.mock("@/components/Layout",()=>({default:({children}:{children:ReactNode})=><
 vi.mock("@/components/SalesHandoffPanel",()=>({default:({disabled}:{disabled:boolean})=><button disabled={disabled}>Invia al commerciale (test)</button>}));
 vi.mock("@/components/FormulaTooltip",()=>({default:()=>null}));
 vi.mock("@/providers/trpc",()=>{
-  const utils={quote:{get:{invalidate:async()=>{}},list:{invalidate:async()=>{}},outcomeSummary:{invalidate:async()=>{}}},offer:{nextNumber:{invalidate:async()=>{}}},productGroup:{list:{invalidate:async()=>{}}}};
+  const utils={quote:{get:{invalidate:async()=>{}},list:{invalidate:async()=>{}},outcomeSummary:{invalidate:async()=>{}}},offer:{nextNumber:{invalidate:async()=>{}}},productGroup:{list:{invalidate:async()=>{}}},quoteAttachment:{list:{fetch:async()=>[]},get:{fetch:async()=>({})}}};
   const proxy=(path:string[]):any=>new Proxy({}, {get:(_,key)=>{
     if(key==="useUtils")return ()=>utils;
     if(key==="useQuery")return ()=>({data:path.join(".")==="quote.get"?state.data:path.join(".")==="productGroup.list"?state.groups:[],isLoading:false});
@@ -75,6 +75,9 @@ it("REVIEW-I03: sharing the real PDF must not claim an automatic email attachmen
   Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:vi.fn()});
   try {
     fireEvent.click(await screen.findByRole('button',{name:'Prepara email (PDF da allegare)'}));
+    // v16: il handler è asincrono — attende che il messaggio di conferma sia presente,
+    // poi verifica il testo completo di tutti gli status (intenzione del test invariata)
+    await screen.findByText(/Download del PDF richiesto/);
     const status=(await screen.findAllByRole('status')).map(el=>el.textContent).join(' ');
     expect(status).not.toMatch(/PDF esportato e email preparata/);
     expect(status).not.toMatch(/allegato automaticamente/);

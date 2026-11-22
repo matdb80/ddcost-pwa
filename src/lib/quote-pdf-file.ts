@@ -136,14 +136,14 @@ function wrap(text: string, size: number, maxWidth: number, bold = false): strin
   return lines.length ? lines : [""];
 }
 
-interface PdfPage { ops: string[] }
+interface PdfPage { ops: string[]; images: Set<string> }
 
 /** Riga di testo nella cella prodotto: grassetto e/o prefisso blu da evidenziare. */
 interface ProductLine { text: string; bold?: boolean; specialPrefix?: string }
 
 /** Pennello minimo: testo Helvetica/Helvetica-Bold, righe e rettangoli pieni. */
 class Canvas {
-  pages: PdfPage[] = [{ ops: [] }];
+  pages: PdfPage[] = [{ ops: [], images: new Set() }];
   y = MARGIN;
   private get ops() { return this.pages[this.pages.length - 1].ops; }
   /** y misurata dall'alto (margine incluso), convertita in coordinate PDF. */
@@ -207,13 +207,14 @@ class Canvas {
     );
   }
   image(name: string, x: number, yTop: number, w: number, h: number) {
+    this.pages[this.pages.length - 1].images.add(name);
     this.ops.push(`q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${this.py(yTop + h).toFixed(2)} cm /${name} Do Q`);
   }
   ensureSpace(height: number, onNewPage?: () => void) {
     if (this.y + height > PAGE_H - MARGIN) this.newPage(onNewPage);
   }
   newPage(onNewPage?: () => void) {
-    this.pages.push({ ops: [] });
+    this.pages.push({ ops: [], images: new Set() });
     this.y = MARGIN;
     onNewPage?.();
   }
@@ -229,6 +230,19 @@ function hexToRgb(hex: string): string | null {
 export interface QuotePdfFile { bytes: Uint8Array; fileName: string }
 
 /**
+ * Pagina-allegato già rasterizzata (quote-attachment-pages.ts): una pagina A4
+ * per immagine o per pagina PDF, con didascalia in testa. Il generatore resta
+ * sincrono e deterministico: a parità di pagine passate, i byte non cambiano.
+ */
+export interface QuotePdfAttachmentPage {
+  caption: string;
+  /** JPEG (Filter /DCTDecode), come il logo. */
+  imageBytes: Uint8Array;
+  imageWidth: number;
+  imageHeight: number;
+}
+
+/**
  * Costruisce il PDF del preventivo. `options.revision`/`hideDocumentTotal`
  * sono gli stessi della stampa: il documento condiviso è la stessa copia cliente.
  */
@@ -241,6 +255,9 @@ export function buildQuotePdfFile(
     /** Visibilità del contributo a totale nascosto (separata dal totale);
      * default: SHOW_CONTRIBUTION_WHEN_TOTAL_HIDDEN, in attesa della decisione di Matteo. */
     showContributionWhenTotalHidden?: boolean;
+    /** Pagine-allegato rasterizzate, inserite tra il preventivo e le condizioni
+     * di vendita (sempre in coda). Assente/vuoto → documento invariato. */
+    attachmentPages?: QuotePdfAttachmentPage[];
   } = {},
 ): QuotePdfFile {
   const quote = refreshQuoteSeriesRal(quoteInput);
@@ -575,8 +592,53 @@ export function buildQuotePdfFile(
     ], { size: 9 });
   }
 
+  // v16: le pagine-allegato vanno tra il preventivo e le condizioni di vendita,
+  // che restano SEMPRE l'ultima pagina, una sola volta (regola invariata).
+  renderAttachmentPages(c, options.attachmentPages ?? []);
   renderSaleConditionsPage(c);
-  return { bytes: assemblePdf(c.pages), fileName };
+  return { bytes: assemblePdf(c.pages, options.attachmentPages ?? []), fileName };
+}
+
+/**
+ * Pagine-allegato (v16): una pagina A4 ciascuna, tra l'ultima pagina del
+ * preventivo e le condizioni. Didascalia piccola in testa (a capo se lunga),
+ * immagine adattata al riquadro utile e centrata, proporzioni invariate.
+ */
+/** Didascalie degli allegati: i nomi file possono non avere spazi, quindi dopo
+ * il wrap normale le parole ancora troppo lunghe si spezzano per carattere. */
+function wrapCaption(text: string, size: number, maxWidth: number): string[] {
+  const out: string[] = [];
+  for (const line of wrap(text, size, maxWidth)) {
+    let rest = line;
+    while (rest && textWidth(rest, size) > maxWidth) {
+      let lo = 1, hi = rest.length;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (textWidth(rest.slice(0, mid), size) <= maxWidth) lo = mid; else hi = mid - 1;
+      }
+      out.push(rest.slice(0, lo));
+      rest = rest.slice(lo);
+    }
+    if (rest) out.push(rest);
+  }
+  return out.length ? out : [""];
+}
+
+function renderAttachmentPages(c: Canvas, pages: QuotePdfAttachmentPage[]) {
+  pages.forEach((page, i) => {
+    c.newPage();
+    for (const line of wrapCaption(page.caption, 9, CONTENT_W)) {
+      c.y += 11;
+      c.text(MARGIN, c.y, line, { size: 9 });
+    }
+    c.y += 10;
+    const boxTop = c.y;
+    const boxH = PAGE_H - MARGIN - boxTop;
+    const scale = Math.min(CONTENT_W / page.imageWidth, boxH / page.imageHeight);
+    const w = page.imageWidth * scale;
+    const h = page.imageHeight * scale;
+    c.image(`Att${i}`, MARGIN + (CONTENT_W - w) / 2, boxTop + (boxH - h) / 2, w, h);
+  });
 }
 
 /**
@@ -622,22 +684,35 @@ function renderSaleConditionsPage(c: Canvas) {
   renderColumn(MARGIN + colW + gutter, "en");
 }
 
-/** Serializza gli oggetti PDF: catalogo, font WinAnsi, logo JPEG, pagine. */
-function assemblePdf(pages: PdfPage[]): Uint8Array {
+/** Serializza gli oggetti PDF: catalogo, font WinAnsi, logo JPEG, eventuali
+ * immagini delle pagine-allegato (Att0..AttN), pagine. Senza allegati la
+ * numerazione degli oggetti e i dizionari risorsa restano identici a prima. */
+function assemblePdf(pages: PdfPage[], attachmentPages: QuotePdfAttachmentPage[] = []): Uint8Array {
   const logoBytes = Uint8Array.from(atob(QUOTE_LOGO_JPEG_BASE64), ch => ch.charCodeAt(0));
   const logoLatin1 = Array.from(logoBytes, b => String.fromCharCode(b)).join("");
+  const toLatin1 = (bytes: Uint8Array) => Array.from(bytes, b => String.fromCharCode(b)).join("");
   const objects: string[] = [];
   objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
-  const pageIds = pages.map((_, i) => 6 + i * 2);
+  const firstPageId = 6 + attachmentPages.length;
+  const pageIds = pages.map((_, i) => firstPageId + i * 2);
   objects[2] = `<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(" ")}] /Count ${pages.length} >>`;
   objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
   objects[4] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
   objects[5] = `<< /Type /XObject /Subtype /Image /Width ${QUOTE_LOGO_WIDTH} /Height ${QUOTE_LOGO_HEIGHT} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logoBytes.length} >>\nstream\n${logoLatin1}\nendstream`;
+  attachmentPages.forEach((page, i) => {
+    objects[6 + i] = `<< /Type /XObject /Subtype /Image /Width ${page.imageWidth} /Height ${page.imageHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${page.imageBytes.length} >>\nstream\n${toLatin1(page.imageBytes)}\nendstream`;
+  });
   pages.forEach((page, i) => {
-    const pageId = 6 + i * 2;
+    const pageId = firstPageId + i * 2;
     const contentId = pageId + 1;
     const stream = page.ops.join("\n");
-    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /Logo 5 0 R >> /ProcSet [/PDF /Text /ImageC] >> /Contents ${contentId} 0 R >>`;
+    // /Logo resta in ogni pagina (come da v12); le immagini allegato solo dove usate.
+    const extra = attachmentPages
+      .map((_, j) => j)
+      .filter(j => page.images.has(`Att${j}`))
+      .map(j => ` /Att${j} ${6 + j} 0 R`)
+      .join("");
+    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /Logo 5 0 R${extra} >> /ProcSet [/PDF /Text /ImageC] >> /Contents ${contentId} 0 R >>`;
     objects[contentId] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
   });
 

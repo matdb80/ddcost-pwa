@@ -22,6 +22,7 @@ import { formatQuoteForCopy } from "@/lib/quote-copy";
 import { CUSTOM_PRODUCTS_NOTE } from "@/lib/quote-print-language";
 import { buildQuoteMailto, openMailClient, canShareFiles, shareQuotePdfFile, downloadQuotePdfFile, QUOTE_EMAIL_BODY } from "@/lib/quote-email";
 import { buildQuotePdfFile } from "@/lib/quote-pdf-file";
+import { buildQuoteAttachmentPages } from "@/lib/quote-attachment-pages";
 import { buildQuoteWizardSteps, quoteWizardStepError } from "@/lib/quote-wizard-steps";
 import QuoteNumericInput, {type QuoteNumericKind} from "@/components/QuoteNumericInput";
 import LaborCostField from "@/components/LaborCostField";
@@ -136,6 +137,9 @@ function PreventivoEditor() {
   },[error]);
   const [renamedEditToken,setRenamedEditToken]=useState<string>();
   const [copyMessage, setCopyMessage] = useState("");
+  // v16: costruzione del PDF cliente con allegati (rasterizzazione asincrona)
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfWarnings, setPdfWarnings] = useState<string[]>([]);
   const [newGroupIndex, setNewGroupIndex] = useState<number | null>(null);
   const [newGroupName, setNewGroupName] = useState("");
   const [wizardLocalDirty,setWizardLocalDirty]=useState(false);
@@ -426,7 +430,9 @@ function PreventivoEditor() {
   // «Prepara email» allega esattamente gli stessi byte (condivisione Web Share
   // oppure download + mailto). Il modello grafico è quello approvato
   // (2026_DDC90005_REV.2_CORRETTO.pdf).
-  const buildCustomerPdfFile = (): File | null => {
+  // v16: gli allegati del preventivo entrano nel PDF (pagine rasterizzate UNA
+  // volta, tra il preventivo e le condizioni): export ed email restano identici.
+  const buildCustomerPdfFile = async (): Promise<File | null> => {
     if (isSavedDraft) {
       setError("Prima completa il preventivo: una bozza incompleta non va inviata al cliente.");
       return null;
@@ -436,11 +442,52 @@ function PreventivoEditor() {
       return null;
     }
     setError("");
+    setPdfWarnings([]);
     try {
       const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
+      let attachmentPages;
+      if (!isNew && numericId > 0) {
+        // L'indisponibilità dell'archivio allegati (es. tabella non attivata su
+        // un ambiente) non deve impedire l'export: si avvisa e si va avanti.
+        try {
+          const metas = await utils.quoteAttachment.list.fetch({ quoteId: numericId });
+          if (metas.length) {
+            const files = [];
+            // v18: il recupero è per singolo allegato. Se una lettura fallisce
+            // (es. integrità non superata) si conservano i file già recuperati,
+            // si segnala il nome dell'allegato escluso e si continua col
+            // successivo: l'export non si interrompe e il PDF resta completo.
+            const notRetrieved: string[] = [];
+            // list restituisce i più recenti prima: invertire per l'ordine di caricamento.
+            for (const meta of [...metas].reverse()) {
+              try {
+                files.push(await utils.quoteAttachment.get.fetch({ quoteId: numericId, id: meta.id }));
+              } catch {
+                notRetrieved.push(meta.fileName);
+              }
+            }
+            const en = doc.pdf_in_inglese === true;
+            const result = await buildQuoteAttachmentPages(files, { language: en ? "en" : "it" });
+            if (result.pages.length) attachmentPages = result.pages;
+            // Avvisi di recupero e di conversione nello stesso contenitore:
+            // prima i file non recuperati, poi quelli della rasterizzazione.
+            setPdfWarnings([
+              ...(notRetrieved.length ? [en
+                ? `Attachments not retrieved, excluded from the PDF: ${notRetrieved.join(", ")}.`
+                : `Allegati non recuperati, esclusi dal PDF: ${notRetrieved.join(", ")}.`] : []),
+              ...result.warnings,
+            ]);
+          }
+        } catch (err) {
+          setPdfWarnings([doc.pdf_in_inglese === true
+            ? `Attachments not included in the PDF: ${err instanceof Error ? err.message : "archive unavailable"}.`
+            : `Allegati non inclusi nel PDF: ${err instanceof Error ? err.message : "archivio non disponibile"}.`]);
+        }
+      }
       const pdf = buildQuotePdfFile(computed, numericId || undefined, {
         revision: data?.rev,
         hideDocumentTotal: hideDocumentTotalInPdf,
+        attachmentPages,
       });
       return new File([pdf.bytes.buffer as ArrayBuffer], pdf.fileName, { type: "application/pdf" });
     } catch (err) {
@@ -448,14 +495,20 @@ function PreventivoEditor() {
       return null;
     }
   };
-  const exportCustomerPdf = () => {
+  const exportCustomerPdf = async () => {
     setCopyMessage("");
-    const file = buildCustomerPdfFile();
-    if (!file) return;
+    if (pdfBusy) return;
+    setPdfBusy(true);
     try {
-      downloadQuotePdfFile(file);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Impossibile scaricare il PDF del preventivo");
+      const file = await buildCustomerPdfFile();
+      if (!file) return;
+      try {
+        downloadQuotePdfFile(file);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Impossibile scaricare il PDF del preventivo");
+      }
+    } finally {
+      setPdfBusy(false);
     }
   };
   // R3: condivisione del VERO file PDF (stesso documento cliente dell'export,
@@ -464,7 +517,14 @@ function PreventivoEditor() {
   // v13: «Prepara email» si può usare direttamente, senza prima esportare.
   const emailCustomerPdf = async () => {
     setCopyMessage("");
-    const file = buildCustomerPdfFile();
+    if (pdfBusy) return;
+    setPdfBusy(true);
+    let file: File | null = null;
+    try {
+      file = await buildCustomerPdfFile();
+    } finally {
+      setPdfBusy(false);
+    }
     if (!file) return;
     if (canShareFiles(file)) {
       try {
@@ -661,8 +721,8 @@ function PreventivoEditor() {
           doc={doc} preview={preview} locked={locked} isNew={isNew}
           numericId={numericId} isSavedDraft={isSavedDraft}
           groups={groupsQuery.data??[]} loadingGroups={groupsQuery.isLoading}
-          error={error} draftMessage={draftMessage} copyMessage={copyMessage}
-          busy={copyingProduct||draftSaving||create.isPending||revise.isPending||overwrite.isPending||finalizeDraftMutation.isPending}
+          error={error} draftMessage={draftMessage} copyMessage={copyMessage} pdfWarnings={pdfWarnings}
+          busy={pdfBusy||copyingProduct||draftSaving||create.isPending||revise.isPending||overwrite.isPending||finalizeDraftMutation.isPending}
           unsavedChanges={unsavedChanges||ralUpgradeNotice}
           onUnsavedLocalChange={setWizardLocalDirty}
           hideDocumentTotalInPdf={hideDocumentTotalInPdf}
@@ -726,12 +786,12 @@ function PreventivoEditor() {
             </button>
           </div>
           <div className="flex min-w-0 flex-col gap-1">
-            <button type="button" onClick={exportCustomerPdf} disabled={!canExportPdf}
+            <button type="button" onClick={exportCustomerPdf} disabled={!canExportPdf || pdfBusy}
               className="flex h-9 w-full items-center justify-center gap-2 rounded border border-slate-300 px-2 text-xs text-slate-700 disabled:opacity-40"
               title="Esporta il documento con i soli dati destinati al cliente">
               <FileText size={16}/> Esporta PDF cliente
             </button>
-            <button type="button" onClick={emailCustomerPdf} disabled={!canExportPdf}
+            <button type="button" onClick={emailCustomerPdf} disabled={!canExportPdf || pdfBusy}
               className="flex h-9 w-full items-center justify-center gap-2 rounded border border-emerald-600 px-2 text-xs text-emerald-700 disabled:opacity-40"
               title="Apre la stampa e richiede l'apertura della posta. Salva il PDF e allegalo manualmente prima di inviare">
               <Mail size={16}/> Prepara email (PDF da allegare)
@@ -783,6 +843,9 @@ function PreventivoEditor() {
       </div>
       {draftMessage && <div role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{draftMessage}</div>}
       {copyMessage && <div role="status" className="text-sm bg-emerald-50 border border-emerald-200 text-emerald-900 rounded p-3">{copyMessage}</div>}
+      {pdfWarnings.length>0 && <div role="alert" className="text-sm bg-amber-50 border border-amber-300 text-amber-900 rounded p-3">
+        {pdfWarnings.map((w,i)=><p key={i}>{w}</p>)}
+      </div>}
       {error && <div role="alert" ref={errorAlertRef} className="border border-red-400 bg-red-50 p-3 rounded text-red-800">{error}</div>}
       {!isNew && <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 p-3 rounded">
         {isSavedDraft

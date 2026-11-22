@@ -5,12 +5,12 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import type { ReactNode } from "react";
 import { blankProduct, blankQuote, calculateQuote } from "../lib/quote-calculation";
 import { temporaryCode } from "../lib/ral-pricing";
-const state=vi.hoisted(()=>({data:null as any,groups:[] as Array<{id:number;name:string}>,calls:[] as Array<{path:string;input:any}>,failDuplicate:false,duplicateGate:null as null|Promise<void>}));
+const state=vi.hoisted(()=>({data:null as any,groups:[] as Array<{id:number;name:string}>,calls:[] as Array<{path:string;input:any}>,failDuplicate:false,duplicateGate:null as null|Promise<void>,attachments:null as null|Array<{id:number;fileName:string;mimeType:string;dataBase64:string;fail?:boolean}>,attachmentGets:[] as number[],stubAttachments:false,attachmentFiles:null as null|string[],attachmentWarnings:null as null|string[]}));
 vi.mock("@/components/Layout",()=>({default:({children}:{children:ReactNode})=><div>{children}</div>}));
 vi.mock("@/components/SalesHandoffPanel",()=>({default:({disabled}:{disabled:boolean})=><button disabled={disabled}>Invia al commerciale (test)</button>}));
 vi.mock("@/components/FormulaTooltip",()=>({default:()=>null}));
 vi.mock("@/providers/trpc",()=>{
-  const utils={quote:{get:{invalidate:async()=>{}},list:{invalidate:async()=>{}},outcomeSummary:{invalidate:async()=>{}}},offer:{nextNumber:{invalidate:async()=>{}}},productGroup:{list:{invalidate:async()=>{}}}};
+  const utils={quote:{get:{invalidate:async()=>{}},list:{invalidate:async()=>{}},outcomeSummary:{invalidate:async()=>{}}},offer:{nextNumber:{invalidate:async()=>{}}},productGroup:{list:{invalidate:async()=>{}}},quoteAttachment:{list:{fetch:async()=>[...(state.attachments??[])].reverse()},get:{fetch:async(input:{id:number})=>{state.attachmentGets.push(input.id);const f=(state.attachments??[]).find(a=>a.id===input.id);if(!f||f.fail)throw new Error("Verifica integrità dell’allegato fallita");return {id:f.id,fileName:f.fileName,mimeType:f.mimeType,dataBase64:f.dataBase64,sizeBytes:1,sha256:"test"};}}}};
   const proxy=(path:string[]):any=>new Proxy({}, {get:(_,key)=>{
     if(key==="useUtils")return ()=>utils;
     if(key==="useQuery")return ()=>({data:path.join(".")==="quote.get"?state.data:path.join(".")==="productGroup.list"?state.groups:[],isLoading:false});
@@ -30,6 +30,17 @@ vi.mock("@/providers/trpc",()=>{
   }});
   return {trpc:proxy([])};
 });
+// v18: in jsdom non esiste canvas — la rasterizzazione reale è coperta dai test
+// di quote-attachment-pages; con stubAttachments la pagina consegna al
+// rasterizzatore file fittizi e si ricevono pagine JPEG minime ma valide.
+vi.mock("@/lib/quote-attachment-pages",async importOriginal=>{
+  const mod=await importOriginal<typeof import("@/lib/quote-attachment-pages")>();
+  return {...mod,buildQuoteAttachmentPages:async (files:Array<{fileName:string}>,opts:unknown)=>{
+    if(!state.stubAttachments)return mod.buildQuoteAttachmentPages(files as never,opts as never);
+    state.attachmentFiles=files.map(f=>f.fileName);
+    return {pages:files.map(f=>({caption:`Allegato: ${f.fileName}`,imageBytes:Uint8Array.from([0xff,0xd8,0xff,0xe0,1,2,3,0xff,0xd9]),imageWidth:800,imageHeight:600})),warnings:state.attachmentWarnings??[]};
+  }};
+});
 import Editor from "./PreventivoEditorPage";
 function mount(doc:Record<string,any>,mobile=false,revision=1){
   state.data={id:123,rev:revision,editToken:"test-version",dataJson:JSON.stringify(doc),client:"Cliente prova",reference:"Test"};
@@ -43,7 +54,7 @@ function mountNew(mobile=false){
   return render(<RouterProvider router={router}/>);
 }
 beforeEach(()=>{
-  state.data=null;state.calls=[];state.groups=[];state.failDuplicate=false;state.duplicateGate=null;window.localStorage.clear();vi.stubGlobal("confirm",vi.fn(()=>true));
+  state.data=null;state.calls=[];state.groups=[];state.failDuplicate=false;state.duplicateGate=null;state.attachments=null;state.attachmentGets=[];state.stubAttachments=false;state.attachmentFiles=null;state.attachmentWarnings=null;window.localStorage.clear();vi.stubGlobal("confirm",vi.fn(()=>true));
   vi.stubGlobal("matchMedia",()=>({matches:false,addEventListener:()=>{},removeEventListener:()=>{}}));
   Element.prototype.scrollIntoView=vi.fn();
 });
@@ -642,7 +653,7 @@ it('uppercases the manual suffix typed or pasted in the row code field, through 
   const download=mockPdfDownload();
   try{
     fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
-    expect(download.files).toHaveLength(1);
+    await waitFor(()=>expect(download.files).toHaveLength(1));
     const text=await download.textOf(0);
     expect(text).toContain('TRN0000037BZ');
     expect(text).not.toContain('TRN0000037Bz');
@@ -676,7 +687,7 @@ it.each([false,true])('recovers an old series RAL quote in mobile=%s, exports th
   const download=mockPdfDownload();
   try{
     fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
-    expect(download.files).toHaveLength(1);
+    await waitFor(()=>expect(download.files).toHaveLength(1));
     const pdfText=await download.textOf(0);
     for(const text of ['FCA00504HBIO6021','FSP001012NIO6021','Spagnolette (Standard)','+100%','120,00'])expect(pdfText).toContain(text);
     expect(state.calls).toHaveLength(0);
@@ -710,7 +721,7 @@ it.each([false,true])('stores the PDF language choice in mobile=%s without recal
   const download=mockPdfDownload();
   try{
     fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
-    expect(download.files).toHaveLength(1);
+    await waitFor(()=>expect(download.files).toHaveLength(1));
     const pdfText=await download.textOf(0);
     expect(pdfText).toContain('Total net quotation');
     expect(pdfText).toContain('74.25');
@@ -730,7 +741,7 @@ it.each([false,true])('exports the actual saved revision even when its JSON is s
   const download=mockPdfDownload();
   try{
     fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
-    expect(download.files).toHaveLength(1);
+    await waitFor(()=>expect(download.files).toHaveLength(1));
     expect(download.files[0].name).toMatch(/^\d{4}_DDC90007_REV\.3\.pdf$/);
     const pdfText=await download.textOf(0);
     expect(pdfText).toContain('DDC90007/2026');
@@ -882,10 +893,10 @@ it("v13: export and email produce the SAME bytes for the same quote (un solo PDF
     // «Prepara email» usato direttamente, SENZA prima esportare (ramo download+mailto)
     fireEvent.click(screen.getByRole('button',{name:'Prepara email (PDF da allegare)'}));
     await screen.findByText(/Allega manualmente il file nel programma di posta/);
-    expect(download.files).toHaveLength(1);
+    await waitFor(()=>expect(download.files).toHaveLength(1));
     // «Esporta PDF cliente»: scarica lo stesso file
     fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
-    expect(download.files).toHaveLength(2);
+    await waitFor(()=>expect(download.files).toHaveLength(2));
     expect(download.files[1].name).toBe(download.files[0].name);
     const a=new Uint8Array(await download.files[0].arrayBuffer());
     const b=new Uint8Array(await download.files[1].arrayBuffer());
@@ -911,7 +922,7 @@ it("downloads a real PDF and requests a prefilled email with an explicit manual 
   try{
     fireEvent.click(button);
     await screen.findByText(/Allega manualmente il file nel programma di posta/);
-    expect(downloads).toHaveLength(1);
+    await waitFor(()=>expect(downloads).toHaveLength(1));
     expect(downloads[0].name).toBe('2026_DDC00042_REV.1.pdf');
     expect(createObjectURL).toHaveBeenCalled();
     expect(mailto.startsWith('mailto:?subject=')).toBe(true);
@@ -949,4 +960,65 @@ it("keeps send-by-email disabled for an incomplete draft (regression TKT-2026111
   mount({...blankQuote(),stato_preventivo:'bozza',prodotti:[{...blankProduct(),descrizione:'Bozza'}]});
   const button=await screen.findByRole('button',{name:'Prepara email (PDF da allegare)'});
   expect((button as HTMLButtonElement).disabled).toBe(true);
+});
+
+// v18: il recupero degli allegati è per singolo file — una lettura fallita non
+// blocca l'export né sacrifica gli allegati già recuperati.
+const PNG_B64="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+it("v18: un allegato non recuperabile è escluso singolarmente, gli altri restano nel PDF in ordine",async()=>{
+  state.attachments=[
+    {id:11,fileName:"primo.png",mimeType:"image/png",dataBase64:PNG_B64},
+    {id:12,fileName:"rotto.pdf",mimeType:"application/pdf",dataBase64:"AAAA",fail:true},
+    {id:13,fileName:"terzo.png",mimeType:"image/png",dataBase64:PNG_B64},
+  ];
+  state.stubAttachments=true;
+  mount({...blankQuote(),stato_preventivo:'completo',numero_preventivo:'DDC00042/2026',cliente:'Cliente prova',totale_finale:40,
+    prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'FCA00504HBIN',descrizione:'Serie',prezzo_serie:10,quantita:2,prezzo_netto_unitario_finale:10,totale_finale:20}]});
+  await screen.findByRole('button',{name:'Esporta PDF cliente'});
+  const download=mockPdfDownload();
+  try{
+    fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
+    await waitFor(()=>expect(download.files).toHaveLength(1));
+    // il ciclo ha tentato tutte e tre le letture, senza fermarsi al fallimento
+    expect(state.attachmentGets).toEqual([11,12,13]);
+    // al rasterizzatore arrivano solo i file recuperati, in ordine di caricamento
+    expect(state.attachmentFiles).toEqual(["primo.png","terzo.png"]);
+    // avviso di recupero che nomina il file escluso
+    await screen.findByText("Allegati non recuperati, esclusi dal PDF: rotto.pdf.");
+    // nel PDF: primo e terzo in ordine, rotto assente, condizioni in fondo
+    const text=await download.textOf(0);
+    expect(text).toContain("Allegato: primo.png");
+    expect(text).toContain("Allegato: terzo.png");
+    expect(text).not.toContain("Allegato: rotto.pdf");
+    expect(text.indexOf("Allegato: primo.png")).toBeLessThan(text.indexOf("Allegato: terzo.png"));
+    expect(text.indexOf("Allegato: terzo.png")).toBeLessThan(text.indexOf("CONDIZIONI DI VENDITA"));
+  }finally{download.restore();}
+});
+it("v18: l'avviso di recupero segue la lingua del PDF e precede quelli di conversione",async()=>{
+  state.attachments=[
+    {id:11,fileName:"primo.png",mimeType:"image/png",dataBase64:PNG_B64},
+    {id:12,fileName:"rotto.pdf",mimeType:"application/pdf",dataBase64:"AAAA",fail:true},
+    {id:13,fileName:"nota.txt",mimeType:"text/plain",dataBase64:"AAAA"},
+  ];
+  state.stubAttachments=true;
+  // il txt non è stampabile: avviso di conversione da affiancare a quello di recupero
+  state.attachmentWarnings=["Unsupported attachments, not included in the PDF: nota.txt."];
+  mount({...blankQuote(),stato_preventivo:'completo',pdf_in_inglese:true,numero_preventivo:'DDC00042/2026',cliente:'Cliente prova',totale_finale:40,
+    prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'FCA00504HBIN',descrizione:'Serie',prezzo_serie:10,quantita:2,prezzo_netto_unitario_finale:10,totale_finale:20}]});
+  await screen.findByRole('button',{name:'Esporta PDF cliente'});
+  const download=mockPdfDownload();
+  try{
+    fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
+    await waitFor(()=>expect(download.files).toHaveLength(1));
+    expect(state.attachmentFiles).toEqual(["primo.png","nota.txt"]);
+    // gli avvisi convivono nello stesso contenitore (un <p> per avviso):
+    // recupero prima, conversione dopo
+    const alerts=await screen.findAllByRole("alert");
+    const text=alerts.map(a=>a.textContent??"").join("\n");
+    const retrieval=text.indexOf("Attachments not retrieved, excluded from the PDF: rotto.pdf.");
+    const conversion=text.indexOf("Unsupported attachments, not included in the PDF: nota.txt.");
+    expect(retrieval).toBeGreaterThanOrEqual(0);
+    expect(conversion).toBeGreaterThanOrEqual(0);
+    expect(retrieval).toBeLessThan(conversion);
+  }finally{download.restore();}
 });

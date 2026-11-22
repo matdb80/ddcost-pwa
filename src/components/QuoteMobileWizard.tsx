@@ -54,6 +54,8 @@ type Props={
   error:string;
   draftMessage:string;
   copyMessage:string;
+  /** v16: avvisi sugli allegati entrati nel PDF cliente (tipi esclusi, tetto pagine). */
+  pdfWarnings?:string[];
   busy:boolean;
   unsavedChanges:boolean;
   onUnsavedLocalChange:(dirty:boolean)=>void;
@@ -86,7 +88,7 @@ type Props={
 export default function QuoteMobileWizard(props:Props){
   const {
     doc,preview,locked,isNew,numericId,isSavedDraft,groups,loadingGroups,error,draftMessage,
-    copyMessage,busy,unsavedChanges,onUnsavedLocalChange,onUpdate,onUpdateProduct,
+    copyMessage,pdfWarnings=[],busy,unsavedChanges,onUnsavedLocalChange,onUpdate,onUpdateProduct,
     onAddProduct,onCopyProductAndScaleLot,onRemoveProduct,onCreateGroup,
     hideDocumentTotalInPdf,onHideDocumentTotalInPdfChange,
     customObjects=[],onRenameObject,
@@ -485,6 +487,9 @@ export default function QuoteMobileWizard(props:Props){
     {error && <p role="alert" ref={errorAlertRef} className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {draftMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{draftMessage}</p>}
     {copyMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{copyMessage}</p>}
+    {pdfWarnings.length>0 && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+      {pdfWarnings.map((w,i)=><p key={i}>{w}</p>)}
+    </div>}
 
     <nav aria-label="Navigazione guidata" className="fixed bottom-0 left-0 right-0 z-30 flex flex-col gap-2 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-5px_24px_rgba(15,23,42,.1)] backdrop-blur">
       {!locked && current.id==="riepilogo" && <div className="mx-auto flex w-full max-w-xl gap-2">
