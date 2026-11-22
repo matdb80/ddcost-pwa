@@ -96,6 +96,21 @@ export function legacyFixedFinishCode(record:{sequence:number;family:string;mate
 export function matchesLegacyFixedFinish(code: string, expected: string | null): boolean {
   return expected !== null && (code === expected || code === expected.slice(0, -1) + expected.slice(-1).toLowerCase());
 }
+/**
+ * Solo presentazione nei documenti cliente: i codici temporanei storici possono
+ * essere stati salvati con la lettera di finitura minuscola (es. «TCS0000009In»)
+ * e devono comparire maiuscoli («TCS0000009IN») sui PDF. La funzione NON riscrive
+ * il dato salvato: vale per tutte le famiglie e per finiture fisse e manuali,
+ * preserva progressivo e zeri iniziali e lascia invariato ogni altro codice
+ * (codici di serie, RAL «…O9005», naturali «…0», già maiuscoli).
+ */
+export function presentTemporaryCode(raw: string): string {
+  const code = String(raw ?? "").trim();
+  const match = /^T([A-Z]{2})(\d{7})([IX6BA])[a-z]$/.exec(code);
+  if (!match || Number(match[2]) === 0 ||
+    !TEMPORARY_FAMILIES.includes(match[1] as typeof TEMPORARY_FAMILIES[number])) return code;
+  return code.slice(0, -1) + code.slice(-1).toUpperCase();
+}
 /** Preserve the selected finish, but never change the issued prefix when copying. */
 export function temporaryCodeCopyOptions(record:{sequence:number;family:string;material:string|null;color:string|null;code:string|null},currentCode:string){
   const material=record.material??"",prefix=temporaryCodePrefix(record.sequence,record.family,material);

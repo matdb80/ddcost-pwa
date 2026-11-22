@@ -19,11 +19,9 @@ import { trpc } from "@/providers/trpc";
 import { ArrowLeft, Plus, Save, Trash2, Calculator, Pencil, Copy, FileText, Mail } from "lucide-react";
 import QuoteProductOrder from "@/components/QuoteProductOrder";
 import { formatQuoteForCopy } from "@/lib/quote-copy";
-import { buildOneTimeQuotePrintHtml } from "@/lib/quote-pdf";
 import { CUSTOM_PRODUCTS_NOTE } from "@/lib/quote-print-language";
 import { buildQuoteMailto, openMailClient, canShareFiles, shareQuotePdfFile, downloadQuotePdfFile, QUOTE_EMAIL_BODY } from "@/lib/quote-email";
 import { buildQuotePdfFile } from "@/lib/quote-pdf-file";
-import { openCommercialOfferPrintWindow } from "@/lib/commercial-offer-pdf";
 import { buildQuoteWizardSteps, quoteWizardStepError } from "@/lib/quote-wizard-steps";
 import QuoteNumericInput, {type QuoteNumericKind} from "@/components/QuoteNumericInput";
 import LaborCostField from "@/components/LaborCostField";
@@ -423,7 +421,12 @@ function PreventivoEditor() {
       // Reading/exporting an unchanged historical document must not rewrite it.
       (step.field!=="oggetto_modifica" || isNew || changed) && quoteWizardStepError(
         !isNew && !changed ? {...step,maxLength:undefined} : step,doc));
-  const prepareCustomerPrint = (): QuoteDocument | null => {
+  // v13: UN SOLO PDF cliente. Entrambi i pulsanti usano il generatore interno
+  // (buildQuotePdfFile, deterministico): «Esporta PDF cliente» scarica il file,
+  // «Prepara email» allega esattamente gli stessi byte (condivisione Web Share
+  // oppure download + mailto). Il modello grafico è quello approvato
+  // (2026_DDC90005_REV.2_CORRETTO.pdf).
+  const buildCustomerPdfFile = (): File | null => {
     if (isSavedDraft) {
       setError("Prima completa il preventivo: una bozza incompleta non va inviata al cliente.");
       return null;
@@ -435,49 +438,34 @@ function PreventivoEditor() {
     setError("");
     try {
       const computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
-      openCommercialOfferPrintWindow(buildOneTimeQuotePrintHtml(computed,numericId || undefined,undefined,{
-        hideDocumentTotal: hideDocumentTotalInPdf,
-        revision: data?.rev,
-      }));
-      return computed;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Impossibile esportare il PDF cliente");
-      return null;
-    }
-  };
-  const exportCustomerPdf = () => { prepareCustomerPrint(); };
-  // R3: condivisione del VERO file PDF (stesso documento cliente dell'export,
-  // pagina 417 in coda). Dove il browser non accetta file, il mailto resta con
-  // allegato MANUALE esplicito: il PDF viene scaricato e va allegato a mano.
-  const emailCustomerPdf = async () => {
-    setCopyMessage("");
-    if (isSavedDraft) {
-      setError("Prima completa il preventivo: una bozza incompleta non va inviata al cliente.");
-      return;
-    }
-    if (!canExportPdf) {
-      setError("Completa i campi obbligatori prima di esportare il PDF cliente.");
-      return;
-    }
-    setError("");
-    let computed: QuoteDocument;
-    try {
-      computed = dirtyCalculation || isNew ? calculateQuote(doc) : structuredClone(doc);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Impossibile esportare il PDF cliente");
-      return;
-    }
-    let file: File;
-    try {
       const pdf = buildQuotePdfFile(computed, numericId || undefined, {
         revision: data?.rev,
         hideDocumentTotal: hideDocumentTotalInPdf,
       });
-      file = new File([pdf.bytes.buffer as ArrayBuffer], pdf.fileName, { type: "application/pdf" });
+      return new File([pdf.bytes.buffer as ArrayBuffer], pdf.fileName, { type: "application/pdf" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Impossibile generare il file PDF del preventivo");
-      return;
+      return null;
     }
+  };
+  const exportCustomerPdf = () => {
+    setCopyMessage("");
+    const file = buildCustomerPdfFile();
+    if (!file) return;
+    try {
+      downloadQuotePdfFile(file);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Impossibile scaricare il PDF del preventivo");
+    }
+  };
+  // R3: condivisione del VERO file PDF (stesso documento cliente dell'export,
+  // pagina 417 in coda). Dove il browser non accetta file, il mailto resta con
+  // allegato MANUALE esplicito: il PDF viene scaricato e va allegato a mano.
+  // v13: «Prepara email» si può usare direttamente, senza prima esportare.
+  const emailCustomerPdf = async () => {
+    setCopyMessage("");
+    const file = buildCustomerPdfFile();
+    if (!file) return;
     if (canShareFiles(file)) {
       try {
         await shareQuotePdfFile(file, QUOTE_EMAIL_BODY);
@@ -492,7 +480,7 @@ function PreventivoEditor() {
     }
     try {
       downloadQuotePdfFile(file);
-      openMailClient(buildQuoteMailto(computed, numericId || undefined));
+      openMailClient(buildQuoteMailto(doc, numericId || undefined));
       setCopyMessage("Download del PDF richiesto. Allega manualmente il file nel programma di posta.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Impossibile preparare l'email con il PDF");

@@ -83,7 +83,9 @@ describe("forfait fixed line pricing",()=>{
     const row=html.split("<tbody>")[1].split("</tr>")[0];
     expect(row).toContain("<strong>a forfait/da definire</strong>");expect(row).toContain("125,50");
     expect(row).toContain("Lavorazione da definire");expect(row).not.toMatch(/CODICE-INATTIVO|pz|Colore|1000/);
-    expect(html).toContain("TFP0000010In");expect(html).toContain("NERO RAL 9005");
+    // v12: la finitura minuscola storica esce maiuscola in stampa, il dato salvato resta «…In»
+    expect(d.prodotti[1].codice).toBe("TFP0000010In");
+    expect(html).toContain("TFP0000010IN");expect(html).not.toContain("TFP0000010In");expect(html).toContain("NERO RAL 9005");
     const alone=buildOneTimeQuotePrintHtml(calculateQuote({...blankQuote(),prodotti:[fixed()]}));
     expect(alone).not.toContain("NERO RAL 9005");
     expect(buildOneTimeQuotePrintHtml(d,undefined,undefined,{hideDocumentTotal:true})).toContain("125,50");

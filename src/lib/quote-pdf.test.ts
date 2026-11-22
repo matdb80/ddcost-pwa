@@ -85,7 +85,8 @@ it('marks only non-series products, with or without a code, and shows a single l
     {a_forfait:true,codice:'HIDDEN',descrizione:'Forfait',valore_forfait:4},
   ]};
   const html=buildOneTimeQuotePrintHtml(doc);
-  expect(html).toContain('<strong class="special-product">* TBC0000042In</strong>');
+  // la finitura minuscola storica («…In») esce maiuscola in presentazione
+  expect(html).toContain('<strong class="special-product">* TBC0000042IN</strong>');
   expect(html).toContain('<strong class="special-product">*</strong> Senza codice');
   expect(html).toContain('<strong>FCA00504HBIN</strong>');
   expect(html).not.toContain('* FCA00504HBIN');expect(html).not.toContain('HIDDEN');

@@ -48,7 +48,26 @@ beforeEach(()=>{
   Element.prototype.scrollIntoView=vi.fn();
 });
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
-it("protects a generated brass prefix when editing and saving its custom finish",async()=>{
+// v13: «Esporta PDF cliente» scarica il file del generatore interno (stesso
+// documento allegato da «Prepara email»). Il helper cattura il File passato a
+// URL.createObjectURL e ne decodifica i byte in latin1 (stringhe WinAnsi).
+function mockPdfDownload(){
+  const files:File[]=[];
+  const anchorClick=vi.spyOn(HTMLAnchorElement.prototype,"click").mockImplementation(()=>{});
+  const createObjectURL=vi.fn((blob:Blob)=>{files.push(blob as File);return "blob:mock-pdf";});
+  Object.defineProperty(URL,"createObjectURL",{configurable:true,value:createObjectURL});
+  Object.defineProperty(URL,"revokeObjectURL",{configurable:true,value:vi.fn()});
+  const textOf=async(i:number)=>{
+    const bytes=new Uint8Array(await files[i].arrayBuffer());
+    let s="";for(const b of bytes)s+=String.fromCharCode(b);
+    // stringhe PDF: normalizza gli escape WinAnsi prima dei confronti
+    return s.replace(/\\([()\\])/g,"$1");
+  };
+  return {files,textOf,restore(){anchorClick.mockRestore();Reflect.deleteProperty(URL,"createObjectURL");Reflect.deleteProperty(URL,"revokeObjectURL");}};
+}
+// Primo test del file: in ambienti lenti (CI/sandbox) assorbe l'avvio di
+// jsdom+React e supera il timeout di default di 5 s — timeout esplicito.
+it("protects a generated brass prefix when editing and saving its custom finish",{timeout:20000},async()=>{
   const generated={sequence:42,family:"FP",material:"B",color:null,code:"TFP0000042BA"};
   mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),materiale_prodotto:"ottone",codice:generated.code,codice_temporaneo:generated}]});
   const input=await screen.findByLabelText("Codice articolo") as HTMLInputElement;
@@ -619,11 +638,15 @@ it('uppercases the manual suffix typed or pasted in the row code field, through 
   const printable={...saved,stato_preventivo:'completo',prodotti:saved.prodotti.map((p:any)=>({...p,oggetto_modifica:['occhio'],gruppo_merceologico:'Bandelle',materiale_prodotto:'ferro'}))};
   cleanup();mount(printable);
   await screen.findByRole('button',{name:'Modifica'});
-  const write=vi.fn();vi.spyOn(window,'open').mockReturnValue({document:{open:vi.fn(),write,close:vi.fn()}} as unknown as Window);
-  fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
-  expect(write).toHaveBeenCalledOnce();
-  expect(write.mock.calls[0][0]).toContain('TRN0000037BZ');
-  expect(write.mock.calls[0][0]).not.toContain('TRN0000037Bz');
+  // v13: il pulsante scarica il PDF del generatore interno (non più la finestra di stampa)
+  const download=mockPdfDownload();
+  try{
+    fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
+    expect(download.files).toHaveLength(1);
+    const text=await download.textOf(0);
+    expect(text).toContain('TRN0000037BZ');
+    expect(text).not.toContain('TRN0000037Bz');
+  }finally{download.restore();}
 });
 
 it('wizard: the row code field uppercases the manual suffix as well',async()=>{
@@ -650,12 +673,12 @@ it.each([false,true])('recovers an old series RAL quote in mobile=%s, exports th
   if(mobile)for(let i=0;i<30&&!screen.queryByRole('heading',{name:'Riepilogo finale'});i++)fireEvent.click(screen.getByRole('button',{name:'Avanti'}));
   expect((screen.getByRole('button',{name:'Invia al commerciale (test)'}) as HTMLButtonElement).disabled).toBe(true);
   if(mobile)fireEvent.click(screen.getByRole('button',{name:'Vista completa'}));
-  const write=vi.fn(),popup=vi.spyOn(window,'open').mockReturnValue({document:{open:vi.fn(),write,close:vi.fn()}} as unknown as Window);
+  const download=mockPdfDownload();
   try{
     fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
-    expect(write).toHaveBeenCalledOnce();
-    const html=write.mock.calls[0][0];
-    for(const text of ['<strong>FCA00504HBIO6021</strong>','<strong>FSP001012NIO6021</strong>','Spagnolette (Standard)','+100%','120,00'])expect(html).toContain(text);
+    expect(download.files).toHaveLength(1);
+    const pdfText=await download.textOf(0);
+    for(const text of ['FCA00504HBIO6021','FSP001012NIO6021','Spagnolette (Standard)','+100%','120,00'])expect(pdfText).toContain(text);
     expect(state.calls).toHaveLength(0);
     fireEvent.click(screen.getByRole('button',{name:'Modifica'}));
     fireEvent.click(screen.getByRole('button',{name:'Salva e sovrascrivi versione attuale'}));
@@ -671,7 +694,7 @@ it.each([false,true])('recovers an old series RAL quote in mobile=%s, exports th
     expect(screen.getByLabelText('Totale preventivo').textContent).toContain('120,00');
     expect(screen.queryByText(/Supplementi RAL aggiornati anche per i prodotti di serie/)).toBeNull();
     expect(state.calls).toHaveLength(1);
-  }finally{popup.mockRestore();}
+  }finally{download.restore();}
 });
 
 it.each([false,true])('stores the PDF language choice in mobile=%s without recalculating saved prices',async mobile=>{
@@ -684,33 +707,36 @@ it.each([false,true])('stores the PDF language choice in mobile=%s without recal
   fireEvent.click(screen.getByRole('button',{name:mobile?'Modifica preventivo':'Modifica'}));
   fireEvent.click(flag);expect(flag.checked).toBe(true);
   if(mobile)fireEvent.click(screen.getByRole('button',{name:'Vista completa'}));
-  const write=vi.fn(),popup=vi.spyOn(window,'open').mockReturnValue({document:{open:vi.fn(),write,close:vi.fn()}} as unknown as Window);
+  const download=mockPdfDownload();
   try{
     fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
-    expect(write).toHaveBeenCalledOnce();expect(write.mock.calls[0][0]).toContain('<html lang="en">');
-    expect(write.mock.calls[0][0]).toContain('Total net quotation: € 74.25');
+    expect(download.files).toHaveLength(1);
+    const pdfText=await download.textOf(0);
+    expect(pdfText).toContain('Total net quotation');
+    expect(pdfText).toContain('74.25');
     fireEvent.click(screen.getByRole('button',{name:'Salva e sovrascrivi versione attuale'}));
     await waitFor(()=>expect(state.calls.some(c=>c.path==='quote.update')).toBe(true));
     const saved=JSON.parse(state.calls.find(c=>c.path==='quote.update')!.input.dataJson);
     expect(saved.pdf_in_inglese).toBe(true);expect(saved.totale_finale).toBe(74.25);expect(saved.prodotti).toEqual(historical.prodotti);
     cleanup();mount(saved,mobile);
     expect((await screen.findByRole('checkbox',{name:'Elabora diciture preventivo in inglese'}) as HTMLInputElement).checked).toBe(true);
-  }finally{popup.mockRestore();}
+  }finally{download.restore();}
 });
 
 it.each([false,true])('exports the actual saved revision even when its JSON is stale, English=%s',async english=>{
   mount({...blankQuote(),numero_preventivo:'DDC90007/2026',rev:1,pdf_in_inglese:english,stato_preventivo:'completo',totale_finale:10,
     prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'FCA00504HBIN',descrizione:'Serie',quantita:1,prezzo_serie:10,prezzo_netto_unitario_finale:10,totale_finale:10}]},false,3);
   await screen.findByRole('heading',{name:'Preventivo DDC90007/2026 — rev. 3'});
-  const write=vi.fn(),popup=vi.spyOn(window,'open').mockReturnValue({document:{open:vi.fn(),write,close:vi.fn()}} as unknown as Window);
+  const download=mockPdfDownload();
   try{
     fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
-    expect(write).toHaveBeenCalledOnce();
-    const html=write.mock.calls[0][0];
-    expect(html).toContain(`DDC90007/2026 <span class="quote-revision">— ${english?'Revision':'Revisione'} 3</span>`);
-    expect(html).toMatch(/<title>\d{4}_DDC90007_REV\.3\.pdf<\/title>/);
+    expect(download.files).toHaveLength(1);
+    expect(download.files[0].name).toMatch(/^\d{4}_DDC90007_REV\.3\.pdf$/);
+    const pdfText=await download.textOf(0);
+    expect(pdfText).toContain('DDC90007/2026');
+    expect(pdfText).toContain(english?'Revision 3':'Revisione 3');
     expect(state.calls).toHaveLength(0);
-  }finally{popup.mockRestore();}
+  }finally{download.restore();}
 });
 
 it.each([false,true])("moves products in desktop/mobile, keeps price selection, and persists the new order: mobile=%s",async mobile=>{
@@ -847,6 +873,27 @@ it("does not inject the custom-products note into an existing quote (regression 
 });
 
 // Regressione TKT-20261117-84210001: invio del PDF preventivo via email.
+it("v13: export and email produce the SAME bytes for the same quote (un solo PDF)",async()=>{
+  mount({...blankQuote(),stato_preventivo:'completo',numero_preventivo:'DDC00042/2026',cliente:'Cliente prova',totale_finale:40,
+    prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'FCA00504HBIN',descrizione:'Serie',prezzo_serie:10,quantita:2,prezzo_netto_unitario_finale:10,totale_finale:20}]});
+  await screen.findByRole('button',{name:'Esporta PDF cliente'});
+  const download=mockPdfDownload();
+  try{
+    // «Prepara email» usato direttamente, SENZA prima esportare (ramo download+mailto)
+    fireEvent.click(screen.getByRole('button',{name:'Prepara email (PDF da allegare)'}));
+    await screen.findByText(/Allega manualmente il file nel programma di posta/);
+    expect(download.files).toHaveLength(1);
+    // «Esporta PDF cliente»: scarica lo stesso file
+    fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
+    expect(download.files).toHaveLength(2);
+    expect(download.files[1].name).toBe(download.files[0].name);
+    const a=new Uint8Array(await download.files[0].arrayBuffer());
+    const b=new Uint8Array(await download.files[1].arrayBuffer());
+    expect(b.length).toBe(a.length);
+    expect(Buffer.from(b).equals(Buffer.from(a))).toBe(true);
+  }finally{download.restore();}
+});
+
 it("downloads a real PDF and requests a prefilled email with an explicit manual attachment reminder (regression TKT-20261117-84210001)",async()=>{
   mount({...blankQuote(),stato_preventivo:'completo',numero_preventivo:'DDC00042/2026',cliente:'Cliente prova',totale_finale:40,
     prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'FCA00504HBIN',descrizione:'Serie',prezzo_serie:10,quantita:2,prezzo_netto_unitario_finale:10,totale_finale:20}]});

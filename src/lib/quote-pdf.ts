@@ -22,6 +22,7 @@ import {
 } from "./document-print-color";
 import { saleConditionsLabels, visibleContribution } from "./quote-sale-conditions";
 import { SALE_CONDITIONS_TITLE, SALE_CONDITIONS_SECTIONS, SALE_CONDITIONS_CLOSING } from "./sale-conditions-text";
+import { presentTemporaryCode } from "./ral-pricing";
 
 const COMPANY = {
   name: "DIDIEFFE GROUP srl",
@@ -88,7 +89,9 @@ export function buildOneTimeQuotePrintHtml(
     .map((product, index) => {
       if (isForfait(product))
         return `<tr><td class="num">${index + 1}</td><td colspan="3">${specialMark} ${escapeHtml(product.descrizione)}<br><strong>${t.forfait}</strong></td><td class="num">€ ${money(product.valore_forfait)}</td></tr>`;
-      const code = documentProductCode(product, quote);
+      // presentazione: i codici temporanei storici con finitura minuscola
+      // (es. TCS0000009In) escono maiuscoli senza riscrivere il dato salvato
+      const code = presentTemporaryCode(documentProductCode(product, quote));
       const description = documentProductDescription(product, language);
       const productName = isSeries(product)
         ? [
