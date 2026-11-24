@@ -18,6 +18,7 @@ import {
   quotePrintLabels,
   printLocale,
   translateClientNotes,
+  deliveryWeeksPhrase,
   type PrintLanguage,
 } from "./quote-print-language";
 import { refreshQuoteSeriesRal } from "./quote-series-ral-refresh";
@@ -339,7 +340,11 @@ export function buildQuotePdfFile(
     [t.reference, [{ text: String(quote.riferimento_preventivo ?? "").trim() || "—" }]],
   ];
   if (products.some(p => !isFixedPrice(p)) || ral) metaLeft.push([t.color, [{ text: colorLabel, bold: true }]]);
-  const metaRows = Math.max(metaLeft.length, metaRight.length);
+  // v20: con la consegna stimata il blocco .meta guadagna una riga a tutta
+  // larghezza; senza (campo vuoto, anche nei preventivi storici) la riga e
+  // la sua altezza spariscono del tutto.
+  const deliveryPhrase = deliveryWeeksPhrase(quote.consegna_settimane, language);
+  const metaRows = Math.max(metaLeft.length, metaRight.length) + (deliveryPhrase ? 1 : 0);
   const META_PAD = 9.75;                    // padding-inline 12px
   const META_COL_GAP = 13.5;                // gap colonne 18px
   const metaColW = (CONTENT_W - 2 * META_PAD - META_COL_GAP) / 2;
@@ -363,6 +368,10 @@ export function buildQuotePdfFile(
     if (l1 === t.color && swatchRgb)
       // campione 32×18px con margin-left 6px, centrato sulla riga del valore
       c.swatch(MARGIN + META_PAD + textWidth(colorLabel, 10, true) + 4.5, valueY - 8.7, swatchRgb);
+    // v20: la dicitura è un'unica riga di testo a tutta larghezza, senza
+    // etichetta a due colonne, per poter essere cercata come stringa esatta.
+    if (deliveryPhrase && i === metaRows - 1)
+      c.text(MARGIN + META_PAD, valueY, deliveryPhrase, { size: 10 });
   }
   const boxBottom = boxTop + 16 + (metaRows - 1) * META_ROW + 13.5 + 12.3;
   c.roundRectStroke(MARGIN, boxTop, CONTENT_W, boxBottom - boxTop, 3);

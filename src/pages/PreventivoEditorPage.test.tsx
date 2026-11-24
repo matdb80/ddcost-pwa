@@ -5,7 +5,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import type { ReactNode } from "react";
 import { blankProduct, blankQuote, calculateQuote } from "../lib/quote-calculation";
 import { temporaryCode } from "../lib/ral-pricing";
-const state=vi.hoisted(()=>({data:null as any,groups:[] as Array<{id:number;name:string}>,calls:[] as Array<{path:string;input:any}>,failDuplicate:false,duplicateGate:null as null|Promise<void>,attachments:null as null|Array<{id:number;fileName:string;mimeType:string;dataBase64:string;fail?:boolean}>,attachmentGets:[] as number[],stubAttachments:false,attachmentFiles:null as null|string[],attachmentWarnings:null as null|string[]}));
+const state=vi.hoisted(()=>({data:null as any,groups:[] as Array<{id:number;name:string}>,calls:[] as Array<{path:string;input:any}>,failDuplicate:false,duplicateGate:null as null|Promise<void>,attachments:null as null|Array<{id:number;fileName:string;mimeType:string;dataBase64:string;fail?:boolean;includeInPdf?:boolean|null}>,attachmentGets:[] as number[],stubAttachments:false,attachmentFiles:null as null|string[],attachmentWarnings:null as null|string[]}));
 vi.mock("@/components/Layout",()=>({default:({children}:{children:ReactNode})=><div>{children}</div>}));
 vi.mock("@/components/SalesHandoffPanel",()=>({default:({disabled}:{disabled:boolean})=><button disabled={disabled}>Invia al commerciale (test)</button>}));
 vi.mock("@/components/FormulaTooltip",()=>({default:()=>null}));
@@ -192,7 +192,8 @@ it("preserves a long historical description and PDF but blocks saving until it i
 it("limits the mobile description and blocks advancing an overlength saved value",async()=>{
   mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"A".repeat(61)}]},true);
   await screen.findByTestId("quote-mobile-wizard");
-  for(let i=0;i<3;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  // v20: +1 Avanti per il nuovo passo «Consegna stimata (settimane)» in Intestazione.
+  for(let i=0;i<4;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
   const input=document.getElementById("wizard-input") as HTMLInputElement;
   expect(input.maxLength).toBe(60);
   expect(input.value).toHaveLength(61);
@@ -219,8 +220,8 @@ it("blocks completion until each product has a modification selection",async()=>
 it("blocks the mobile wizard at the modification step until a choice is made",async()=>{
   mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Bandella"}]},true);
   await screen.findByTestId("quote-mobile-wizard");
-  // Client, labor mode, common hours, description, then modification selection.
-  for(let i=0;i<4;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  // Client, delivery weeks (v20), labor mode, common hours, description, then modification selection.
+  for(let i=0;i<5;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
   expect(screen.getByRole("heading",{name:"Oggetto della modifica"})).toBeTruthy();
   fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
   expect(screen.getByText("Seleziona almeno una voce in Oggetto della modifica.")).toBeTruthy();
@@ -319,6 +320,8 @@ it("offers per-product row hours in the actual mobile mode selector",async()=>{
   mount({...blankQuote(),stato_preventivo:"bozza",lavoro_ore_totali:16,
     prodotti:[8,12].map(quantita=>({...blankProduct(),quantita,materiale_cad:1,trattamenti_cad:1}))},true);
   await waitFor(()=>expect(screen.getByLabelText("Totale preventivo").textContent).toContain("927,50"));
+  // v20: dopo il cliente c'è il passo «Consegna stimata (settimane)».
+  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
   fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
   const selector=screen.getByRole("combobox");
   expect(screen.getByRole("option",{name:"Ore di lavoro imputate per ciascun prodotto"})).toBeTruthy();
@@ -381,7 +384,8 @@ it("keeps standard fields on mixed quotes while showing only the forfait amount 
 it("switches the mobile product header to forfait, validates its amount and reaches summary directly",async()=>{
   mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Lavorazione speciale"}]},true);
   await screen.findByTestId("quote-mobile-wizard");
-  for(let i=0;i<3;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  // v20: +1 Avanti per il nuovo passo «Consegna stimata (settimane)» in Intestazione.
+  for(let i=0;i<4;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
   fireEvent.click(screen.getByRole("checkbox",{name:"Preventiva a forfait"}));
   expect(screen.getByRole("heading",{name:"Che prodotto vuoi preventivare?"})).toBeTruthy();
   expect(screen.queryByRole("button",{name:"Genera codice temporaneo"})).toBeNull();
@@ -491,7 +495,8 @@ it("completes and reopens a series product with four required fields and optiona
 it("offers five series fields in the mobile wizard with a required base price and optional discount",async()=>{
  mount({...blankQuote(),stato_preventivo:"bozza",prodotti:[{...blankProduct(),descrizione:"Serie",codice:"STD-1",quantita:10}]},true);
  await screen.findByTestId("quote-mobile-wizard");
- for(let i=0;i<3;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+ // v20: +1 Avanti per il nuovo passo «Consegna stimata (settimane)» in Intestazione.
+ for(let i=0;i<4;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
  fireEvent.click(screen.getByRole("checkbox",{name:"Prodotto di serie"}));
  expect(screen.queryByRole("button",{name:"Genera codice temporaneo"})).toBeNull();
  for(let i=0;i<3;i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
@@ -596,7 +601,7 @@ it('shows RAL on a series-only quote and searches a color by its full name',asyn
   fireEvent.change(input,{target:{value:'Bianco puro'}});
   fireEvent.click(screen.getByRole('option',{name:/RAL 9010.*Bianco puro/}));
   await waitFor(()=>expect(screen.getByLabelText('Totale preventivo').textContent).toContain('146,90'));
-  expect(screen.getByText(/Supplemento RAL: \+100%/)).toBeTruthy();
+  expect(screen.getByText(/\+100% per RAL ·/)).toBeTruthy();
   fireEvent.change(input,{target:{value:'9005'}});expect(screen.getByRole('option',{name:/RAL 9005/})).toBeTruthy();
 });
 
@@ -1021,4 +1026,482 @@ it("v18: l'avviso di recupero segue la lingua del PDF e precede quelli di conver
     expect(conversion).toBeGreaterThanOrEqual(0);
     expect(retrieval).toBeLessThan(conversion);
   }finally{download.restore();}
+});
+
+// v19: nel PDF cliente entrano solo gli allegati selezionati («Includi nel PDF
+// cliente»). NULL = allegato storico, incluso finché l'utente non sceglie.
+it("v19: solo gli allegati selezionati entrano nel PDF, gli storici NULL restano inclusi",async()=>{
+  state.attachments=[
+    {id:11,fileName:"disegno-cliente.png",mimeType:"image/png",dataBase64:PNG_B64,includeInPdf:true},
+    {id:12,fileName:"foto-interna.png",mimeType:"image/png",dataBase64:PNG_B64,includeInPdf:false},
+    {id:13,fileName:"storico.png",mimeType:"image/png",dataBase64:PNG_B64,includeInPdf:null},
+  ];
+  state.stubAttachments=true;
+  mount({...blankQuote(),stato_preventivo:'completo',numero_preventivo:'DDC00042/2026',cliente:'Cliente prova',totale_finale:40,
+    prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'FCA00504HBIN',descrizione:'Serie',prezzo_serie:10,quantita:2,prezzo_netto_unitario_finale:10,totale_finale:20}]});
+  await screen.findByRole('button',{name:'Esporta PDF cliente'});
+  const download=mockPdfDownload();
+  try{
+    fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
+    await waitFor(()=>expect(download.files).toHaveLength(1));
+    // il file escluso non viene nemmeno recuperato dall'archivio
+    expect(state.attachmentGets).toEqual([11,13]);
+    // al rasterizzatore arrivano solo i selezionati, in ordine di caricamento
+    expect(state.attachmentFiles).toEqual(["disegno-cliente.png","storico.png"]);
+    const text=await download.textOf(0);
+    expect(text).toContain("Allegato: disegno-cliente.png");
+    expect(text).toContain("Allegato: storico.png");
+    expect(text).not.toContain("Allegato: foto-interna.png");
+    expect(text.indexOf("Allegato: disegno-cliente.png")).toBeLessThan(text.indexOf("Allegato: storico.png"));
+    expect(text.indexOf("Allegato: storico.png")).toBeLessThan(text.indexOf("CONDIZIONI DI VENDITA"));
+    // l'esclusione è una scelta, non un errore: nessun avviso
+    expect(screen.queryByText(/foto-interna/)).toBeNull();
+  }finally{download.restore();}
+});
+it("v19: «Prepara email» diretto applica la stessa selezione degli allegati",async()=>{
+  state.attachments=[
+    {id:11,fileName:"disegno-cliente.png",mimeType:"image/png",dataBase64:PNG_B64,includeInPdf:true},
+    {id:12,fileName:"foto-interna.png",mimeType:"image/png",dataBase64:PNG_B64,includeInPdf:false},
+  ];
+  state.stubAttachments=true;
+  mount({...blankQuote(),stato_preventivo:'completo',numero_preventivo:'DDC00042/2026',cliente:'Cliente prova',totale_finale:40,
+    prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'FCA00504HBIN',descrizione:'Serie',prezzo_serie:10,quantita:2,prezzo_netto_unitario_finale:10,totale_finale:20}]});
+  const button=await screen.findByRole('button',{name:'Prepara email (PDF da allegare)'});
+  const download=mockPdfDownload();
+  try{
+    fireEvent.click(button);
+    await screen.findByText(/Allega manualmente il file nel programma di posta/);
+    await waitFor(()=>expect(download.files).toHaveLength(1));
+    expect(state.attachmentGets).toEqual([11]);
+    const text=await download.textOf(0);
+    expect(text).toContain("Allegato: disegno-cliente.png");
+    expect(text).not.toContain("Allegato: foto-interna.png");
+    expect(text.indexOf("Allegato: disegno-cliente.png")).toBeLessThan(text.indexOf("CONDIZIONI DI VENDITA"));
+  }finally{download.restore();}
+});
+it("v19: con nessun allegato selezionato il PDF esce senza pagine allegato e senza avvisi",async()=>{
+  state.attachments=[
+    {id:11,fileName:"disegno-cliente.png",mimeType:"image/png",dataBase64:PNG_B64,includeInPdf:false},
+    {id:12,fileName:"foto-interna.png",mimeType:"image/png",dataBase64:PNG_B64,includeInPdf:false},
+  ];
+  state.stubAttachments=true;
+  mount({...blankQuote(),stato_preventivo:'completo',numero_preventivo:'DDC00042/2026',cliente:'Cliente prova',totale_finale:40,
+    prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:'FCA00504HBIN',descrizione:'Serie',prezzo_serie:10,quantita:2,prezzo_netto_unitario_finale:10,totale_finale:20}]});
+  await screen.findByRole('button',{name:'Esporta PDF cliente'});
+  const download=mockPdfDownload();
+  try{
+    fireEvent.click(screen.getByRole('button',{name:'Esporta PDF cliente'}));
+    await waitFor(()=>expect(download.files).toHaveLength(1));
+    expect(state.attachmentGets).toEqual([]);
+    expect(state.attachmentFiles).toBeNull();
+    const text=await download.textOf(0);
+    expect(text).not.toContain("Allegato:");
+    expect(text).toContain("CONDIZIONI DI VENDITA");
+    expect(screen.queryByRole("alert")).toBeNull();
+  }finally{download.restore();}
+});
+
+// v20: «Consegna stimata (settimane)» — campo numerico intero facoltativo in
+// testata, su desktop e nel wizard mobile; salvato con la revisione.
+it("saves the estimated delivery weeks with the draft and finds them on reopen",{timeout:20000},async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza"});
+  const field=await screen.findByLabelText("Consegna stimata (settimane)") as HTMLInputElement;
+  // i decimali sono rifiutati: la bozza resta vuota
+  fireEvent.change(field,{target:{value:"4,5"}});
+  expect(field.value).toBe("");
+  fireEvent.change(field,{target:{value:"4"}});
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
+  expect(saved.consegna_settimane).toBe(4);
+  // riapertura: il valore salvato si ritrova nel campo
+  cleanup();
+  mount(saved);
+  const reopened=await screen.findByLabelText("Consegna stimata (settimane)") as HTMLInputElement;
+  expect(reopened.value).toBe("4");
+});
+
+it("never stores 0 as delivery weeks: the draft is rejected and the saved value stays null",async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza"});
+  const field=await screen.findByLabelText("Consegna stimata (settimane)") as HTMLInputElement;
+  fireEvent.change(field,{target:{value:"0"}});
+  fireEvent.blur(field);
+  expect(field.value).toBe("");
+  // nessuna modifica reale → il salvataggio resta disabilitato
+  expect((screen.getByRole("button",{name:"Salva bozza"}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Cliente *"),{target:{value:"Cliente nuovo"}});
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
+  expect(saved.consegna_settimane).toBeNull();
+});
+
+it("offers the delivery weeks step in the mobile wizard, optional and persistent",{timeout:20000},async()=>{
+  mount({...blankQuote(),stato_preventivo:"bozza"},true);
+  await screen.findByTestId("quote-mobile-wizard");
+  fireEvent.click(screen.getByRole("button",{name:"Avanti"})); // cliente → consegna
+  expect(screen.getByRole("heading",{name:"Consegna stimata (settimane)"})).toBeTruthy();
+  const input=document.getElementById("wizard-input") as HTMLInputElement;
+  // facoltativo: il passo non blocca mai l'avanzamento
+  fireEvent.change(input,{target:{value:"4,5"}});
+  expect(input.value).toBe("");
+  fireEvent.change(input,{target:{value:"4"}});
+  expect(input.value).toBe("4");
+  // il valore sopravvive alla navigazione Indietro/Avanti
+  fireEvent.click(screen.getByRole("button",{name:"Indietro"}));
+  fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(screen.getByRole("heading",{name:"Consegna stimata (settimane)"})).toBeTruthy();
+  expect((document.getElementById("wizard-input") as HTMLInputElement).value).toBe("4");
+});
+
+// v22: «consegna_settimane» è un dato di testata NON economico anche nel
+// wizard mobile (sul desktop lo è già): cambiarla non deve attivare il
+// ricalcolo, che riscriverebbe gli importi storici salvati.
+it("v22: dal wizard mobile la sola consegna stimata non ricalcola gli importi storici",{timeout:20000},async()=>{
+  // importi salvati diversi da quelli che produrrebbe un ricalcolo
+  // (ricalcolo: 10 € × 2 pz = 20,00 €; storico: 37,125 €/pz, 74,25 € totali)
+  const historical={...blankQuote(),cliente:"Cliente storico",stato_preventivo:"completo",totale_finale:74.25,
+    prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:"FCA00504HBIN",descrizione:"Serie storica",quantita:2,prezzo_serie:10,prezzo_netto_unitario_finale:37.125,totale_finale:74.25}]};
+  mount(historical,true);
+  await screen.findByTestId("quote-mobile-wizard");
+  // storico bloccato: lo sblocco è nel riepilogo finale
+  for(let i=0;i<15&&!screen.queryByRole("heading",{name:"Riepilogo finale"});i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  fireEvent.click(screen.getByRole("button",{name:"Modifica preventivo"}));
+  // torna al passo «Consegna stimata» e cambia SOLO quello
+  for(let i=0;i<15&&!screen.queryByRole("heading",{name:"Consegna stimata (settimane)"});i++)fireEvent.click(screen.getByRole("button",{name:"Indietro"}));
+  const input=document.getElementById("wizard-input") as HTMLInputElement;
+  fireEvent.change(input,{target:{value:"4"}});
+  expect(input.value).toBe("4");
+  // avanti fino al riepilogo: il totale resta quello storico (nessuna anteprima di ricalcolo a 20,00 €)
+  for(let i=0;i<15&&!screen.queryByRole("heading",{name:"Riepilogo finale"});i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("74,25");
+  fireEvent.click(screen.getByRole("button",{name:"Salva nuova versione"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveRevision")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveRevision")!.input.dataJson);
+  expect(saved.consegna_settimane).toBe(4);
+  expect(saved.totale_finale).toBe(74.25);
+  expect(saved.prodotti).toEqual(historical.prodotti);
+  // riapertura: importi intatti ed export dal wizard con la dicitura esatta
+  cleanup();state.calls=[];
+  mount(saved,true);
+  await screen.findByTestId("quote-mobile-wizard");
+  for(let i=0;i<15&&!screen.queryByRole("heading",{name:"Riepilogo finale"});i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("74,25");
+  const download=mockPdfDownload();
+  try{
+    fireEvent.click(screen.getByRole("button",{name:"Esporta PDF cliente"}));
+    await waitFor(()=>expect(download.files).toHaveLength(1));
+    const pdfText=await download.textOf(0);
+    expect(pdfText).toContain("Consegna stimata: 4 settimane dalla conferma scritta");
+    // prezzi storici nel PDF: unitario 37,125 reso a 2 decimali, totali 74,25
+    // (la conservazione esatta degli importi è verificata sul payload salvato)
+    expect(pdfText).toContain("37,13");
+    expect(pdfText).toContain("74,25");
+    expect(state.calls).toHaveLength(0); // l'export non scrive nulla
+  }finally{download.restore();}
+});
+
+// v22: guardia contro la correzione eccessiva — una modifica a un dato
+// economico reale (costo del materiale) deve continuare ad attivare il
+// ricalcolo anche dal wizard mobile.
+it("v22: dal wizard una modifica effettiva al costo continua ad attivare il ricalcolo",{timeout:20000},async()=>{
+  const historical={...blankQuote(),cliente:"Cliente storico",stato_preventivo:"completo",lavoro_modalita:"per_prodotto",totale_finale:74.25,
+    prodotti:[{...blankProduct(),descrizione:"Lavorazione storica",gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",oggetto_modifica:["occhio"],quantita:2,materiale_cad:2.11,lavoro_h:1,prezzo_netto_unitario_finale:37.125,totale_finale:74.25}]};
+  mount(historical,true);
+  await screen.findByTestId("quote-mobile-wizard");
+  for(let i=0;i<25&&!screen.queryByRole("heading",{name:"Riepilogo finale"});i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  fireEvent.click(screen.getByRole("button",{name:"Modifica preventivo"}));
+  // torna al passo del costo materiale e alza il costo da 2,11 a 5 €/pz
+  for(let i=0;i<25&&!screen.queryByRole("heading",{name:"Costo materiale per pezzo"});i++)fireEvent.click(screen.getByRole("button",{name:"Indietro"}));
+  const input=screen.getByLabelText("Materiale €/pz") as HTMLInputElement;
+  fireEvent.focus(input);
+  fireEvent.change(input,{target:{value:"5"}});
+  fireEvent.blur(input);
+  // al riepilogo l'anteprima mostra il ricalcolo, non più il totale storico
+  for(let i=0;i<25&&!screen.queryByRole("heading",{name:"Riepilogo finale"});i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(screen.getByLabelText("Totale preventivo").textContent).not.toContain("74,25");
+  fireEvent.click(screen.getByRole("button",{name:"Salva nuova versione"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveRevision")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveRevision")!.input.dataJson);
+  // gli importi salvati sono quelli del ricalcolo, non quelli storici divergenti
+  const expected=calculateQuote({...historical,prodotti:[{...historical.prodotti[0],materiale_cad:5}]}).totale_finale;
+  expect(expected).not.toBe(74.25);
+  expect(saved.totale_finale).toBeCloseTo(expected,6);
+  expect(saved.prodotti[0].materiale_cad).toBe(5);
+  expect(saved.prodotti[0].prezzo_netto_unitario_finale).not.toBe(37.125);
+});
+
+// v23: caso DDC90020/2026 — codice articolo digitato con il RAL «cotto»
+// (VBCD091Z03IO7035) mentre il documento ha RAL 9010 liscio selezionato.
+// Lo storico salvato ha il supplemento a 0 (il motore non ricarica i codici
+// già verniciati): la riga va corretta alla finitura standard.
+const v23Ral={color:"9010",textured:false};
+const v23DDC90020=()=>calculateQuote({...blankQuote(),cliente:"Cliente DDC90020",stato_preventivo:"completo",verniciatura_ral:v23Ral,
+  prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:"VBCD091Z03IO7035",descrizione:"Valvola a sfera",quantita:8,prezzo_serie:17.5}]});
+const v23Warning="Il codice inserito è già in RAL 7035. Inserisci il codice con finitura standard. DDCost lo convertirà in RAL 9010 e calcolerà il relativo supplemento";
+const v23RowError=/correggi il codice articolo della riga 1 \(VBCD091Z03IO7035\)/;
+const v23Line=(text:string)=>screen.getByText((_,el)=>el?.tagName==="P"&&el.textContent===text);
+
+it("v23: caso DDC90020 — storico intatto all'apertura, correzione guidata, supplemento dal motore e una sola volta dopo salvataggio e riapertura",{timeout:30000},async()=>{
+  const stored=v23DDC90020();
+  expect(stored.totale_finale).toBe(140); // codice cotto: nessun supplemento
+  mount(stored);
+  // apertura: codice e prezzi storici conservati, nessuna scrittura automatica
+  const input=await screen.findByLabelText(/Codice articolo/) as HTMLInputElement;
+  expect(input.value).toBe("VBCD091Z03IO7035");
+  expect(screen.getByText(v23Warning)).toBeTruthy();
+  expect(screen.getByText("Supplemento RAL da calcolare")).toBeTruthy();
+  expect((screen.getByRole("button",{name:"Usa VBCD091Z03IN"}) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("140,00");
+  expect(state.calls).toHaveLength(0);
+  // export, email e copia sono bloccati finché la riga non è corretta
+  const blocked=mockPdfDownload();
+  try{
+    fireEvent.click(screen.getByRole("button",{name:"Esporta PDF cliente"}));
+    await screen.findByText(v23RowError);
+    fireEvent.click(screen.getByRole("button",{name:"Prepara email (PDF da allegare)"}));
+    fireEvent.click(screen.getByRole("button",{name:"Copia per email / documento"}));
+    expect(blocked.files).toHaveLength(0);
+  }finally{blocked.restore();}
+  // correzione guidata dal pulsante «Usa …»
+  fireEvent.click(screen.getByRole("button",{name:"Modifica"}));
+  fireEvent.click(screen.getByRole("button",{name:"Usa VBCD091Z03IN"}));
+  expect(input.value).toBe("VBCD091Z03IN");
+  expect(screen.getByText("Codice nel PDF cliente: VBCD091Z03IO9010")).toBeTruthy();
+  expect(v23Line("+50% per RAL · +8,75 €/pz · Prezzo finale: 26,25 €/pz")).toBeTruthy();
+  expect(v23Line("Totale riga: 210,00\u00A0€")).toBeTruthy();
+  expect(screen.queryByText("Supplemento RAL da calcolare")).toBeNull();
+  // salvataggio definitivo: importi dal motore, cambio colore voce unica
+  fireEvent.click(screen.getByRole("button",{name:"Salva nuova versione"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveRevision")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveRevision")!.input.dataJson);
+  expect(saved.prodotti[0]).toMatchObject({codice:"VBCD091Z03IN",netto_prima_ral:17.5,ral_percentuale:50,ral_ricarico_cad:8.75,prezzo_netto_unitario_finale:26.25,totale_finale:210});
+  expect(saved.totale_finale).toBe(260);
+  expect(saved.ral_riepilogo.fixed).toBe(50);
+  expect(saved.ral_riepilogo.rows).toHaveLength(1);
+  // riapertura: il supplemento è conteggiato una sola volta
+  cleanup();state.calls=[];
+  mount(saved);
+  const reopened=await screen.findByLabelText(/Codice articolo/) as HTMLInputElement;
+  expect(reopened.value).toBe("VBCD091Z03IN");
+  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("260,00");
+  expect(v23Line("+50% per RAL · +8,75 €/pz · Prezzo finale: 26,25 €/pz")).toBeTruthy();
+  expect(screen.getByText("Codice nel PDF cliente: VBCD091Z03IO9010")).toBeTruthy();
+  expect(state.calls).toHaveLength(0);
+  // export ed email producono lo stesso PDF, con codice convertito e importi attesi
+  const download=mockPdfDownload();
+  try{
+    fireEvent.click(screen.getByRole("button",{name:"Esporta PDF cliente"}));
+    await waitFor(()=>expect(download.files).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button",{name:"Prepara email (PDF da allegare)"}));
+    await waitFor(()=>expect(download.files).toHaveLength(2));
+    const exportText=await download.textOf(0),emailText=await download.textOf(1);
+    expect(emailText).toBe(exportText);
+    expect(exportText).toContain("VBCD091Z03IO9010");
+    expect(exportText).toContain("26,2500");
+    expect(exportText).toContain("210,00");
+    expect(exportText).toContain("Cambio colore (una volta per ordine)");
+    expect(exportText).not.toContain("(già RAL)");
+    expect(state.calls).toHaveLength(0);
+  }finally{download.restore();}
+});
+
+it("v23: con il codice RAL cotto la bozza si salva, il completamento è bloccato e indica la riga",{timeout:20000},async()=>{
+  mount({...v23DDC90020(),stato_preventivo:"bozza"});
+  await screen.findByLabelText(/Codice articolo/);
+  expect(screen.getByText(v23Warning)).toBeTruthy();
+  // bozza: consentita, il codice resta quello digitato
+  fireEvent.change(screen.getByLabelText(/Descrizione/),{target:{value:"Valvola a sfera DN25"}});
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveDraft")).toBe(true));
+  const draft=JSON.parse(state.calls.find(c=>c.path==="quote.saveDraft")!.input.dataJson);
+  expect(draft.prodotti[0].codice).toBe("VBCD091Z03IO7035");
+  // completamento: bloccato, l'errore nomina la riga da correggere
+  fireEvent.click(screen.getByRole("button",{name:"Completa preventivo"}));
+  await screen.findByText(v23RowError);
+  expect(state.calls.some(c=>c.path==="quote.finalizeDraft")).toBe(false);
+  // export da bozza: comportamento esistente invariato (pulsante disabilitato)
+  expect((screen.getByRole("button",{name:"Esporta PDF cliente"}) as HTMLButtonElement).disabled).toBe(true);
+});
+
+it("v23: wizard — avviso al passo codice, completamento bloccato fino alla correzione, supplemento nel riepilogo",{timeout:30000},async()=>{
+  mount(v23DDC90020(),true);
+  await screen.findByTestId("quote-mobile-wizard");
+  for(let i=0;i<15&&!screen.queryByRole("heading",{name:"Riepilogo finale"});i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  // la riga da correggere è segnalata nel riepilogo
+  expect(screen.getByText("Supplemento RAL da calcolare")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button",{name:"Modifica preventivo"}));
+  // completamento bloccato: si torna al passo del codice con l'errore sulla riga
+  fireEvent.click(screen.getByRole("button",{name:"Salva nuova versione"}));
+  await screen.findByRole("heading",{name:"Codice articolo"});
+  expect(screen.getByText(v23RowError)).toBeTruthy();
+  expect(screen.getByText(v23Warning)).toBeTruthy();
+  expect(state.calls.some(c=>c.path==="quote.saveRevision")).toBe(false);
+  // correzione guidata dal pulsante
+  fireEvent.click(screen.getByRole("button",{name:"Usa VBCD091Z03IN"}));
+  expect((document.getElementById("wizard-input") as HTMLInputElement).value).toBe("VBCD091Z03IN");
+  expect(screen.getByText("Codice nel PDF cliente: VBCD091Z03IO9010")).toBeTruthy();
+  // riepilogo: dettaglio dal motore e salvataggio corretto
+  for(let i=0;i<15&&!screen.queryByRole("heading",{name:"Riepilogo finale"});i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(v23Line("+50% per RAL · +8,75 €/pz")).toBeTruthy();
+  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("260,00");
+  fireEvent.click(screen.getByRole("button",{name:"Salva nuova versione"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveRevision")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveRevision")!.input.dataJson);
+  expect(saved.prodotti[0]).toMatchObject({codice:"VBCD091Z03IN",ral_percentuale:50,ral_ricarico_cad:8.75,prezzo_netto_unitario_finale:26.25,totale_finale:210});
+  expect(saved.totale_finale).toBe(260);
+});
+
+it("v23: RAL attivato o cambiato dopo l'inserimento dell'articolo, e RAL digitato uguale a quello di testata",{timeout:20000},async()=>{
+  const base=()=>({...blankQuote(),cliente:"Cliente",stato_preventivo:"bozza",prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:"VBCD091Z03IN",descrizione:"Valvola a sfera",quantita:8,prezzo_serie:17.5}]});
+  mount(base());
+  await screen.findByLabelText(/Codice articolo/);
+  expect(screen.queryByText(/Codice nel PDF cliente/)).toBeNull();
+  // RAL attivato dopo l'inserimento: anteprima codice PDF e supplemento subito
+  fireEvent.click(screen.getByRole("checkbox",{name:"RAL"}));
+  expect(screen.getByText("Codice nel PDF cliente: VBCD091Z03IO9010")).toBeTruthy();
+  expect(v23Line("+50% per RAL · +8,75 €/pz · Prezzo finale: 26,25 €/pz")).toBeTruthy();
+  // finitura cambiata in goffrato: aliquota del ruvido
+  fireEvent.click(screen.getByRole("checkbox",{name:"Goffrato"}));
+  expect(v23Line("+100% per RAL · +17,50 €/pz · Prezzo finale: 35,00 €/pz")).toBeTruthy();
+  cleanup();
+  // RAL digitato coincidente con quello di testata: stesso avviso e correzione
+  mount({...base(),prodotti:[{...base().prodotti[0],codice:"VBCD091Z03IO9010"}]});
+  await screen.findByLabelText(/Codice articolo/);
+  expect(screen.queryByText(/già in RAL/)).toBeNull();
+  fireEvent.click(screen.getByRole("checkbox",{name:"RAL"}));
+  expect(screen.getByText("Il codice inserito è già in RAL 9010. Inserisci il codice con finitura standard. DDCost lo convertirà in RAL 9010 e calcolerà il relativo supplemento")).toBeTruthy();
+  expect(screen.getByRole("button",{name:"Usa VBCD091Z03IN"})).toBeTruthy();
+  expect(screen.getByText("Supplemento RAL da calcolare")).toBeTruthy();
+});
+
+it("v23: anche per un prodotto speciale il codice RAL cotto è segnalato e bloccante fino alla correzione",{timeout:20000},async()=>{
+  const stored=calculateQuote({...blankQuote(),cliente:"Cliente",stato_preventivo:"completo",lavoro_modalita:"per_prodotto",verniciatura_ral:v23Ral,
+    prodotti:[{...blankProduct(),codice:"VBCD091Z03IO7035",descrizione:"Bandella speciale",gruppo_merceologico:"Bandelle",materiale_prodotto:"ferro",oggetto_modifica:["occhio"],quantita:2,materiale_cad:2.11,lavoro_h:1}]});
+  mount(stored);
+  const input=await screen.findByLabelText("Codice articolo") as HTMLInputElement;
+  expect(input.value).toBe("VBCD091Z03IO7035");
+  expect(screen.getByText(v23Warning)).toBeTruthy();
+  expect(screen.getByText("Supplemento RAL da calcolare")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button",{name:"Modifica"}));
+  // salvataggio definitivo bloccato finché la riga non è corretta
+  fireEvent.change(input,{target:{value:"VBCD091Z03IO7036"}});
+  fireEvent.click(screen.getByRole("button",{name:"Salva nuova versione"}));
+  await screen.findByText(/correggi il codice articolo della riga 1 \(VBCD091Z03IO7036\)/);
+  expect(state.calls.some(c=>c.path==="quote.saveRevision")).toBe(false);
+  // correzione col pulsante e salvataggio
+  fireEvent.click(screen.getByRole("button",{name:"Usa VBCD091Z03IN"}));
+  expect(input.value).toBe("VBCD091Z03IN");
+  expect(screen.getByText("Codice nel PDF cliente: VBCD091Z03IO9010")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button",{name:"Salva nuova versione"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveRevision")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveRevision")!.input.dataJson);
+  expect(saved.prodotti[0].codice).toBe("VBCD091Z03IN");
+  expect(saved.prodotti[0].ral_percentuale).toBe(50);
+});
+
+// v24: quattro rilievi sul controllo RAL v23 — nylon escluso a prescindere,
+// pulsante «Usa …» solo se la conversione è effettiva, motivi di esclusione
+// sotto la riga (forfait incluso) su desktop e nel wizard.
+it("v24: nylon con RAL cotto — nessun blocco né pulsante, motivo di esclusione, salvataggio ed export consentiti",{timeout:30000},async()=>{
+  const stored=calculateQuote({...blankQuote(),cliente:"Cliente nylon",stato_preventivo:"completo",verniciatura_ral:v23Ral,
+    prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:"LRNG211605NO7035",descrizione:"Larghetta nylon",quantita:2,prezzo_serie:10}]});
+  expect(stored.prodotti[0].ral_percentuale).toBe(0); // il motore applica correttamente lo 0%
+  expect(stored.totale_finale).toBe(20);
+  mount(stored);
+  const input=await screen.findByLabelText(/Codice articolo/) as HTMLInputElement;
+  expect(input.value).toBe("LRNG211605NO7035");
+  expect(screen.queryByText(/già in RAL/)).toBeNull();
+  expect(screen.queryByText("Supplemento RAL da calcolare")).toBeNull();
+  expect(screen.queryByRole("button",{name:/^Usa /})).toBeNull();
+  expect(screen.queryByText(/Codice nel PDF cliente/)).toBeNull();
+  expect(v23Line("Supplemento RAL non applicabile: nylon")).toBeTruthy();
+  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("20,00");
+  // export PDF consentito
+  const download=mockPdfDownload();
+  try{
+    fireEvent.click(screen.getByRole("button",{name:"Esporta PDF cliente"}));
+    await waitFor(()=>expect(download.files).toHaveLength(1));
+  }finally{download.restore();}
+  // salvataggio definitivo consentito: la riga resta nylon a 0%
+  fireEvent.click(screen.getByRole("button",{name:"Modifica"}));
+  fireEvent.change(screen.getByLabelText(/Descrizione/),{target:{value:"Larghetta nylon 35mm"}});
+  fireEvent.click(screen.getByRole("button",{name:"Salva nuova versione"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveRevision")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveRevision")!.input.dataJson);
+  expect(saved.prodotti[0]).toMatchObject({codice:"LRNG211605NO7035",ral_percentuale:0,ral_ricarico_cad:0,prezzo_netto_unitario_finale:10,totale_finale:20});
+});
+
+it("v24: riga a forfait — motivo di esclusione su desktop e nel wizard, riga di serie invariata, nessun blocco",{timeout:30000},async()=>{
+  const doc=()=>calculateQuote({...blankQuote(),cliente:"Cliente forfait",stato_preventivo:"completo",verniciatura_ral:v23Ral,
+    prodotti:[
+      {...blankProduct(),prodotto_di_serie:true,codice:"VBCD091Z03IN",descrizione:"Valvola a sfera",quantita:8,prezzo_serie:17.5},
+      {...blankProduct(),a_forfait:true,descrizione:"Gestione ordine",valore_forfait:100},
+    ]});
+  const stored=doc();
+  expect(stored.totale_finale).toBe(360); // 210 + 50 cambio colore + 100 forfait
+  mount(stored);
+  await screen.findByLabelText(/Codice articolo/);
+  expect(v23Line("+50% per RAL · +8,75 €/pz · Prezzo finale: 26,25 €/pz")).toBeTruthy();
+  expect(v23Line("Supplemento RAL non applicabile: riga a forfait")).toBeTruthy();
+  expect(screen.queryByText("Supplemento RAL da calcolare")).toBeNull();
+  expect(screen.getByLabelText("Totale preventivo").textContent).toContain("360,00");
+  // export e salvataggio consentiti
+  const download=mockPdfDownload();
+  try{
+    fireEvent.click(screen.getByRole("button",{name:"Esporta PDF cliente"}));
+    await waitFor(()=>expect(download.files).toHaveLength(1));
+  }finally{download.restore();}
+  fireEvent.click(screen.getByRole("button",{name:"Modifica"}));
+  fireEvent.change(screen.getAllByLabelText(/Descrizione/)[0],{target:{value:"Valvola a sfera DN25"}});
+  fireEvent.click(screen.getByRole("button",{name:"Salva nuova versione"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveRevision")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveRevision")!.input.dataJson);
+  expect(saved.prodotti[0]).toMatchObject({codice:"VBCD091Z03IN",ral_percentuale:50});
+  expect(saved.prodotti[1]).toMatchObject({a_forfait:true,valore_forfait:100});
+  expect(saved.totale_finale).toBe(360);
+  cleanup();state.calls=[];
+  // wizard: stessa dicitura nel riepilogo, nessun blocco RAL
+  mount(doc(),true);
+  await screen.findByTestId("quote-mobile-wizard");
+  for(let i=0;i<15&&!screen.queryByRole("heading",{name:"Riepilogo finale"});i++)fireEvent.click(screen.getByRole("button",{name:"Avanti"}));
+  expect(v23Line("+50% per RAL · +8,75 €/pz")).toBeTruthy();
+  expect(v23Line("Supplemento RAL non applicabile: riga a forfait")).toBeTruthy();
+  expect(screen.queryByText("Supplemento RAL da calcolare")).toBeNull();
+  expect(screen.queryByText(/correggi il codice articolo/)).toBeNull();
+});
+
+it("v24: codice con trattino — avviso senza pulsante, riga da calcolare, blocchi attivi fino alla correzione manuale",{timeout:30000},async()=>{
+  const stored=calculateQuote({...blankQuote(),cliente:"Cliente trattino",stato_preventivo:"completo",verniciatura_ral:v23Ral,
+    prodotti:[{...blankProduct(),prodotto_di_serie:true,codice:"VBCD091-03IO7035",descrizione:"Valvola a sfera",quantita:8,prezzo_serie:17.5}]});
+  mount(stored);
+  const input=await screen.findByLabelText(/Codice articolo/) as HTMLInputElement;
+  expect(input.value).toBe("VBCD091-03IO7035");
+  expect(screen.getByText(v23Warning)).toBeTruthy();
+  expect(screen.getByText("Supplemento RAL da calcolare")).toBeTruthy();
+  // nessun pulsante: «VBCD091-03IN» non sarebbe convertito nel PDF
+  expect(screen.queryByRole("button",{name:/^Usa /})).toBeNull();
+  expect(screen.queryByText(/Codice nel PDF cliente/)).toBeNull();
+  const rowError=/correggi il codice articolo della riga 1 \(VBCD091-03IO7035\)/;
+  // export bloccato
+  const blocked=mockPdfDownload();
+  try{
+    fireEvent.click(screen.getByRole("button",{name:"Esporta PDF cliente"}));
+    await screen.findByText(rowError);
+    expect(blocked.files).toHaveLength(0);
+  }finally{blocked.restore();}
+  // salvataggio definitivo bloccato finché l'operatore non corregge a mano
+  fireEvent.click(screen.getByRole("button",{name:"Modifica"}));
+  fireEvent.click(screen.getByRole("button",{name:"Salva nuova versione"}));
+  await screen.findByText(rowError);
+  expect(state.calls.some(c=>c.path==="quote.saveRevision")).toBe(false);
+  // correzione manuale al codice standard valido: supplemento dal motore e salvataggio
+  fireEvent.change(input,{target:{value:"VBCD091Z03IN"}});
+  expect(screen.getByText("Codice nel PDF cliente: VBCD091Z03IO9010")).toBeTruthy();
+  expect(v23Line("+50% per RAL · +8,75 €/pz · Prezzo finale: 26,25 €/pz")).toBeTruthy();
+  expect(screen.queryByText("Supplemento RAL da calcolare")).toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:"Salva nuova versione"}));
+  await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveRevision")).toBe(true));
+  const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveRevision")!.input.dataJson);
+  expect(saved.prodotti[0]).toMatchObject({codice:"VBCD091Z03IN",ral_percentuale:50,ral_ricarico_cad:8.75,prezzo_netto_unitario_finale:26.25,totale_finale:210});
 });

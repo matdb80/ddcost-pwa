@@ -11,6 +11,7 @@ import {
   bigint,
   decimal,
   tinyint,
+  boolean,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -268,6 +269,8 @@ export const cycleCreateReceipts = mysqlTable("cycle_create_receipts", {
 },t=>[uniqueIndex("cycle_create_receipts_user_key_uq").on(t.userId,t.idempotencyKey),uniqueIndex("cycle_create_receipts_user_code_uq").on(t.userId,t.normalizedCode)]);
 
 // Attachments are shared by quote revisions; original Windows references stay in dataJson.
+// include_in_pdf: NULL = allegato precedente alla scelta utente (incluso, comportamento
+// storico); 0/1 = scelta esplicita. I nuovi caricamenti partono da 0 (deselezionati).
 export const quoteAttachments = mysqlTable("quote_attachments", {
   id: serial("id").primaryKey(),
   rootId: bigint("rootId", { mode: "number", unsigned: true }).notNull(),
@@ -277,6 +280,7 @@ export const quoteAttachments = mysqlTable("quote_attachments", {
   mimeType: varchar("mimeType", { length: 100 }).notNull(),
   sizeBytes: bigint("sizeBytes", { mode: "number", unsigned: true }).notNull(),
   sha256: varchar("sha256", { length: 64 }).notNull(),
+  includeInPdf: boolean("include_in_pdf"),
   dataBase64: mediumtext("dataBase64").notNull(),
 }, table => [uniqueIndex("quote_attachment_content").on(table.rootId, table.sha256)]);
 

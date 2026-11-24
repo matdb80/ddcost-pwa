@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Paperclip, Files, Download, ZoomIn, ZoomOut } from "lucide-react";
+import { Paperclip, Files, Download, ZoomIn, ZoomOut, Trash2 } from "lucide-react";
 import { trpc } from "@/providers/trpc";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { MAX_QUOTE_FILE_BYTES } from "@/lib/quote-attachments";
@@ -24,12 +24,15 @@ export default function QuoteAttachments({ quoteId, ensureQuoteId, disabled = fa
   const [zoom, setZoom] = useState(100);
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
+  const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const id = quoteId ?? persistedId;
   const utils = trpc.useUtils();
   const list = trpc.quoteAttachment.list.useQuery({ quoteId: id ?? 0 }, { enabled: Boolean(id) && open, refetchOnWindowFocus: false });
   const current = trpc.quoteAttachment.get.useQuery({ quoteId: id ?? 0, id: activeId ?? 0 }, { enabled: open && Boolean(id && activeId), staleTime: 0, gcTime: 0, refetchOnWindowFocus: false });
   const upload = trpc.quoteAttachment.upload.useMutation();
+  const remove = trpc.quoteAttachment.remove.useMutation();
+  const setInclude = trpc.quoteAttachment.setIncludeInPdf.useMutation();
   useEffect(() => {
     setZoom(100); setUrl(""); setText("");
     if (!open || !current.data || current.data.id !== activeId) return;
@@ -60,6 +63,35 @@ export default function QuoteAttachments({ quoteId, ensureQuoteId, disabled = fa
     } finally { busyRef.current = false; setBusy(false); if (input.current) input.current.value = ""; }
   }
   const selected = current.data?.id === activeId ? current.data : null;
+  // v19: scelta «Includi nel PDF cliente», salvata subito e mantenuta alla riapertura.
+  async function toggleInclude(file: { id: number; fileName: string }, include: boolean) {
+    if (!id || busyRef.current) return;
+    busyRef.current = true; setBusy(true); setError(""); setMessage("");
+    try {
+      await setInclude.mutateAsync({ quoteId: id, id: file.id, include });
+      await utils.quoteAttachment.list.invalidate({ quoteId: id });
+      setMessage(include
+        ? `«${file.fileName}» sarà incluso nel PDF cliente.`
+        : `«${file.fileName}» escluso dal PDF cliente: resta consultabile e scaricabile qui.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Modifica della selezione non riuscita");
+    } finally { busyRef.current = false; setBusy(false); }
+  }
+  // v19: eliminazione in due passi. La conferma rimuove il file dall'archivio
+  // condiviso (tutte le revisioni) e dalle esportazioni successive.
+  async function confirmRemove(file: { id: number; fileName: string }) {
+    if (!id || busyRef.current) return;
+    busyRef.current = true; setBusy(true); setError(""); setMessage("");
+    try {
+      await remove.mutateAsync({ quoteId: id, id: file.id });
+      setConfirmingId(null);
+      if (activeId === file.id) { setActiveId(null); setUrl(""); setText(""); }
+      await utils.quoteAttachment.list.invalidate({ quoteId: id });
+      setMessage(`«${file.fileName}» eliminato dall’archivio: non comparirà nelle prossime esportazioni.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Eliminazione non riuscita");
+    } finally { busyRef.current = false; setBusy(false); }
+  }
   const button = "inline-flex shrink-0 items-center justify-center gap-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 disabled:opacity-40";
   return <div className="shrink-0 text-slate-800">
     <div className="flex flex-wrap gap-1">
@@ -70,18 +102,56 @@ export default function QuoteAttachments({ quoteId, ensureQuoteId, disabled = fa
     {!id && <p className="mt-1 max-w-64 text-[11px]">Allegare un file salva prima il nuovo preventivo come bozza.</p>}
     {message && <p role="status" className="mt-1 max-w-64 whitespace-normal text-xs text-emerald-800">{message}</p>}
     {error && <p role="alert" className="mt-1 max-w-64 whitespace-normal text-xs text-red-700">{error}</p>}
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={v => { setOpen(v); if (!v) setConfirmingId(null); }}>
       <DialogContent className="flex h-[88dvh] max-w-[96vw] flex-col gap-2 p-4 sm:max-w-[96vw]">
         <DialogTitle>Allegati del preventivo</DialogTitle>
-        <DialogDescription>Condivisi tra tutte le versioni. PDF, immagini e testi in anteprima; altri formati scaricabili. Massimo 20 file, 10 MB per file e 50 MB totali.</DialogDescription>
+        <DialogDescription>Condivisi tra tutte le versioni. PDF, immagini e testi in anteprima; altri formati scaricabili. Massimo 20 file, 10 MB per file e 50 MB totali. I nuovi file partono esclusi dal PDF cliente: spunta «Includi nel PDF cliente» per inserirli.</DialogDescription>
+        {/* Gli esiti delle operazioni sul dialogo restano visibili anche con il
+            dialogo aperto: il messaggio esterno è nascosto dall’overlay modale. */}
+        {message && <p role="status" className="whitespace-normal text-xs text-emerald-800">{message}</p>}
+        {error && <p role="alert" className="whitespace-normal text-xs text-red-700">{error}</p>}
         <div className="grid min-h-0 flex-1 grid-rows-[minmax(5rem,25%)_1fr] gap-3 md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-1">
           <aside className="overflow-auto rounded border bg-slate-50 p-2" aria-label="Elenco allegati">
             {list.isLoading && <p>Caricamento…</p>}
             {list.error && <p role="alert" className="text-sm text-red-700">{list.error.message}</p>}
             {!list.isLoading && !list.error && !(list.data?.length) && <p className="text-sm">Nessun allegato caricato.</p>}
-            {list.data?.map(file => <button type="button" key={file.id} aria-pressed={activeId === file.id} onClick={() => setActiveId(file.id)} className={`mb-1 block w-full break-words rounded p-2 text-left text-sm ${activeId === file.id ? "bg-sky-100 font-semibold" : "hover:bg-white"}`}>
-              {file.fileName}<span className="block text-xs font-normal">{(file.sizeBytes / 1024).toLocaleString("it-IT", { maximumFractionDigits: 1 })} KB</span>
-            </button>)}
+            {list.data?.map(file => {
+              // v19: la casella di inclusione riguarda solo i formati che possono
+              // entrare nel PDF cliente (immagini e PDF). NULL = allegato storico,
+              // incluso finché l'utente non sceglie esplicitamente.
+              const includable = file.mimeType.startsWith("image/") || file.mimeType === "application/pdf";
+              const included = file.includeInPdf ?? true;
+              return <div key={file.id} className={`mb-1 rounded ${activeId === file.id ? "bg-sky-100" : ""}`}>
+                <button type="button" aria-pressed={activeId === file.id} onClick={() => setActiveId(file.id)} className={`block w-full break-words rounded p-2 pb-1 text-left text-sm ${activeId === file.id ? "font-semibold" : "hover:bg-white"}`}>
+                  {file.fileName}<span className="block text-xs font-normal">{(file.sizeBytes / 1024).toLocaleString("it-IT", { maximumFractionDigits: 1 })} KB</span>
+                  {includable && !included && <span className="block text-[11px] font-normal text-amber-700">Escluso dal PDF cliente</span>}
+                </button>
+                {confirmingId === file.id ? (
+                  <div className="mx-1 mb-1 space-y-1.5 rounded border border-red-200 bg-red-50 p-2 text-xs">
+                    <p role="alert" className="text-red-800">Eliminare «{file.fileName}»? L’archivio è condiviso tra tutte le revisioni del preventivo: il file sarà rimosso per tutte e non sarà recuperabile.</p>
+                    <div className="flex flex-wrap gap-1">
+                      <button type="button" disabled={disabled || busy} onClick={() => void confirmRemove(file)}
+                        className="rounded bg-red-700 px-2 py-1 font-semibold text-white disabled:opacity-40">Conferma eliminazione</button>
+                      <button type="button" className={button} disabled={busy} onClick={() => setConfirmingId(null)}>Annulla</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 pb-1.5">
+                    {includable && <label className="flex items-center gap-1 text-[11px] text-slate-700">
+                      <input type="checkbox" className="h-3.5 w-3.5 accent-emerald-600" aria-label={`Includi ${file.fileName} nel PDF cliente`}
+                        checked={included} disabled={disabled || busy}
+                        onChange={e => void toggleInclude(file, e.target.checked)}/>
+                      Includi nel PDF cliente
+                    </label>}
+                    <button type="button" aria-label={`Elimina ${file.fileName}`} disabled={disabled || busy}
+                      className="inline-flex items-center gap-1 text-[11px] text-red-700 hover:underline disabled:opacity-40 sm:ml-auto"
+                      onClick={() => setConfirmingId(file.id)}>
+                      <Trash2 size={12}/> Elimina
+                    </button>
+                  </div>
+                )}
+              </div>;
+            })}
           </aside>
           <section className="flex min-h-0 min-w-0 flex-col gap-2" aria-label="Anteprima allegato">
             {current.error && <p role="alert" className="text-red-700">{current.error.message}</p>}

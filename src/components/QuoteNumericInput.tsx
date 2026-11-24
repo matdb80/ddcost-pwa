@@ -1,8 +1,8 @@
 import {useEffect,useRef,useState} from "react";
 import type {InputHTMLAttributes} from "react";
 
-export type QuoteNumericKind = "euro" | "decimal" | "percent";
-export const quoteNumericDecimals = (kind:QuoteNumericKind):number => kind==="euro"?2:1;
+export type QuoteNumericKind = "euro" | "decimal" | "percent" | "integer";
+export const quoteNumericDecimals = (kind:QuoteNumericKind):number => kind==="euro"?2:kind==="integer"?0:1;
 
 export function formatQuoteNumeric(value:number|null|undefined,kind:QuoteNumericKind,fractionDigits=quoteNumericDecimals(kind)):string {
   if(value===null || value===undefined || !Number.isFinite(value))return "";
@@ -18,6 +18,8 @@ export function formatQuoteNumeric(value:number|null|undefined,kind:QuoteNumeric
  */
 export function validQuoteNumericDraft(raw:string,kind:QuoteNumericKind,fractionDigits=quoteNumericDecimals(kind)):boolean {
   if(raw==="")return true;
+  // Interi positivi (es. settimane di consegna): solo cifre, niente separatori.
+  if(kind==="integer")return /^\d*$/.test(raw);
   const decimals=fractionDigits;
   return new RegExp("^\\d*(?:[.,]\\d{0,"+decimals+"})?$").test(raw);
 }
@@ -26,6 +28,9 @@ export function parseQuoteNumericDraft(raw:string,kind:QuoteNumericKind,fraction
   if(!validQuoteNumericDraft(raw,kind,fractionDigits) || !/\d/.test(raw))return null;
   const normalized=Number(raw.replace(",","."));
   if(!Number.isFinite(normalized)||normalized<0)return null;
+  // Gli interi positivi rifiutano lo zero: la bozza resta visibile ma non
+  // diventa un valore; al blur un campo facoltativo torna vuoto.
+  if(kind==="integer"&&normalized===0)return null;
   return kind==="percent"?normalized/100:normalized;
 }
 
@@ -59,7 +64,7 @@ export default function QuoteNumericInput({
   return <input
     {...rest}
     aria-label={ariaLabel}
-    type="text" inputMode="decimal" autoComplete="off"
+    type="text" inputMode={kind==="integer"?"numeric":"decimal"} autoComplete="off"
     disabled={disabled}
     className={className}
     value={draft}

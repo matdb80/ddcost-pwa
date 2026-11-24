@@ -361,3 +361,26 @@ describe("custom modification objects catalog",()=>{
     expect(restored.oggetti_modifica_personalizzati).toEqual(["Foratura aggiuntiva"]);
   });
 });
+
+describe("v20: passo «Consegna stimata (settimane)» nel wizard mobile",()=>{
+  it("è in Intestazione, numerico intero, facoltativo, prima dei passi prodotto, in entrambe le modalità",()=>{
+    for(const advanced of [false,true]){
+      const quote=blankQuote();
+      const steps=buildQuoteWizardSteps(quote,advanced);
+      const idx=steps.findIndex(s=>s.id==="consegna_settimane");
+      expect(idx).toBeGreaterThanOrEqual(0);
+      const s=steps[idx];
+      expect(s.section).toBe("Intestazione");
+      expect(s.kind).toBe("number");
+      expect(s.numeric).toBe("integer");
+      expect(s.required).not.toBe(true);
+      expect(s.field).toBe("consegna_settimane");
+      // prima di qualunque passo prodotto
+      const firstProduct=steps.findIndex(x=>x.id.startsWith("p:"));
+      expect(firstProduct===-1 || idx<firstProduct).toBe(true);
+      // facoltativo: nessun errore né vuoto né con un valore valido
+      expect(quoteWizardStepError(s,quote)).toBeNull();
+      expect(quoteWizardStepError(s,{...quote,consegna_settimane:4})).toBeNull();
+    }
+  });
+});

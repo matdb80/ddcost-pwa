@@ -568,3 +568,41 @@ describe("quote PDF file — v16: allegati nel PDF cliente", () => {
     expect(latin1(empty.bytes)).toBe(latin1(plain1.bytes));
   });
 });
+
+describe("quote PDF file — v20: consegna stimata in testata", () => {
+  it("mostra «Consegna stimata: 4 settimane dalla conferma scritta» nella testata", () => {
+    const text = plain(buildQuotePdfFile(fixture({ consegna_settimane: 4 }), 991, { revision: 2 }).bytes);
+    expect(text).toContain("Consegna stimata: 4 settimane dalla conferma scritta");
+    // resta nella stessa pagina dei metadati (Cliente/Riferimento)
+    expect(text).toContain("Cliente prova");
+  });
+
+  it("usa il singolare con 1: «Consegna stimata: 1 settimana dalla conferma scritta»", () => {
+    const text = plain(buildQuotePdfFile(fixture({ consegna_settimane: 1 })).bytes);
+    expect(text).toContain("Consegna stimata: 1 settimana dalla conferma scritta");
+    expect(text).not.toContain("1 settimane");
+  });
+
+  it("in inglese: «Estimated delivery: 4 weeks from written confirmation», singolare «1 week»", () => {
+    const en4 = plain(buildQuotePdfFile(fixture({ consegna_settimane: 4, pdf_in_inglese: true })).bytes);
+    expect(en4).toContain("Estimated delivery: 4 weeks from written confirmation");
+    expect(en4).not.toContain("Consegna stimata");
+    const en1 = plain(buildQuotePdfFile(fixture({ consegna_settimane: 1, pdf_in_inglese: true })).bytes);
+    expect(en1).toContain("Estimated delivery: 1 week from written confirmation");
+    expect(en1).not.toContain("1 weeks");
+  });
+
+  it("omette la dicitura quando il campo è vuoto o non valido (storici inclusi)", () => {
+    // fixture() non ha la chiave: è il caso dei preventivi storici
+    const storico = plain(buildQuotePdfFile(fixture()).bytes);
+    expect(storico).not.toContain("Consegna stimata");
+    expect(storico).not.toContain("Estimated delivery");
+    expect(storico).toContain("Cliente prova"); // il resto della testata resta
+    // v21: anche "4e2", true e [4] (che Number() convertirebbe) sono omessi
+    for (const val of [undefined, null, "", 0, -2, 2.5, "quattro", "4e2", true, [4]]) {
+      const text = plain(buildQuotePdfFile(fixture({ consegna_settimane: val })).bytes);
+      expect(text, String(val)).not.toContain("Consegna stimata");
+      expect(text, String(val)).not.toContain("Estimated delivery");
+    }
+  });
+});

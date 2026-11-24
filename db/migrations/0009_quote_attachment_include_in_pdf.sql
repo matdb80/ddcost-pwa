@@ -1,0 +1,25 @@
+-- ============================================================================
+-- DDCost v21 — MIGRAZIONE RICHIESTA (da rivedere e applicare in fase di
+-- pubblicazione, a cura di ChatGPT). La colonna fu introdotta con la v19 e
+-- resta invariata; è inclusa in questa consegna perché la base pubblicata
+-- (v18, commit 9c9d01e61463a52c73486c4e804682258ef206ed) non la contiene.
+-- Le versioni v16-v18 non richiedevano alcuna migrazione; la v20 (consegna
+-- stimata) non ne richiede perché il campo vive in quotes.dataJson.
+--
+-- Semantica della colonna:
+--   NULL = allegato precedente alla scelta utente → incluso nel PDF cliente
+--          (comportamento storico conservato, nessuna modifica ai dati esistenti)
+--   0    = escluso dal PDF cliente (scelta esplicita, o nuovo caricamento:
+--          i nuovi upload partono deselezionati per non inviare note interne)
+--   1    = incluso nel PDF cliente (scelta esplicita)
+--
+-- Senza questa migrazione l'archivio allegati risponde con l'errore esplicito
+-- PRECONDITION_FAILED «Archivio allegati non aggiornato: migrazione
+-- include_in_pdf non applicata» invece di un generico errore SQL.
+--
+-- Applicata e collaudata sul DB locale di test (MariaDB 10.11, localhost,
+-- ddcost_test) ricreato nello stato v18 con allegati preesistenti:
+-- vedi log/verifica-migrazione.log e log/prova-browser-v21.json.
+-- Compatibile anche con TiDB/MySQL 8.
+-- ============================================================================
+ALTER TABLE quote_attachments ADD COLUMN include_in_pdf tinyint(1) NULL DEFAULT NULL;

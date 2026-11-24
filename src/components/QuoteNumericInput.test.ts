@@ -49,4 +49,21 @@ describe("Preventivo Una Tantum: editable numeric fields",()=>{
     expect(parseQuoteNumericDraft("-1","euro")).toBeNull();
     expect(parseQuoteNumericDraft("Infinity","euro")).toBeNull();
   });
+  // v20: «Consegna stimata (settimane)» — interi positivi, niente decimali,
+  // segni, notazione scientifica o zero; il vuoto resta vuoto.
+  it("integer kind accepts only positive whole numbers",()=>{
+    for(const raw of ["","1","4","12","300"]){
+      expect(validQuoteNumericDraft(raw,"integer"),raw).toBe(true);
+    }
+    for(const raw of ["1,5","1.5","-3","4,","2 3","1e3","abc","+4"]){
+      expect(validQuoteNumericDraft(raw,"integer"),raw).toBe(false);
+    }
+    expect(parseQuoteNumericDraft("4","integer")).toBe(4);
+    expect(parseQuoteNumericDraft("1","integer")).toBe(1);
+    expect(parseQuoteNumericDraft("","integer")).toBeNull();
+    expect(parseQuoteNumericDraft("0","integer")).toBeNull();
+    expect(formatQuoteNumeric(4,"integer")).toBe("4");
+    expect(formatQuoteNumeric(null,"integer")).toBe("");
+    expect(roundQuoteNumeric(4,"integer")).toBe(4);
+  });
 });

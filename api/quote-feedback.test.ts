@@ -430,3 +430,122 @@ it('rejects obsolete series RAL amounts on completed writes and saves/reopens th
   expect(saved.prodotti[0]).toMatchObject({codice:'FSP001012NIN',prezzo_serie:10,netto_prima_ral:10,ral_percentuale:100,totale_finale:40});
   expect(refreshQuoteSeriesRal(saved)).toEqual(saved);
 });
+
+describe("consegna stimata in settimane (v20, validazione rafforzata v21)",()=>{
+  it("persists a positive integer on create and returns it on read",async()=>{
+    const created=await caller().create({...payload({...doc(),consegna_settimane:4} as any),targetTotal:undefined});
+    const saved=JSON.parse((await caller().get({id:created.id}))!.dataJson!);
+    expect(saved.consegna_settimane).toBe(4);
+  });
+  it("keeps historical documents without the key and stores null when cleared",async()=>{
+    const created=await createQuote(); // doc() storico: nessuna chiave
+    const historic=JSON.parse((await caller().get({id:created.id}))!.dataJson!);
+    expect("consegna_settimane" in historic).toBe(false);
+    const row=store.quotes.find(q=>q.id===created.id)!;
+    const cleared={...doc(),consegna_settimane:null};
+    await caller().update({id:created.id,expectedToken:quoteWriteToken(row as Quote),...payload(cleared)});
+    const saved=JSON.parse((await caller().get({id:created.id}))!.dataJson!);
+    expect(saved.consegna_settimane).toBeNull();
+  });
+  it("normalizes a numeric string to a number",async()=>{
+    const created=await caller().create({...payload({...doc(),consegna_settimane:"4"} as any),targetTotal:undefined});
+    const saved=JSON.parse((await caller().get({id:created.id}))!.dataJson!);
+    expect(saved.consegna_settimane).toBe(4);
+  });
+  it("rejects zero, negative, fractional and non-numeric values on every completed write",async()=>{
+    const source=await createQuote();
+    const row=store.quotes.find(q=>q.id===source.id)!;
+    // v21: oltre a zero/negativi/decimali/testo si rifiutano anche i valori
+    // che Number() convertirebbe silenziosamente: true→1, [4]→4, "4e2"→400.
+    for(const bad of [0,-3,2.5,"quattro",true,[4],"4e2"]){
+      const before=structuredClone(store.quotes);
+      const p=payload({...doc(),consegna_settimane:bad} as any);
+      for(const write of [
+        ()=>caller().create({...p,targetTotal:undefined}),
+        ()=>caller().update({id:source.id,expectedToken:quoteWriteToken(row as Quote),...p}),
+        ()=>caller().saveRevision({sourceId:source.id,...p}),
+        ()=>caller().finalizeDraft({draftId:source.id,...p}),
+      ])await expect(write(),String(bad)).rejects.toMatchObject({code:"BAD_REQUEST",message:expect.stringContaining("Consegna stimata non valida")});
+      expect(store.quotes).toEqual(before);
+    }
+  });
+});
+
+// v23: un codice articolo con il RAL «cotto» (es. VBCD091Z03IO7035) e un RAL di
+// documento attivo blocca le scritture definitive (la bozza resta consentita):
+// la riga va prima corretta alla finitura standard.
+it('blocks completed writes with a typed RAL-baked code, allows drafts, and counts the surcharge once after the fix',async()=>{
+  const {refreshQuoteSeriesRal}=await import('../src/lib/quote-series-ral-refresh');
+  // stato reale dello storico DDC90020/2026: supplemento a 0 già applicato (il
+  // motore non ricarica i codici già verniciati), quindi il documento supera la
+  // verifica sui supplementi di serie e arriva al blocco v23.
+  const raw={...doc(),verniciatura_ral:{color:'9010',textured:false},totale_finale:140,prodotti:[{prodotto_di_serie:true,codice:'VBCD091Z03IO7035',descrizione:'Valvola a sfera',quantita:8,prezzo_serie:17.5,prezzo_netto_unitario_finale:17.5,totale_finale:140}]};
+  const pending=refreshQuoteSeriesRal(raw);
+  // v24: toHaveProperty — il tipo inferito di prodotti[0] non dichiara i campi RAL.
+  expect(pending.prodotti[0]).toHaveProperty("ral_percentuale",0);
+  const dataJson=JSON.stringify(pending),p={client:'Cliente',numProducts:1,totalFinal:'140',targetTotal:null,dataJson};
+  // bozza consentita: creazione e aggiornamento bozza non passano dal blocco
+  const draft=await caller().saveDraft({dataJson});
+  await caller().saveDraft({sourceId:draft.id,dataJson});
+  const source=await createQuote(),before=structuredClone(store.quotes);
+  for(const write of [
+    ()=>caller().create({...p,targetTotal:undefined}),
+    ()=>caller().finalizeDraft({draftId:draft.id,...p}),
+    ()=>caller().update({id:source.id,expectedToken:quoteWriteToken(store.quotes[1]),...p}),
+    ()=>caller().saveRevision({sourceId:source.id,...p}),
+  ])await expect(write()).rejects.toMatchObject({code:'BAD_REQUEST',message:expect.stringContaining('Supplemento RAL da calcolare: correggi il codice articolo della riga 1 (VBCD091Z03IO7035)')});
+  expect(store.quotes).toEqual(before);
+  // codice corretto alla finitura standard: la scrittura passa e la riapertura
+  // non conteggia mai due volte il supplemento
+  const fixed=refreshQuoteSeriesRal({...raw,prodotti:[{...raw.prodotti[0],codice:'VBCD091Z03IN'}]});
+  await caller().finalizeDraft({draftId:draft.id,...p,totalFinal:String(fixed.totale_finale),dataJson:JSON.stringify(fixed)});
+  const loaded=await caller().get({id:draft.id}),saved=JSON.parse(loaded!.dataJson!);
+  expect(Number(loaded!.totalFinal)).toBe(260);
+  expect(saved.totale_finale).toBe(260);
+  expect(saved.prodotti[0]).toMatchObject({codice:'VBCD091Z03IN',netto_prima_ral:17.5,ral_percentuale:50,ral_ricarico_cad:8.75,prezzo_netto_unitario_finale:26.25,totale_finale:210});
+  expect(saved.ral_riepilogo.fixed).toBe(50);
+  expect(refreshQuoteSeriesRal(saved)).toEqual(saved);
+});
+
+// v24: il nylon digitato con il RAL «cotto» (LRNG211605NO7035) è escluso per
+// materiale — il motore applica correttamente lo 0% e la riga NON blocca le
+// scritture definitive né l'export: sotto la riga compare solo il motivo di
+// esclusione (verificato nei test di pagina).
+it('v24: allows completed writes with a typed nylon RAL-baked code (material exclusion wins)',async()=>{
+  const {refreshQuoteSeriesRal}=await import('../src/lib/quote-series-ral-refresh');
+  const raw={...doc(),verniciatura_ral:{color:'9010',textured:false},totale_finale:20,prodotti:[{prodotto_di_serie:true,codice:'LRNG211605NO7035',descrizione:'Larghetta nylon',quantita:2,prezzo_serie:10,prezzo_netto_unitario_finale:10,totale_finale:20}]};
+  const refreshed=refreshQuoteSeriesRal(raw);
+  expect(refreshed.prodotti[0]).toHaveProperty("ral_percentuale",0);
+  const dataJson=JSON.stringify(refreshed),p={client:'Cliente',numProducts:1,totalFinal:String(refreshed.totale_finale),targetTotal:null,dataJson};
+  // nessuna delle scritture definitive è rifiutata
+  const created=await caller().create({...p,targetTotal:undefined});
+  const row=store.quotes.find(q=>q.id===created.id)!;
+  await caller().update({id:created.id,expectedToken:quoteWriteToken(row as Quote),...p});
+  await caller().saveRevision({sourceId:created.id,...p});
+  const draft=await caller().saveDraft({dataJson});
+  await caller().finalizeDraft({draftId:draft.id,...p});
+  // il documento salvato conserva codice ed esclusione (0%) dal motore
+  const saved=JSON.parse((await caller().get({id:created.id}))!.dataJson!);
+  expect(saved.prodotti[0]).toMatchObject({codice:'LRNG211605NO7035',ral_percentuale:0,ral_ricarico_cad:0});
+});
+
+// v24: codice con trattino (VBCD091-03IO7035): la proposta «Usa …» non è
+// offerta perché il motore non convertirebbe il codice PDF — la riga resta da
+// correggere a mano e le scritture definitive restano bloccate.
+it('v24: keeps blocking completed writes when the standard proposal cannot be converted (dashed code)',async()=>{
+  const {refreshQuoteSeriesRal}=await import('../src/lib/quote-series-ral-refresh');
+  const raw={...doc(),verniciatura_ral:{color:'9010',textured:false},totale_finale:140,prodotti:[{prodotto_di_serie:true,codice:'VBCD091-03IO7035',descrizione:'Valvola a sfera',quantita:8,prezzo_serie:17.5,prezzo_netto_unitario_finale:17.5,totale_finale:140}]};
+  // come nel caso v23: i supplementi di serie sono già aggiornati dal motore
+  // (codice cotto → 0%), quindi la scrittura supera la verifica di ricalcolo e
+  // arriva al blocco del codice digitato.
+  const pending=refreshQuoteSeriesRal(raw);
+  expect(pending.prodotti[0]).toHaveProperty("ral_percentuale",0);
+  const dataJson=JSON.stringify(pending),p={client:'Cliente',numProducts:1,totalFinal:'140',targetTotal:null,dataJson};
+  const source=await createQuote(),before=structuredClone(store.quotes);
+  for(const write of [
+    ()=>caller().create({...p,targetTotal:undefined}),
+    ()=>caller().update({id:source.id,expectedToken:quoteWriteToken(store.quotes[0] as Quote),...p}),
+    ()=>caller().saveRevision({sourceId:source.id,...p}),
+  ])await expect(write()).rejects.toMatchObject({code:"BAD_REQUEST",message:expect.stringContaining('Supplemento RAL da calcolare: correggi il codice articolo della riga 1 (VBCD091-03IO7035)')});
+  expect(store.quotes).toEqual(before);
+});

@@ -8,6 +8,9 @@ import {listinoProductIndex,quoteRowListino,rowListinoInputError} from "@/lib/qu
 import QuoteRowListinoFields from "@/components/QuoteRowListinoFields";
 import {quoteCostCompleteness,withCostCompleteness} from "@/lib/quote-cost-completeness";
 import QuoteSeriesFields from "@/components/QuoteSeriesFields";
+import RalTypedCodeNotice from "@/components/RalTypedCodeNotice";
+import RalRowSupplement from "@/components/RalRowSupplement";
+import {quoteRalTypedCodeError} from "@/lib/quote-ral-typed-code";
 import {isSeries,isFixedPrice,seriesProductError} from "@/lib/quote-series";
 import SalesHandoffPanel from "@/components/SalesHandoffPanel";
 import { quoteDocumentNumber } from "@/lib/commercial-offer-number";
@@ -28,7 +31,7 @@ import QuoteNumericInput, {type QuoteNumericKind} from "@/components/QuoteNumeri
 import LaborCostField from "@/components/LaborCostField";
 import ArticleCodeInput from "@/components/ArticleCodeInput";
 import StandardBlackFinish from "@/components/StandardBlackFinish";
-import {manualTemporaryCodePrefix,validManualTemporaryCode,isNaturalTemporaryCode} from "@/lib/ral-pricing";
+import {manualTemporaryCodePrefix,validManualTemporaryCode,isNaturalTemporaryCode,validRal} from "@/lib/ral-pricing";
 import QuoteMaterialCostFields from "@/components/QuoteMaterialCostFields";
 import QuoteModificationObjectFields from "@/components/QuoteModificationObjectFields";
 import QuoteMobileWizard from "@/components/QuoteMobileWizard";
@@ -268,7 +271,12 @@ function PreventivoEditor() {
       return { ...prev, prodotti, oggetti_modifica_personalizzati: catalog };
     });
     if (!["gruppo_merceologico","materiale_prodotto","codice","descrizione","nero_standard_goffrato"].includes(key) ||
-        (key==="materiale_prodotto" && doc.prodotti[index]?.costo_materiale_noto===false))
+        (key==="materiale_prodotto" && doc.prodotti[index]?.costo_materiale_noto===false) ||
+        // v23: con un RAL di documento attivo il codice determina l'aliquota del
+        // supplemento (famiglia, materiale, finitura): cambiarlo — a mano o col
+        // pulsante «Usa …» — deve ricalcolare, altrimenti il salvataggio
+        // conserverebbe gli importi RAL del codice precedente.
+        (key==="codice" && validRal(doc.verniciatura_ral)))
       setDirtyCalculation(true);
   };
   // Rinomina un oggetto della modifica nel catalogo e in tutti i prodotti del preventivo
@@ -399,6 +407,13 @@ function PreventivoEditor() {
       setError("Prima completa il preventivo: una bozza non va inviata al cliente.");
       return;
     }
+    // v23: anche la copia per email/documento è un output al cliente e
+    // richiede che ogni codice RAL «cotto» sia corretto.
+    const ralTypedCopyError=quoteRalTypedCodeError(doc);
+    if(ralTypedCopyError){
+      setError(ralTypedCopyError);
+      return;
+    }
     setError("");
     setCopyMessage("");
     try {
@@ -441,6 +456,12 @@ function PreventivoEditor() {
       setError("Completa i campi obbligatori prima di esportare il PDF cliente.");
       return null;
     }
+    // v23: export ed email richiedono che ogni codice RAL «cotto» sia corretto.
+    const ralTypedError=quoteRalTypedCodeError(doc);
+    if (ralTypedError) {
+      setError(ralTypedError);
+      return null;
+    }
     setError("");
     setPdfWarnings([]);
     try {
@@ -451,7 +472,12 @@ function PreventivoEditor() {
         // un ambiente) non deve impedire l'export: si avvisa e si va avanti.
         try {
           const metas = await utils.quoteAttachment.list.fetch({ quoteId: numericId });
-          if (metas.length) {
+          // v19: nel PDF cliente entrano solo gli allegati selezionati. NULL significa
+          // allegato precedente alla scelta esplicita: mantiene il comportamento storico
+          // (incluso). Gli esclusi non vengono recuperati né segnalati come avviso:
+          // l'esclusione è una scelta dell'utente, non un errore di lettura.
+          const selected = metas.filter(m => m.includeInPdf ?? true);
+          if (selected.length) {
             const files = [];
             // v18: il recupero è per singolo allegato. Se una lettura fallisce
             // (es. integrità non superata) si conservano i file già recuperati,
@@ -459,7 +485,7 @@ function PreventivoEditor() {
             // successivo: l'export non si interrompe e il PDF resta completo.
             const notRetrieved: string[] = [];
             // list restituisce i più recenti prima: invertire per l'ordine di caricamento.
-            for (const meta of [...metas].reverse()) {
+            for (const meta of [...selected].reverse()) {
               try {
                 files.push(await utils.quoteAttachment.get.fetch({ quoteId: numericId, id: meta.id }));
               } catch {
@@ -553,6 +579,10 @@ function PreventivoEditor() {
     if (!Array.isArray(doc.prodotti) || doc.prodotti.length === 0) return setError("Inserire almeno un prodotto");
     const descriptionError=quoteProductDescriptionError(doc.prodotti);
     if(descriptionError)return setError(descriptionError);
+    // v23: con un codice RAL «cotto» da correggere il salvataggio definitivo è
+    // bloccato (la bozza resta consentita); l'errore nomina la riga.
+    const ralTypedError=quoteRalTypedCodeError(doc);
+    if(ralTypedError)return setError(ralTypedError);
     for (let i = 0; i < doc.prodotti.length; i++) {
       const p = doc.prodotti[i];
       if(isSeries(p)){
@@ -834,6 +864,13 @@ function PreventivoEditor() {
                 onChange={e=>update(key,e.target.value)}/>
             </label>)}
           <label className="flex min-w-0 flex-col gap-1 text-sm">
+            <span className="font-medium">Consegna stimata (settimane, facoltativo)</span>
+            <QuoteNumericInput kind="integer" optional className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100"
+              aria-label="Consegna stimata (settimane)"
+              disabled={locked} value={doc.consegna_settimane ?? null}
+              onChange={value=>update("consegna_settimane",value)}/>
+          </label>
+          <label className="flex min-w-0 flex-col gap-1 text-sm">
             <span className="font-medium">{doc.verniciatura_ral?"Totale desiderato prima RAL € (facoltativo)":"Totale desiderato € (quadratura, facoltativo)"}</span>
             <QuoteNumericInput kind="euro" optional className="w-full min-w-0 border rounded p-2 disabled:bg-slate-100"
               disabled={locked||!hasStandardProducts} value={doc.target_totale ?? null}
@@ -1019,7 +1056,7 @@ function PreventivoEditor() {
             {!locked && doc.prodotti.length > 1 && <button title="Rimuovi prodotto" className="rounded p-1 text-red-950 hover:bg-white/30" onClick={()=>removeProduct(index)}><Trash2 size={17}/></button>}
             </div>
           </div>
-          {isSeries(p) ? <QuoteSeriesFields product={p} calculated={preview?.prodotti?.[index]} ralEnabled={Boolean(doc.verniciatura_ral)} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : isForfait(p) ? <QuoteForfaitFields product={p} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : <>
+          {isSeries(p) ? <QuoteSeriesFields product={p} calculated={preview?.prodotti?.[index]} ral={doc.verniciatura_ral??null} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : isForfait(p) ? <QuoteForfaitFields product={p} disabled={locked} onChange={(key,value)=>updateProduct(index,key,value)}/> : <>
           {!legacyCostModel && sharedTreatmentMode === "ore_lavoro" &&
             <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
               Costo trattamenti inglobati nel tempo di produzione. Includi il tempo dei trattamenti nelle ore
@@ -1038,6 +1075,8 @@ function PreventivoEditor() {
               <ArticleCodeInput id={"product-code-"+index} className={compactInputClass+" "+normalInputClass} disabled={locked} value={p.codice??""}
                 protectedPrefix={!doc.verniciatura_ral?manualTemporaryCodePrefix(p.codice_temporaneo):null}
                 onChange={value=>updateProduct(index,"codice",value)}/>
+              {/* v23: avviso per codice digitato con RAL «cotto» + anteprima codice PDF */}
+              <RalTypedCodeNotice product={p} ral={doc.verniciatura_ral??null} disabled={locked} onUseStandard={code=>updateProduct(index,"codice",code)}/>
             </div>
             <label className="flex min-w-0 flex-col gap-1 text-xs sm:col-span-1 lg:col-span-4">
               <span className="flex min-h-7 items-center justify-between gap-2">
@@ -1177,7 +1216,12 @@ function PreventivoEditor() {
               historical={p.genera_listino==null?quoteRowListino(doc,index):null}/>
             <span>Totale riga €: <b>{euro(preview?.prodotti?.[index]?.totale_finale)}<FormulaTooltip label="Totale riga prodotto" formula={CALCULATION_FORMULAS.quote.productTotal}/></b></span>
           </div></div>
+          {/* v23: supplemento RAL sotto la riga anche per i prodotti speciali */}
+          {doc.verniciatura_ral && <RalRowSupplement product={p} calculated={preview?.prodotti?.[index]} ral={doc.verniciatura_ral}/>}
           </>}
+          {/* v24: motivo di esclusione sotto la riga a forfait (serie e speciali lo hanno nei propri blocchi) */}
+          {doc.verniciatura_ral && isForfait(p) &&
+            <RalRowSupplement product={p} calculated={preview?.prodotti?.[index]} ral={doc.verniciatura_ral}/>}
         </section>)}
       <section className="bg-white border rounded-xl p-3 md:p-4 space-y-3">
         <h2 className="font-semibold">Note e riepilogo</h2>

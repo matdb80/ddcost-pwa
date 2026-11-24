@@ -18,6 +18,7 @@ import {latestCompletedQuotePerRoot,readQuoteOutcome,summarizeQuoteOutcomes} fro
 import {modificationObjectError} from "../src/lib/quote-modification-validation";
 import {quoteMaterialError} from "../src/lib/quote-material-weight";
 import {quoteProductDescriptionError} from "../src/lib/quote-product-description";
+import {quoteRalTypedCodeError} from "../src/lib/quote-ral-typed-code";
 
 const ALLOWED_MATERIALS = new Set(["ferro","ottone","inox","alluminio"]);
 
@@ -27,7 +28,27 @@ async function validateQuoteClassifications(dataJson: string | undefined, db:any
   let document: unknown;
   try { document = JSON.parse(dataJson); }
   catch { throw new Error("JSON preventivo non valido"); }
+  // v21: «Consegna stimata (settimane)» — facoltativa. Si accetta il campo
+  // vuoto, un numero intero positivo oppure una stringa di sole cifre che
+  // rappresenti un intero positivo valido (normalizzata a numero). Si
+  // rifiutano booleani, array, decimali, zero/negativi e stringhe non
+  // puramente numeriche (es. "4e2", che Number() convertirebbe in 400).
+  const deliveryWeeks = (document as Record<string, unknown>).consegna_settimane;
+  if (deliveryWeeks !== undefined && deliveryWeeks !== null && deliveryWeeks !== "") {
+    const weeks = typeof deliveryWeeks === "string"
+      ? (/^\d+$/.test(deliveryWeeks) ? Number(deliveryWeeks) : Number.NaN)
+      : (typeof deliveryWeeks === "number" ? deliveryWeeks : Number.NaN);
+    if (!Number.isSafeInteger(weeks) || weeks <= 0)
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Consegna stimata non valida: indicare un numero intero positivo di settimane oppure lasciare il campo vuoto." });
+    (document as Record<string, unknown>).consegna_settimane = weeks;
+  }
   if(needsSeriesRalRefresh(document as Record<string,any>))throw new TRPCError({code:"BAD_REQUEST",message:"Ricalcola il preventivo: i supplementi RAL dei prodotti di serie non sono aggiornati."});
+  // v23: un codice articolo con il RAL «cotto» (es. «…O7035») e un RAL di
+  // documento attivo blocca le scritture DEFINITIVE (create, update,
+  // saveRevision, finalizeDraft); la bozza resta consentita perché non passa
+  // da questa validazione. L'errore nomina la riga da correggere.
+  const ralTypedError=quoteRalTypedCodeError(document as Record<string,any>);
+  if(ralTypedError)throw new TRPCError({code:"BAD_REQUEST",message:ralTypedError});
   const rows = (document as { prodotti?: unknown } | null)?.prodotti;
   if (!Array.isArray(rows) || rows.length === 0)
     throw new Error("Inserire almeno un prodotto");

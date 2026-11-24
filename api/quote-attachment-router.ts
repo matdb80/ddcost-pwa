@@ -11,7 +11,8 @@ import { MAX_QUOTE_FILE_BYTES, MAX_QUOTE_FILE_BASE64, MAX_QUOTE_ATTACHMENTS,
 const quoteIdInput = z.object({ quoteId: z.number().int().positive() });
 const metadata = { id: quoteAttachments.id, rootId: quoteAttachments.rootId,
   fileName: quoteAttachments.fileName, mimeType: quoteAttachments.mimeType,
-  sizeBytes: quoteAttachments.sizeBytes, sha256: quoteAttachments.sha256, createdAt: quoteAttachments.createdAt };
+  sizeBytes: quoteAttachments.sizeBytes, sha256: quoteAttachments.sha256, createdAt: quoteAttachments.createdAt,
+  includeInPdf: quoteAttachments.includeInPdf };
 type Db = Pick<ReturnType<typeof getDb>, "select">;
 async function quoteRoot(db: Db, quoteId: number) {
   const [quote] = await db.select().from(quotes).where(eq(quotes.id, quoteId)).limit(1);
@@ -22,6 +23,10 @@ function tableError(error: unknown): never {
   const e = error as { code?: string; cause?: { code?: string } };
   if (e.code === "ER_NO_SUCH_TABLE" || e.cause?.code === "ER_NO_SUCH_TABLE")
     throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Archivio allegati non ancora attivato su questo ambiente." });
+  // v19: la colonna include_in_pdf richiede una migrazione; senza di essa l'archivio
+  // risponde con un errore esplicito invece di un generico errore SQL.
+  if (e.code === "ER_BAD_FIELD_ERROR" || e.cause?.code === "ER_BAD_FIELD_ERROR")
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Archivio allegati non aggiornato: migrazione include_in_pdf non applicata." });
   throw error;
 }
 export function decodeQuoteFile(fileName: string, dataBase64: string) {
@@ -74,9 +79,41 @@ export const quoteAttachmentRouter = createRouter({
         if (same) return { id: same.id, duplicate: true };
         if (existing.length >= MAX_QUOTE_ATTACHMENTS || existing.reduce((n, f) => n + f.sizeBytes, 0) + file.sizeBytes > MAX_QUOTE_ATTACHMENT_TOTAL)
           throw new TRPCError({ code: "BAD_REQUEST", message: "Limite allegati: 20 file e 50 MB complessivi per preventivo" });
-        const inserted = await tx.insert(quoteAttachments).values({ ...file, rootId, userId: ctx.user.id });
+        const inserted = await tx.insert(quoteAttachments).values({ ...file, rootId, userId: ctx.user.id, includeInPdf: false });
         return { id: Number(inserted[0].insertId), duplicate: false };
       });
+    } catch (error) { return tableError(error); }
+  }),
+  // v19: eliminazione esplicita. Stessi permessi del caricamento (autore o admin)
+  // e verifica che il file appartenga all'archivio condiviso (rootId) del preventivo.
+  remove: authedQuery.input(quoteIdInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    const db = getDb();
+    const { quote, rootId } = await quoteRoot(db, input.quoteId);
+    if (quote.userId !== ctx.user.id && ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN", message: "Solo l’autore o un amministratore può eliminare allegati" });
+    try {
+      const [file] = await db.select({ id: quoteAttachments.id }).from(quoteAttachments)
+        .where(and(eq(quoteAttachments.id, input.id), eq(quoteAttachments.rootId, rootId))).limit(1);
+      if (!file) throw new TRPCError({ code: "NOT_FOUND", message: "Allegato non trovato per questo preventivo" });
+      await db.delete(quoteAttachments).where(and(eq(quoteAttachments.id, input.id), eq(quoteAttachments.rootId, rootId)));
+      return { id: input.id, deleted: true };
+    } catch (error) { return tableError(error); }
+  }),
+  // v19: scelta «Includi nel PDF cliente», salvata e mantenuta alla riapertura.
+  setIncludeInPdf: authedQuery.input(quoteIdInput.extend({
+    id: z.number().int().positive(), include: z.boolean(),
+  })).mutation(async ({ ctx, input }) => {
+    const db = getDb();
+    const { quote, rootId } = await quoteRoot(db, input.quoteId);
+    if (quote.userId !== ctx.user.id && ctx.user.role !== "admin")
+      throw new TRPCError({ code: "FORBIDDEN", message: "Solo l’autore o un amministratore può modificare gli allegati" });
+    try {
+      const [file] = await db.select({ id: quoteAttachments.id }).from(quoteAttachments)
+        .where(and(eq(quoteAttachments.id, input.id), eq(quoteAttachments.rootId, rootId))).limit(1);
+      if (!file) throw new TRPCError({ code: "NOT_FOUND", message: "Allegato non trovato per questo preventivo" });
+      await db.update(quoteAttachments).set({ includeInPdf: input.include })
+        .where(and(eq(quoteAttachments.id, input.id), eq(quoteAttachments.rootId, rootId)));
+      return { id: input.id, includeInPdf: input.include };
     } catch (error) { return tableError(error); }
   }),
 });

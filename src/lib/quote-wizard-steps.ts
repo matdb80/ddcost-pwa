@@ -13,7 +13,7 @@ export type QuoteWizardStep = {
   id:string; title:string; section:string; hint:string;
   field?:string; index?:number; required?:boolean;
   kind?:"text"|"select"|"number"|"textarea"|"checkbox"|"multiselect";
-  numeric?:"euro"|"decimal"|"percent";
+  numeric?:"euro"|"decimal"|"percent"|"integer";
   advanced?:boolean;
   maxLength?:number;
 };
@@ -30,6 +30,7 @@ export function buildQuoteWizardSteps(doc:QuoteDocument,advanced=false):QuoteWiz
       step("riferimento_preventivo","Riferimento Interno","Intestazione","Numero o riferimento interno, facoltativo.",{field:"riferimento_preventivo",kind:"text",advanced:true}),
       step("titolo_preventivo","Riferimento Cliente","Intestazione","Riferimento indicato dal cliente.",{field:"titolo_preventivo",kind:"text",advanced:true}),
     ]:[]),
+    step("consegna_settimane","Consegna stimata (settimane)","Intestazione","Facoltativo: numero intero di settimane dalla conferma scritta dell'ordine. Lascia vuoto per omettere la dicitura dal PDF cliente.",{field:"consegna_settimane",kind:"number",numeric:"integer"}),
   ];
   if(hasStandard && version>=3){
     steps.push(step("lavoro_modalita","Come attribuire le ore di lavorazione?","Attribuzione dei costi comuni",

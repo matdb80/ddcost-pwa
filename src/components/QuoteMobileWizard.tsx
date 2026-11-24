@@ -21,6 +21,9 @@ import LaborCostField from "@/components/LaborCostField";
 import ArticleCodeInput from "@/components/ArticleCodeInput";
 import StandardBlackFinish from "@/components/StandardBlackFinish";
 import {manualTemporaryCodePrefix,isNaturalTemporaryCode} from "@/lib/ral-pricing";
+import RalTypedCodeNotice from "@/components/RalTypedCodeNotice";
+import RalRowSupplement from "@/components/RalRowSupplement";
+import {quoteRalTypedCodeError,quoteRalTypedCodeIssues} from "@/lib/quote-ral-typed-code";
 import QuoteTotal from "@/components/QuoteTotal";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { QUOTE_MATERIAL_GEOMETRIES, QUOTE_MATERIAL_HELP, quoteMaterialGeometry } from "@/lib/quote-material-weight";
@@ -130,6 +133,15 @@ export default function QuoteMobileWizard(props:Props){
   const submit=(overwrite=false)=>{
     const invalid=steps.find(s=>quoteWizardStepError(s,doc));
     if(invalid){goto(invalid.id);setLocalError("Completa questo campo prima di salvare il preventivo.");return;}
+    // v23: un codice RAL «cotto» blocca il completamento (bozza consentita);
+    // si porta l'utente sul passo del codice della riga da correggere.
+    const ralIssues=quoteRalTypedCodeIssues(doc);
+    if(ralIssues.length){
+      const first=ralIssues[0].index;
+      goto(steps.some(s=>s.id==="p:"+first+":codice")?"p:"+first+":codice":"p:"+first+":descrizione");
+      setLocalError(quoteRalTypedCodeError(doc)!);
+      return;
+    }
     if(overwrite)onSaveOverwrite();else onSave();
   };
   const productIndex=current.index;
@@ -139,7 +151,10 @@ export default function QuoteMobileWizard(props:Props){
   const updateValue=(v:unknown)=>{
     setLocalError("");
     if(!field)return;
-    if(productIndex===undefined)onUpdate(field,v,current.kind==="number"||field==="trattamenti_modalita"||field==="lavoro_modalita");
+    // v22: «consegna_settimane» è un dato di testata non economico (sul desktop
+    // è già trattato così): cambiarlo non deve segnare il preventivo da
+    // ricalcolare, altrimenti il salvataggio riscriverebbe gli importi storici.
+    if(productIndex===undefined)onUpdate(field,v,(current.kind==="number"||field==="trattamenti_modalita"||field==="lavoro_modalita")&&field!=="consegna_settimane");
     else onUpdateProduct(productIndex,field,v);
   };
   const createNewGroup=async()=>{
@@ -299,6 +314,9 @@ export default function QuoteMobileWizard(props:Props){
                   <span className="shrink-0 font-semibold">{hasPreview?"€ "+euro(preview?.prodotti?.[i]?.totale_finale):"—"}</span>
                 </button>
                 {!isFixedPrice(p) && <FormulaTooltip label={`Totale prodotto ${i+1}`} formula={CALCULATION_FORMULAS.quote.productTotal}/>}
+                {/* v23/v24: supplemento RAL sotto ogni riga — «da calcolare», dettaglio dal motore o motivo di esclusione (forfait incluso) */}
+                {doc.verniciatura_ral &&
+                  <RalRowSupplement product={p} calculated={preview?.prodotti?.[i]} ral={doc.verniciatura_ral} showFinal={false} className="basis-full text-xs text-slate-600"/>}
                 {!locked && orderButtons(i)}
                 {!locked && doc.prodotti.length>1 && <button type="button"
                   aria-label={`Elimina prodotto ${i+1}`}
@@ -434,10 +452,10 @@ export default function QuoteMobileWizard(props:Props){
             className={inputClass+(field==="quantita"&&(value===""||value===null||value===undefined)?" quote-quantity-attention":"")}
             kind={current.numeric}
             fractionDigits={field==="prezzo_serie"?4:field==="lavoro_h" && (doc.lavoro_modalita==="per_pezzo" || doc.lavoro_modalita==="per_prodotto") ? 6 : undefined}
-            optional={field==="prezzo_serie"||field==="valore_forfait"||field==="quantita"||field==="prezzo_manuale"||field==="target_totale"}
+            optional={field==="prezzo_serie"||field==="valore_forfait"||field==="quantita"||field==="prezzo_manuale"||field==="target_totale"||field==="consegna_settimane"}
             placeholder={field==="quantita"?"Inserisci la quantità":undefined}
             disabled={locked}
-            value={field==="prezzo_serie"||field==="valore_forfait"||field==="quantita"?value??null:value??(field==="prezzo_manuale"||field==="target_totale"?null:0)}
+            value={field==="prezzo_serie"||field==="valore_forfait"||field==="quantita"?value??null:value??(field==="prezzo_manuale"||field==="target_totale"||field==="consegna_settimane"?null:0)}
             onChange={updateValue}
             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();e.currentTarget.blur();next();}}}/>
         ):current.kind==="textarea"?(
@@ -449,10 +467,14 @@ export default function QuoteMobileWizard(props:Props){
             value={String(value??"")} onChange={e=>updateValue(e.target.value||undefined)}
             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();next();}}}/>
         ):field==="codice" && product?(
-          <ArticleCodeInput id="wizard-input" aria-label="Codice articolo" className={inputClass} disabled={locked}
-            value={String(value??"")} onChange={updateValue}
-            protectedPrefix={!isSeries(product) && !doc.verniciatura_ral?manualTemporaryCodePrefix(product.codice_temporaneo):null}
-            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();next();}}}/>
+          <div className="space-y-3">
+            <ArticleCodeInput id="wizard-input" aria-label="Codice articolo" className={inputClass} disabled={locked}
+              value={String(value??"")} onChange={updateValue}
+              protectedPrefix={!isSeries(product) && !doc.verniciatura_ral?manualTemporaryCodePrefix(product.codice_temporaneo):null}
+              onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();next();}}}/>
+            {/* v23: avviso per codice digitato con RAL «cotto» + anteprima codice PDF */}
+            <RalTypedCodeNotice product={product} ral={doc.verniciatura_ral??null} disabled={locked} onUseStandard={code=>updateValue(code)}/>
+          </div>
         ):current.kind==="text"?(
           <input id="wizard-input" className={inputClass} disabled={locked}
             maxLength={current.maxLength}

@@ -8,7 +8,11 @@ vi.mock("@/providers/trpc",()=>({trpc:{
   quoteAttachment:{
     list:{useQuery:()=>({data:mock.files,isLoading:false})},
     get:{useQuery:({id}:{id:number})=>({data:mock.files.find(f=>f.id===id),isFetching:false})},
-    upload:{useMutation:()=>({mutateAsync:async(input:any)=>{mock.calls.push({name:"upload",input});mock.files.push({...input,id:1,mimeType:"image/png",sizeBytes:8});return {id:1,duplicate:false};}})},
+    upload:{useMutation:()=>({mutateAsync:async(input:any)=>{mock.calls.push({name:"upload",input});mock.files.push({...input,id:1,mimeType:"image/png",sizeBytes:8,includeInPdf:false});return {id:1,duplicate:false};}})},
+    // v19: il mock riproduce il server: nuovi caricamenti deselezionati, scelta ed
+    // eliminazione persistite sull'archivio.
+    setIncludeInPdf:{useMutation:()=>({mutateAsync:async(input:any)=>{mock.calls.push({name:"setIncludeInPdf",input});const f=mock.files.find(x=>x.id===input.id);if(f)f.includeInPdf=input.include;return {id:input.id,includeInPdf:input.include};}})},
+    remove:{useMutation:()=>({mutateAsync:async(input:any)=>{mock.calls.push({name:"remove",input});mock.files=mock.files.filter(f=>f.id!==input.id);return {id:input.id,deleted:true};}})},
   },
   temporaryProduct:{
     reserve:{useMutation:()=>({mutateAsync:async(input:any)=>{mock.calls.push({name:"reserve",input});if(mock.failReserve){mock.failReserve=false;throw new Error("Connessione interrotta");}return {sequence:42,requestKey:input.requestKey};}})},
@@ -110,4 +114,56 @@ it.each([null,{color:"6021",textured:true}])("natural checkbox always produces s
   expect(screen.getByLabelText("Codice temporaneo completo").textContent).toBe("TBC000004260");
   fireEvent.click(screen.getByRole("button",{name:"Usa questo codice"}));
   await waitFor(()=>expect(apply).toHaveBeenCalledWith(expect.objectContaining({code:"TBC000004260",color:null}),ral));
+});
+
+// v19 — controlli per singolo allegato: inclusione nel PDF cliente ed eliminazione.
+const PNG_ROW=(id:number,fileName:string,includeInPdf:boolean|null)=>({id,fileName,mimeType:"image/png",sizeBytes:2048,includeInPdf,dataBase64:"iVBORw0KGgo="});
+it("keeps legacy attachments included and starts new uploads deselected",async()=>{
+  mock.files.push(PNG_ROW(7,"storico.png",null));
+  render(<QuoteAttachments quoteId={5} ensureQuoteId={vi.fn(async()=>5)}/>);
+  fireEvent.click(screen.getByRole("button",{name:"Visualizza allegati"}));
+  const legacy=await screen.findByLabelText("Includi storico.png nel PDF cliente") as HTMLInputElement;
+  expect(legacy.checked).toBe(true);
+  const file=new File([new Uint8Array([137,80,78,71,13,10,26,10])],"nota-interna.png",{type:"image/png"});
+  fireEvent.change(screen.getByLabelText("Seleziona allegati"),{target:{files:[file]}});
+  const uploaded=await screen.findByLabelText("Includi nota-interna.png nel PDF cliente") as HTMLInputElement;
+  expect(uploaded.checked).toBe(false);
+  expect(screen.getByText("Escluso dal PDF cliente")).toBeTruthy();
+});
+it("saves the include-in-PDF choice immediately and keeps it on reopening",async()=>{
+  mock.files.push(PNG_ROW(7,"disegno.png",null));
+  render(<QuoteAttachments quoteId={5} ensureQuoteId={vi.fn(async()=>5)}/>);
+  fireEvent.click(screen.getByRole("button",{name:"Visualizza allegati"}));
+  const box=await screen.findByLabelText("Includi disegno.png nel PDF cliente") as HTMLInputElement;
+  fireEvent.click(box);
+  await waitFor(()=>expect(mock.calls.find(c=>c.name==="setIncludeInPdf")?.input).toEqual({quoteId:5,id:7,include:false}));
+  await waitFor(()=>expect((screen.getByLabelText("Includi disegno.png nel PDF cliente") as HTMLInputElement).checked).toBe(false));
+  expect(screen.getByText("Escluso dal PDF cliente")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button",{name:"Close"}));
+  fireEvent.click(screen.getByRole("button",{name:"Visualizza allegati"}));
+  expect(((await screen.findByLabelText("Includi disegno.png nel PDF cliente")) as HTMLInputElement).checked).toBe(false);
+});
+it("deletes an attachment only after confirmation and allows cancelling",async()=>{
+  mock.files.push(PNG_ROW(7,"disegno.png",true),PNG_ROW(8,"pdf-sbagliato.png",false));
+  render(<QuoteAttachments quoteId={5} ensureQuoteId={vi.fn(async()=>5)}/>);
+  fireEvent.click(screen.getByRole("button",{name:"Visualizza allegati"}));
+  fireEvent.click(await screen.findByRole("button",{name:"Elimina pdf-sbagliato.png"}));
+  const warning=await screen.findByRole("alert");
+  expect(warning.textContent).toContain("pdf-sbagliato.png");
+  expect(warning.textContent).toContain("condiviso tra tutte le revisioni del preventivo");
+  fireEvent.click(screen.getByRole("button",{name:"Annulla"}));
+  expect(mock.calls.filter(c=>c.name==="remove")).toHaveLength(0);
+  expect(screen.getByRole("button",{name:"Elimina pdf-sbagliato.png"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button",{name:"Elimina pdf-sbagliato.png"}));
+  fireEvent.click(await screen.findByRole("button",{name:"Conferma eliminazione"}));
+  await waitFor(()=>expect(mock.calls.find(c=>c.name==="remove")?.input).toEqual({quoteId:5,id:8}));
+  await waitFor(()=>expect(screen.queryByRole("button",{name:"Elimina pdf-sbagliato.png"})).toBeNull());
+  expect(screen.getByRole("button",{name:"Elimina disegno.png"})).toBeTruthy();
+});
+it("offers the PDF checkbox only for images and PDFs, never for other formats",async()=>{
+  mock.files.push({id:9,fileName:"note.txt",mimeType:"text/plain",sizeBytes:512,includeInPdf:null,dataBase64:"Y2lhby=="});
+  render(<QuoteAttachments quoteId={5} ensureQuoteId={vi.fn(async()=>5)}/>);
+  fireEvent.click(screen.getByRole("button",{name:"Visualizza allegati"}));
+  await screen.findByRole("button",{name:"Elimina note.txt"});
+  expect(screen.queryByLabelText("Includi note.txt nel PDF cliente")).toBeNull();
 });
