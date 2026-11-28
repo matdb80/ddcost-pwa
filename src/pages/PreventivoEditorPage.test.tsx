@@ -48,9 +48,9 @@ function mount(doc:Record<string,any>,mobile=false,revision=1){
   const router=createMemoryRouter([{path:"/preventivi/:id",element:<Editor/>}],{initialEntries:["/preventivi/123"]});
   return render(<RouterProvider router={router}/>);
 }
-function mountNew(mobile=false){
+function mountNew(mobile=false, url="/preventivi/new"){
   window.localStorage.setItem("ddcost.quote.mobile-view",mobile?"1":"0");
-  const router=createMemoryRouter([{path:"/preventivi/new",element:<Editor/>},{path:"/preventivi/:id",element:<Editor/>}],{initialEntries:["/preventivi/new"]});
+  const router=createMemoryRouter([{path:"/preventivi/new",element:<Editor/>},{path:"/preventivi/:id",element:<Editor/>}],{initialEntries:[url]});
   return render(<RouterProvider router={router}/>);
 }
 beforeEach(()=>{
@@ -1504,4 +1504,33 @@ it("v24: codice con trattino — avviso senza pulsante, riga da calcolare, blocc
   await waitFor(()=>expect(state.calls.some(c=>c.path==="quote.saveRevision")).toBe(true));
   const saved=JSON.parse(state.calls.find(c=>c.path==="quote.saveRevision")!.input.dataJson);
   expect(saved.prodotti[0]).toMatchObject({codice:"VBCD091Z03IN",ral_percentuale:50,ral_ricarico_cad:8.75,prezzo_netto_unitario_finale:26.25,totale_finale:210});
+});
+
+it("opens the selected revision as an independent editable quote and saves only the copy",async()=>{
+  const issued={sequence:42,family:"FP",material:"B",color:null,code:"TFP0000042BZ"};
+  const original={...blankQuote(),numero_preventivo:"DDC00080/2026",rev:4,root_id:8,
+    stato_preventivo:"completo",esito_commerciale:"vinto",consegna_settimane:4,
+    attachments:[{fileName:"cliente-originale.pdf"}],prodotti:[
+      {...blankProduct(),descrizione:"Staffa",materiale_prodotto:"ottone",codice:issued.code,codice_temporaneo:issued},
+      {...blankProduct(),descrizione:"Montaggio",a_forfait:true,valore_forfait:30}]};
+  const json=JSON.stringify(original);
+  state.data={id:10,rev:4,client:"Cliente originale",reference:"INT123",dataJson:json};
+  mountNew(false,"/preventivi/new?duplica=10");
+  expect((await screen.findAllByLabelText("Descrizione *")).map(field=>(field as HTMLInputElement).value)).toEqual(["Staffa","Montaggio"]);
+  fireEvent.change(screen.getByLabelText("Cliente *"),{target:{value:"Nuovo cliente"}});
+  fireEvent.click(screen.getByRole("button",{name:"Salva bozza"}));
+  await waitFor(()=>expect(state.calls.some(call=>call.path==="quote.saveDraft")).toBe(true));
+  const call=state.calls.find(call=>call.path==="quote.saveDraft")!;
+  expect(call.input.sourceId).toBeUndefined();
+  const copy=JSON.parse(call.input.dataJson);
+  expect(copy).toMatchObject({cliente:"Nuovo cliente",riferimento_preventivo:"INT123",consegna_settimane:4,attachments:[],stato_preventivo:"bozza"});
+  for(const key of ["numero_preventivo","root_id","rev","esito_commerciale"])expect(copy).not.toHaveProperty(key);
+  expect(copy.prodotti).toEqual(original.prodotti);
+  expect(state.data.dataJson).toBe(json);
+});
+
+it("does not open a blank editor when the requested source is missing",async()=>{
+  mountNew(true,"/preventivi/new?duplica=999");
+  expect((await screen.findByRole("alert")).textContent).toContain("Preventivo da duplicare non trovato");
+  expect(screen.queryByRole("button",{name:"Salva bozza"})).toBeNull();
 });

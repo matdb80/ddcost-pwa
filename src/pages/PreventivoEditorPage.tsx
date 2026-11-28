@@ -1,3 +1,4 @@
+import {parseIncompleteQuote} from "@/lib/quote-draft-state";
 import {refreshQuoteSeriesRal} from "@/lib/quote-series-ral-refresh";
 import ProductGroupRename,{type GroupRenameResult} from "@/components/ProductGroupRename";
 import SearchableSelect from "@/components/SearchableSelect";
@@ -15,7 +16,7 @@ import {isSeries,isFixedPrice,seriesProductError} from "@/lib/quote-series";
 import SalesHandoffPanel from "@/components/SalesHandoffPanel";
 import { quoteDocumentNumber } from "@/lib/commercial-offer-number";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useBlocker, useNavigate, useParams } from "react-router";
+import { Link, useBlocker, useNavigate, useParams, useSearchParams } from "react-router";
 import Layout from "@/components/Layout";
 import FormulaTooltip from "@/components/FormulaTooltip";
 import { trpc } from "@/providers/trpc";
@@ -93,6 +94,9 @@ function isPhoneWidth():boolean {
 
 export default function PreventivoEditorPage() {
   const { id } = useParams();
+  const [params] = useSearchParams();
+  const source = params.get("duplica");
+  if (!id && source !== null) return <QuoteCopyEditor key={source} sourceId={Number(source)} />;
   // A different document needs fresh editor state, including leave/save guards.
   return <PreventivoEditor key={id ?? "new"} />;
 }
@@ -101,14 +105,36 @@ function newQuoteWithClientNote(): QuoteDocument {
   return { ...blankQuote(), note_cliente: CUSTOM_PRODUCTS_NOTE.it };
 }
 
-function PreventivoEditor() {
+function QuoteCopyEditor({sourceId}:{sourceId:number}) {
+  const valid = Number.isSafeInteger(sourceId) && sourceId > 0;
+  const query = trpc.quote.get.useQuery({id:sourceId},{enabled:valid,refetchOnWindowFocus:false});
+  if (valid && query.isLoading) return <Layout><p>Caricamento del preventivo da duplicare…</p></Layout>;
+  const source = query.data;
+  let initial;
+  try {
+    if (!valid || !source) throw new Error(query.error?.message || "Preventivo da duplicare non trovato.");
+    const doc = parseIncompleteQuote(source.dataJson ?? "");
+    for (const field of ["id","root_id","rootId","rev","numero_preventivo","created_at","updated_at",
+      "stato_preventivo","esito_commerciale","costi_incompleti_conferma"]) delete doc[field];
+    doc.attachments = [];
+    doc.cliente = source.client ?? doc.cliente ?? "";
+    doc.riferimento_preventivo = source.reference ?? doc.riferimento_preventivo ?? "";
+    initial = normalizeDocumentTemporaryCodes(doc,"prodotti");
+  } catch (err) {
+    return <Layout><p role="alert">{err instanceof Error ? err.message : "Preventivo non leggibile."}</p>
+      <Link to="/preventivi">Torna all’elenco</Link></Layout>;
+  }
+  return <PreventivoEditor initialCopy={initial}/>;
+}
+
+function PreventivoEditor({initialCopy}:{initialCopy?:QuoteDocument}) {
   const { id } = useParams();
   const navigate = useNavigate();
   const isNew = !id;
   const numericId = Number(id ?? 0);
   // R2 (TKT-20261119-86210002): i nuovi preventivi unatantum nascono con la nota
   // fissa sui prodotti custom in "Note cliente"; resta editabile e sostituibile.
-  const [doc, setDoc] = useState<QuoteDocument>(() => isNew ? newQuoteWithClientNote() : blankQuote());
+  const [doc, setDoc] = useState<QuoteDocument>(() => initialCopy ?? (isNew ? newQuoteWithClientNote() : blankQuote()));
   const [viewOverride,setViewOverride]=useState<boolean|null>(readMobileViewChoice);
   const [phoneWidth,setPhoneWidth]=useState(isPhoneWidth);
   const wizardMode=viewOverride ?? phoneWidth;
@@ -743,6 +769,7 @@ function PreventivoEditor() {
         </div>
       )}
       {copyingProduct&&<p role="status">Copia prodotto e assegnazione del nuovo codice in corso…</p>}
+      {initialCopy && <p className="text-sm text-slate-700">Copia in modifica. Il primo salvataggio assegna un nuovo numero. Puoi caricare gli allegati necessari per questo preventivo.</p>}
       {wizardMode&&pdfLanguageSettings}
       {ralUpgradeNotice&&<div role="note" className="rounded-lg border border-amber-400 bg-amber-50 p-3 text-sm">Supplementi RAL aggiornati anche per i prodotti di serie. Controlla il nuovo totale e salva il preventivo per registrare la correzione.</div>}
       {quoteCostCompleteness(doc).issues.length>0&&<div role="note" className="rounded-lg border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950"><strong>Attribuzione dei costi incompleta</strong><ul>{quoteCostCompleteness(doc).issues.map(issue=><li key={issue}>{issue}</li>)}</ul></div>}

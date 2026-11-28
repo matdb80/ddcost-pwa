@@ -9,10 +9,11 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { reserveCommercialDocumentNumber } from "./commercial-document-number";
 import { preserveQuoteNumber, quoteWriteToken } from "./quote-write-guard";
-import { eq, and, desc, sql, inArray, or } from "drizzle-orm";
+import { eq, and, desc, lt, inArray, or } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { quotes, productGroups } from "@db/schema";
+import {quoteSearchMatcher} from "./quote-search";
+import { quotes, productGroups, type Quote } from "@db/schema";
 import {parseIncompleteQuote,quoteIsDraft} from "../src/lib/quote-draft-state";
 import {latestCompletedQuotePerRoot,readQuoteOutcome,summarizeQuoteOutcomes} from "../src/lib/quote-outcomes";
 import {modificationObjectError} from "../src/lib/quote-modification-validation";
@@ -111,16 +112,24 @@ export const quoteRouter = createRouter({
       const search = input.search?.trim();
 
       if (search) {
-        const pattern = `%${search.toLocaleLowerCase("it-IT")}%`;
-        return db
-          .select()
-          .from(quotes)
-          .where(
-            sql`LOWER(${quotes.client}) LIKE ${pattern} OR LOWER(${quotes.reference}) LIKE ${pattern}
-              OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(IF(JSON_VALID(${quotes.dataJson}),${quotes.dataJson},'{}'),'$.numero_preventivo'))) LIKE ${pattern}`
-          )
-          .orderBy(desc(quotes.createdAt))
-          .limit(input.limit);
+        const matches = quoteSearchMatcher(search);
+        const found: Quote[] = [];
+        // Scan newest-first in bounded pages, including documents before the first 500.
+        let cursor: Pick<Quote, "createdAt" | "id"> | undefined;
+        const pageSize = 100;
+        while (found.length < input.limit) {
+          const page: Quote[] = await db.select().from(quotes).where(cursor && or(
+            lt(quotes.createdAt, cursor.createdAt),
+            and(eq(quotes.createdAt, cursor.createdAt), lt(quotes.id, cursor.id))
+          )).orderBy(desc(quotes.createdAt), desc(quotes.id)).limit(pageSize);
+          for (const quote of page) {
+            if (matches(quote)) found.push(quote);
+            if (found.length === input.limit) break;
+          }
+          if (page.length < pageSize) break;
+          cursor = page[page.length - 1];
+        }
+        return found;
       }
 
       return db

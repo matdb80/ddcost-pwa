@@ -2,7 +2,7 @@ import {savedQuoteHasIncompleteCosts} from "@/lib/quote-cost-completeness";
 import Layout from "@/components/Layout";
 import {quoteDocumentNumber} from "@/lib/commercial-offer-number";
 import {trpc} from "@/providers/trpc";
-import {useState} from "react";
+import {useEffect,useState} from "react";
 import {Link} from "react-router";
 import {Plus,Search} from "lucide-react";
 import FormulaTooltip from "@/components/FormulaTooltip";
@@ -18,10 +18,20 @@ const formatDate=(value:Date|string|null)=>{
 };
 const LABELS:Record<QuoteOutcome,string>={in_attesa:"In attesa",vinto:"Vinto",perso:"Perso"};
 
+function DuplicateQuoteLink({id}:{id:number}){
+  return <Link className="block rounded px-2 py-2 text-center font-medium text-emerald-700 hover:underline"
+    to={`/preventivi/new?duplica=${id}`}>Duplica preventivo</Link>;
+}
+
 export default function PreventiviPage(){
   const [search,setSearch]=useState("");
+  const [archiveSearch,setArchiveSearch]=useState("");
+  useEffect(()=>{
+    const timer=setTimeout(()=>setArchiveSearch(search.trim()),250);
+    return ()=>clearTimeout(timer);
+  },[search]);
   const [statusError,setStatusError]=useState("");
-  const {data:quotes,isLoading,isError,error}=trpc.quote.list.useQuery({search,limit:500});
+  const {data:quotes,isLoading,isError,error}=trpc.quote.list.useQuery({search:archiveSearch,limit:500});
   const {data:commercial,isLoading:loadingSummary,isError:summaryError}=trpc.quote.outcomeSummary.useQuery();
   const utils=trpc.useUtils();
   const setOutcome=trpc.quote.setOutcome.useMutation({
@@ -69,7 +79,7 @@ export default function PreventiviPage(){
         <div className="relative w-full sm:w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400"/>
           <input type="search" aria-label="Cerca preventivo"
-            placeholder="Cerca per numero, cliente o riferimento"
+            placeholder="Numero, cliente, riferimenti, articolo o RAL"
             className="w-full rounded-lg border border-slate-200 py-2 pl-10 pr-3 text-sm"
             value={search} onChange={e=>setSearch(e.target.value)}/>
         </div>
@@ -116,6 +126,7 @@ export default function PreventiviPage(){
               className="flex min-h-12 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white">
               {draft?"Riprendi bozza":"Apri preventivo"}
             </Link>
+            <DuplicateQuoteLink id={q.id}/>
           </article>;
         })}
       </div>
@@ -163,6 +174,7 @@ export default function PreventiviPage(){
                 </td>
                 <td className="p-3 text-center">
                   <Link className="text-emerald-700 hover:underline" to={`/preventivi/${q.id}`}>{draft?"Riprendi bozza":"Apri / Modifica"}</Link>
+                  <DuplicateQuoteLink id={q.id}/>
                 </td>
               </tr>;
             })}
