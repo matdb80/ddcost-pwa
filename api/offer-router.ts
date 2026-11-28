@@ -1,10 +1,18 @@
+import {validateTemporaryProductDocument} from "./temporary-code-validation";
 import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { commercialOffers } from "@db/schema";
+import { withOfferNumberInJson } from "../src/lib/commercial-offer-number";
+import { previewCommercialDocumentNumber, reserveCommercialDocumentNumber } from "./commercial-document-number";
 
 export const offerRouter = createRouter({
+  nextNumber: authedQuery.query(async () => {
+    const db = getDb();
+    return { number: await previewCommercialDocumentNumber(db) };
+  }),
+
   list: authedQuery
     .input(
       z.object({
@@ -56,15 +64,32 @@ export const offerRouter = createRouter({
         notes: z.string().optional(),
         numRows: z.number().optional(),
         dataJson: z.string().optional(),
+        /** false means name is the untouched preview and should use the assigned DB sequence. */
+        numberEdited: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
-      const result = await db.insert(commercialOffers).values({
-        userId: ctx.user.id,
-        ...input,
+      await validateTemporaryProductDocument(input.dataJson,"righe");
+      const { numberEdited: _numberEdited, ...offer } = input;
+
+      return db.transaction(async (tx) => {
+        const name = await reserveCommercialDocumentNumber(tx);
+        const result = await tx.insert(commercialOffers).values({
+          userId: ctx.user.id,
+          ...offer,
+          // The locked shared counter assigns the document number independently of the row ID.
+          name,
+        });
+        const id = Number(result[0].insertId);
+
+        const dataJson = withOfferNumberInJson(offer.dataJson, name);
+        await tx.update(commercialOffers).set({
+          name,
+          ...(dataJson === undefined ? {} : { dataJson }),
+        }).where(eq(commercialOffers.id, id));
+        return { id, name };
       });
-      return { id: Number(result[0].insertId) };
     }),
 
   update: authedQuery
@@ -81,6 +106,7 @@ export const offerRouter = createRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
+      await validateTemporaryProductDocument(input.dataJson,"righe");
       const { id, ...data } = input;
       await db
         .update(commercialOffers)

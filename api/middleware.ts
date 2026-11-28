@@ -38,5 +38,9 @@ function requireRole(role: string) {
   });
 }
 
-export const authedQuery = t.procedure.use(requireAuth);
+export const signedInQuery = t.procedure.use(requireAuth);
+export const authedQuery = signedInQuery.use(async ({ctx,next})=>{
+  if(ctx.user.commercialOnly)throw new TRPCError({code:"FORBIDDEN",message:"Accesso riservato ai redattori"});
+  return next();
+});
 export const adminQuery = authedQuery.use(requireRole("admin"));

@@ -12,6 +12,7 @@
  * - Session re-verification: allowed-OID and tenant checks run on every request.
  */
 
+import {colleaguePermission} from "./colleague-access";
 import type { Context } from "hono";
 import { setCookie } from "hono/cookie";
 import * as jose from "jose";
@@ -291,13 +292,14 @@ export async function authenticateRequest(headers: Headers) {
   }
 
   // Re-verify authorization on every request (revocation support)
-  if (!isAuthorizedOid(user.unionId)) {
+  const permission = isAuthorizedOid(user.unionId)?"admin":await colleaguePermission(user.unionId);
+  if (!permission) {
     throw Errors.forbidden(
       "Access revoked. Your account is no longer authorized.",
     );
   }
 
-  return user;
+  return {...user, role:permission==="admin"?"admin" as const:"user" as const, commercialOnly:permission==="commercial"};
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -370,29 +372,35 @@ export function createMicrosoftCallbackHandler() {
       return c.json({ error: "State mismatch" }, 400);
     }
 
+    let authPhase = "token_exchange";
     try {
       const tokenResp = await exchangeMicrosoftCode(
         code,
         stateData.pkceVerifier,
       );
+      authPhase = "id_token_verification";
       const claims = await verifyMicrosoftIdToken(
         tokenResp.id_token,
         stateData.nonce,
       );
 
       // ── Authorization: only allowed OIDs may access ──
-      checkAllowedOid(claims.oid);
+      authPhase = "oid_authorization";
+      const permission=isAuthorizedOid(claims.oid)?"admin":await colleaguePermission(claims.oid);
+      if(!permission)checkAllowedOid(claims.oid);
 
       // Upsert user in database (authorized users are admin)
+      authPhase = "database_user_upsert";
       await upsertUser({
         unionId: claims.oid,
         name: claims.name || claims.preferred_username || "Microsoft User",
         email: claims.email || claims.preferred_username || null,
-        role: "admin",
+        role: permission==="admin"?"admin":"user",
         lastSignInAt: new Date(),
       });
 
       // Create session JWT (unionId = Microsoft OID, clientId = Tenant ID)
+      authPhase = "session_signing";
       const sessionToken = await signSessionToken({
         unionId: claims.oid,
         clientId: claims.tid,
@@ -405,8 +413,13 @@ export function createMicrosoftCallbackHandler() {
       });
 
       return c.redirect(stateData.redirectTo, 302);
-    } catch (err: any) {
-      console.error("[Microsoft OAuth] Callback failed");
+    } catch {
+      // Stage-only diagnostic: log the step, never tokens, passwords, or DB URLs.
+      if (env.appOrigin === "https://ddcost-collaudo.onrender.com") {
+        console.error("[Microsoft OAuth] Callback failed at phase:", authPhase);
+      } else {
+        console.error("[Microsoft OAuth] Callback failed");
+      }
       return c.json({ error: "Authentication failed" }, 500);
     }
   };

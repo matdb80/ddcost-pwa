@@ -1,0 +1,1493 @@
+[
+  {
+    "code": "1000",
+    "hex": "#BEBD7F",
+    "group": "gialli",
+    "name": "Beige verdastro",
+    "english": "Green beige"
+  },
+  {
+    "code": "1001",
+    "hex": "#C2B078",
+    "group": "gialli",
+    "name": "Beige",
+    "english": "Beige"
+  },
+  {
+    "code": "1002",
+    "hex": "#C6A961",
+    "group": "gialli",
+    "name": "Giallo sabbia",
+    "english": "Sand yellow"
+  },
+  {
+    "code": "1003",
+    "hex": "#E5BE01",
+    "group": "gialli",
+    "name": "Giallo segnale",
+    "english": "Signal yellow"
+  },
+  {
+    "code": "1004",
+    "hex": "#CDA434",
+    "group": "gialli",
+    "name": "Giallo oro",
+    "english": "Golden yellow"
+  },
+  {
+    "code": "1005",
+    "hex": "#A98307",
+    "group": "gialli",
+    "name": "Giallo miele",
+    "english": "Honey yellow"
+  },
+  {
+    "code": "1006",
+    "hex": "#E4A010",
+    "group": "gialli",
+    "name": "Giallo granturco",
+    "english": "Maize yellow"
+  },
+  {
+    "code": "1007",
+    "hex": "#DC9D00",
+    "group": "gialli",
+    "name": "Giallo narciso",
+    "english": "Daffodil yellow"
+  },
+  {
+    "code": "1011",
+    "hex": "#8A6642",
+    "group": "gialli",
+    "name": "Beige marrone",
+    "english": "Brown beige"
+  },
+  {
+    "code": "1012",
+    "hex": "#C7B446",
+    "group": "gialli",
+    "name": "Giallo limone",
+    "english": "Lemon yellow"
+  },
+  {
+    "code": "1013",
+    "hex": "#EAE6CA",
+    "group": "gialli",
+    "name": "Bianco perla",
+    "english": "Oyster white"
+  },
+  {
+    "code": "1014",
+    "hex": "#E1CC4F",
+    "group": "gialli",
+    "name": "Avorio",
+    "english": "Ivory"
+  },
+  {
+    "code": "1015",
+    "hex": "#E6D690",
+    "group": "gialli",
+    "name": "Avorio chiaro",
+    "english": "Light ivory"
+  },
+  {
+    "code": "1016",
+    "hex": "#EDFF21",
+    "group": "gialli",
+    "name": "Giallo zolfo",
+    "english": "Sulfur yellow"
+  },
+  {
+    "code": "1017",
+    "hex": "#F5D033",
+    "group": "gialli",
+    "name": "Giallo zafferano",
+    "english": "Saffron yellow"
+  },
+  {
+    "code": "1018",
+    "hex": "#F8F32B",
+    "group": "gialli",
+    "name": "Giallo zinco",
+    "english": "Zinc yellow"
+  },
+  {
+    "code": "1019",
+    "hex": "#9E9764",
+    "group": "gialli",
+    "name": "Beige grigiastro",
+    "english": "Grey beige"
+  },
+  {
+    "code": "1020",
+    "hex": "#999950",
+    "group": "gialli",
+    "name": "Giallo oliva",
+    "english": "Olive yellow"
+  },
+  {
+    "code": "1021",
+    "hex": "#F3DA0B",
+    "group": "gialli",
+    "name": "Giallo navone",
+    "english": "Rape yellow"
+  },
+  {
+    "code": "1023",
+    "hex": "#FAD201",
+    "group": "gialli",
+    "name": "Giallo traffico",
+    "english": "Traffic yellow"
+  },
+  {
+    "code": "1024",
+    "hex": "#AEA04B",
+    "group": "gialli",
+    "name": "Giallo ocra",
+    "english": "Ochre yellow"
+  },
+  {
+    "code": "1026",
+    "hex": "#FFFF00",
+    "group": "gialli",
+    "name": "Giallo brillante",
+    "english": "Luminous yellow"
+  },
+  {
+    "code": "1027",
+    "hex": "#9D9101",
+    "group": "gialli",
+    "name": "Giallo curry",
+    "english": "Curry"
+  },
+  {
+    "code": "1028",
+    "hex": "#F4A900",
+    "group": "gialli",
+    "name": "Giallo melone",
+    "english": "Melon yellow"
+  },
+  {
+    "code": "1032",
+    "hex": "#D6AE01",
+    "group": "gialli",
+    "name": "Giallo ginestra",
+    "english": "Broom yellow"
+  },
+  {
+    "code": "1033",
+    "hex": "#F3A505",
+    "group": "gialli",
+    "name": "Giallo dalia",
+    "english": "Dahlia yellow"
+  },
+  {
+    "code": "1034",
+    "hex": "#EFA94A",
+    "group": "gialli",
+    "name": "Giallo pastello",
+    "english": "Pastel yellow"
+  },
+  {
+    "code": "1035",
+    "hex": "#6A5D4D",
+    "group": "gialli",
+    "name": "Beige perlato",
+    "english": "Pearl beige"
+  },
+  {
+    "code": "1036",
+    "hex": "#705335",
+    "group": "gialli",
+    "name": "Oro perlato",
+    "english": "Pearl gold"
+  },
+  {
+    "code": "1037",
+    "hex": "#F39F18",
+    "group": "gialli",
+    "name": "Giallo sole",
+    "english": "Sun yellow"
+  },
+  {
+    "code": "2000",
+    "hex": "#ED760E",
+    "group": "arancioni",
+    "name": "Arancio giallastro",
+    "english": "Yellow orange"
+  },
+  {
+    "code": "2001",
+    "hex": "#C93C20",
+    "group": "arancioni",
+    "name": "Arancio rossastro",
+    "english": "Red orange"
+  },
+  {
+    "code": "2002",
+    "hex": "#CB2821",
+    "group": "arancioni",
+    "name": "Arancio sangue",
+    "english": "Vermilion"
+  },
+  {
+    "code": "2003",
+    "hex": "#FF7514",
+    "group": "arancioni",
+    "name": "Arancio pastello",
+    "english": "Pastel orange"
+  },
+  {
+    "code": "2004",
+    "hex": "#F44611",
+    "group": "arancioni",
+    "name": "Arancio puro",
+    "english": "Pure orange"
+  },
+  {
+    "code": "2005",
+    "hex": "#FF2301",
+    "group": "arancioni",
+    "name": "Arancio brillante",
+    "english": "Luminous orange"
+  },
+  {
+    "code": "2007",
+    "hex": "#FFA420",
+    "group": "arancioni",
+    "name": "Arancio chiaro brillante",
+    "english": "Luminous bright orange"
+  },
+  {
+    "code": "2008",
+    "hex": "#F75E25",
+    "group": "arancioni",
+    "name": "Arancio rosso chiaro",
+    "english": "Bright red orange"
+  },
+  {
+    "code": "2009",
+    "hex": "#F54021",
+    "group": "arancioni",
+    "name": "Arancio traffico",
+    "english": "Traffic orange"
+  },
+  {
+    "code": "2010",
+    "hex": "#D84B20",
+    "group": "arancioni",
+    "name": "Arancio segnale",
+    "english": "Signal orange"
+  },
+  {
+    "code": "2011",
+    "hex": "#EC7C26",
+    "group": "arancioni",
+    "name": "Arancio profondo",
+    "english": "Deep orange"
+  },
+  {
+    "code": "2012",
+    "hex": "#E55137",
+    "group": "arancioni",
+    "name": "Arancio salmone",
+    "english": "Salmon orange"
+  },
+  {
+    "code": "2013",
+    "hex": "#C35831",
+    "group": "arancioni",
+    "name": "Arancio perlato",
+    "english": "Pearl orange"
+  },
+  {
+    "code": "2017",
+    "hex": "#FA842B",
+    "group": "arancioni",
+    "name": "Arancio RAL",
+    "english": "RAL orange"
+  },
+  {
+    "code": "3000",
+    "hex": "#AF2B1E",
+    "group": "rossi",
+    "name": "Rosso fuoco",
+    "english": "Flame red"
+  },
+  {
+    "code": "3001",
+    "hex": "#A52019",
+    "group": "rossi",
+    "name": "Rosso segnale",
+    "english": "Signal red"
+  },
+  {
+    "code": "3002",
+    "hex": "#A2231D",
+    "group": "rossi",
+    "name": "Rosso carminio",
+    "english": "Carmine red"
+  },
+  {
+    "code": "3003",
+    "hex": "#9B111E",
+    "group": "rossi",
+    "name": "Rosso rubino",
+    "english": "Ruby red"
+  },
+  {
+    "code": "3004",
+    "hex": "#75151E",
+    "group": "rossi",
+    "name": "Rosso porpora",
+    "english": "Purple red"
+  },
+  {
+    "code": "3005",
+    "hex": "#5E2129",
+    "group": "rossi",
+    "name": "Rosso vino",
+    "english": "Wine red"
+  },
+  {
+    "code": "3007",
+    "hex": "#412227",
+    "group": "rossi",
+    "name": "Rosso nerastro",
+    "english": "Black red"
+  },
+  {
+    "code": "3009",
+    "hex": "#642424",
+    "group": "rossi",
+    "name": "Rosso ossido",
+    "english": "Oxide red"
+  },
+  {
+    "code": "3011",
+    "hex": "#781F19",
+    "group": "rossi",
+    "name": "Rosso marrone",
+    "english": "Brown red"
+  },
+  {
+    "code": "3012",
+    "hex": "#C1876B",
+    "group": "rossi",
+    "name": "Rosso beige",
+    "english": "Beige red"
+  },
+  {
+    "code": "3013",
+    "hex": "#A12312",
+    "group": "rossi",
+    "name": "Rosso pomodoro",
+    "english": "Tomato red"
+  },
+  {
+    "code": "3014",
+    "hex": "#D36E70",
+    "group": "rossi",
+    "name": "Rosa antico",
+    "english": "Antique pink"
+  },
+  {
+    "code": "3015",
+    "hex": "#EA899A",
+    "group": "rossi",
+    "name": "Rosa chiaro",
+    "english": "Light pink"
+  },
+  {
+    "code": "3016",
+    "hex": "#B32821",
+    "group": "rossi",
+    "name": "Rosso corallo",
+    "english": "Coral red"
+  },
+  {
+    "code": "3017",
+    "hex": "#E63244",
+    "group": "rossi",
+    "name": "Rosa",
+    "english": "Rose"
+  },
+  {
+    "code": "3018",
+    "hex": "#D53032",
+    "group": "rossi",
+    "name": "Rosso fragola",
+    "english": "Strawberry red"
+  },
+  {
+    "code": "3020",
+    "hex": "#CC0605",
+    "group": "rossi",
+    "name": "Rosso traffico",
+    "english": "Traffic red"
+  },
+  {
+    "code": "3022",
+    "hex": "#D95030",
+    "group": "rossi",
+    "name": "Rosa salmone",
+    "english": "Salmon pink"
+  },
+  {
+    "code": "3024",
+    "hex": "#F80000",
+    "group": "rossi",
+    "name": "Rosso brillante",
+    "english": "Luminous red"
+  },
+  {
+    "code": "3026",
+    "hex": "#FE0000",
+    "group": "rossi",
+    "name": "Rosso chiaro brillante",
+    "english": "Luminous bright red"
+  },
+  {
+    "code": "3027",
+    "hex": "#C51D34",
+    "group": "rossi",
+    "name": "Rosso lampone",
+    "english": "Raspberry red"
+  },
+  {
+    "code": "3028",
+    "hex": "#CB3234",
+    "group": "rossi",
+    "name": "Rosso puro",
+    "english": "Pure red"
+  },
+  {
+    "code": "3031",
+    "hex": "#B32428",
+    "group": "rossi",
+    "name": "Rosso oriente",
+    "english": "Orient red"
+  },
+  {
+    "code": "3032",
+    "hex": "#721422",
+    "group": "rossi",
+    "name": "Rosso rubino perlato",
+    "english": "Pearl ruby red"
+  },
+  {
+    "code": "3033",
+    "hex": "#B44C43",
+    "group": "rossi",
+    "name": "Rosa perlato",
+    "english": "Pearl pink"
+  },
+  {
+    "code": "4001",
+    "hex": "#6D3461",
+    "group": "viola",
+    "name": "Lilla rossastro",
+    "english": "Red lilac"
+  },
+  {
+    "code": "4002",
+    "hex": "#922B3E",
+    "group": "viola",
+    "name": "Viola rossastro",
+    "english": "Red violet"
+  },
+  {
+    "code": "4003",
+    "hex": "#DE4C8A",
+    "group": "viola",
+    "name": "Erica",
+    "english": "Pink"
+  },
+  {
+    "code": "4004",
+    "hex": "#641C34",
+    "group": "viola",
+    "name": "Viola Bordeaux",
+    "english": "Claret violet"
+  },
+  {
+    "code": "4005",
+    "hex": "#6C4675",
+    "group": "viola",
+    "name": "Lilla bluastro",
+    "english": "Blue lilac"
+  },
+  {
+    "code": "4006",
+    "hex": "#A03472",
+    "group": "viola",
+    "name": "Porpora traffico",
+    "english": "Traffic purple"
+  },
+  {
+    "code": "4007",
+    "hex": "#4A192C",
+    "group": "viola",
+    "name": "Violetto porpora",
+    "english": "Purple violet"
+  },
+  {
+    "code": "4008",
+    "hex": "#924E7D",
+    "group": "viola",
+    "name": "Violetto segnale",
+    "english": "Signal violet"
+  },
+  {
+    "code": "4009",
+    "hex": "#A18594",
+    "group": "viola",
+    "name": "Violetto pastello",
+    "english": "Pastel violet"
+  },
+  {
+    "code": "4010",
+    "hex": "#CF3476",
+    "group": "viola",
+    "name": "Telemagenta",
+    "english": "Telemagenta"
+  },
+  {
+    "code": "4011",
+    "hex": "#8673A1",
+    "group": "viola",
+    "name": "Violetto perlato",
+    "english": "Pearl violet"
+  },
+  {
+    "code": "4012",
+    "hex": "#6C6874",
+    "group": "viola",
+    "name": "Mora perlato",
+    "english": "Pearl blackberry"
+  },
+  {
+    "code": "5000",
+    "hex": "#354D73",
+    "group": "blu",
+    "name": "Blu violaceo",
+    "english": "Violet blue"
+  },
+  {
+    "code": "5001",
+    "hex": "#1F3438",
+    "group": "blu",
+    "name": "Blu verdastro",
+    "english": "Green blue"
+  },
+  {
+    "code": "5002",
+    "hex": "#20214F",
+    "group": "blu",
+    "name": "Blu oltremare",
+    "english": "Ultramarine blue"
+  },
+  {
+    "code": "5003",
+    "hex": "#1D1E33",
+    "group": "blu",
+    "name": "Blu zaffiro",
+    "english": "Sapphire blue"
+  },
+  {
+    "code": "5004",
+    "hex": "#18171C",
+    "group": "blu",
+    "name": "Blu nerastro",
+    "english": "Black blue"
+  },
+  {
+    "code": "5005",
+    "hex": "#1E2460",
+    "group": "blu",
+    "name": "Blu segnale",
+    "english": "Signal blue"
+  },
+  {
+    "code": "5007",
+    "hex": "#3E5F8A",
+    "group": "blu",
+    "name": "Blu brillante",
+    "english": "Brilliant blue"
+  },
+  {
+    "code": "5008",
+    "hex": "#26252D",
+    "group": "blu",
+    "name": "Blu grigiastro",
+    "english": "Grey blue"
+  },
+  {
+    "code": "5009",
+    "hex": "#025669",
+    "group": "blu",
+    "name": "Blu azzurro",
+    "english": "Azure blue"
+  },
+  {
+    "code": "5010",
+    "hex": "#0E294B",
+    "group": "blu",
+    "name": "Blu genziana",
+    "english": "Gentian blue"
+  },
+  {
+    "code": "5011",
+    "hex": "#231A24",
+    "group": "blu",
+    "name": "Blu acciaio",
+    "english": "Steel blue"
+  },
+  {
+    "code": "5012",
+    "hex": "#3B83BD",
+    "group": "blu",
+    "name": "Blu luce",
+    "english": "Light blue"
+  },
+  {
+    "code": "5013",
+    "hex": "#1E213D",
+    "group": "blu",
+    "name": "Blu cobalto",
+    "english": "Cobalt blue"
+  },
+  {
+    "code": "5014",
+    "hex": "#606E8C",
+    "group": "blu",
+    "name": "Blu colomba",
+    "english": "Pigeon blue"
+  },
+  {
+    "code": "5015",
+    "hex": "#2271B3",
+    "group": "blu",
+    "name": "Blu cielo",
+    "english": "Sky blue"
+  },
+  {
+    "code": "5017",
+    "hex": "#063971",
+    "group": "blu",
+    "name": "Blu traffico",
+    "english": "Traffic blue"
+  },
+  {
+    "code": "5018",
+    "hex": "#3F888F",
+    "group": "blu",
+    "name": "Blu turchese",
+    "english": "Turquoise blue"
+  },
+  {
+    "code": "5019",
+    "hex": "#1B5583",
+    "group": "blu",
+    "name": "Blu capri",
+    "english": "Capri blue"
+  },
+  {
+    "code": "5020",
+    "hex": "#1D334A",
+    "group": "blu",
+    "name": "Blu oceano",
+    "english": "Ocean blue"
+  },
+  {
+    "code": "5021",
+    "hex": "#256D7B",
+    "group": "blu",
+    "name": "Blu acqua",
+    "english": "Water blue"
+  },
+  {
+    "code": "5022",
+    "hex": "#252850",
+    "group": "blu",
+    "name": "Blu notte",
+    "english": "Night blue"
+  },
+  {
+    "code": "5023",
+    "hex": "#49678D",
+    "group": "blu",
+    "name": "Blu distante",
+    "english": "Distant blue"
+  },
+  {
+    "code": "5024",
+    "hex": "#5D9B9B",
+    "group": "blu",
+    "name": "Blu pastello",
+    "english": "Pastel blue"
+  },
+  {
+    "code": "5025",
+    "hex": "#2A6478",
+    "group": "blu",
+    "name": "Blu genziana perlato",
+    "english": "Pearl gentian blue"
+  },
+  {
+    "code": "5026",
+    "hex": "#102C54",
+    "group": "blu",
+    "name": "Blu notte perlato",
+    "english": "Pearl night blue"
+  },
+  {
+    "code": "6000",
+    "hex": "#316650",
+    "group": "verdi",
+    "name": "Verde patina",
+    "english": "Patina green"
+  },
+  {
+    "code": "6001",
+    "hex": "#287233",
+    "group": "verdi",
+    "name": "Verde smeraldo",
+    "english": "Emerald green"
+  },
+  {
+    "code": "6002",
+    "hex": "#2D572C",
+    "group": "verdi",
+    "name": "Verde foglia",
+    "english": "Leaf green"
+  },
+  {
+    "code": "6003",
+    "hex": "#424632",
+    "group": "verdi",
+    "name": "Verde oliva",
+    "english": "Olive green"
+  },
+  {
+    "code": "6004",
+    "hex": "#1F3A3D",
+    "group": "verdi",
+    "name": "Verde nerastro",
+    "english": "Black green"
+  },
+  {
+    "code": "6005",
+    "hex": "#2F4538",
+    "group": "verdi",
+    "name": "Verde muschio",
+    "english": "Moss green"
+  },
+  {
+    "code": "6006",
+    "hex": "#3E3B32",
+    "group": "verdi",
+    "name": "Oliva grigiastro",
+    "english": "Grey olive"
+  },
+  {
+    "code": "6007",
+    "hex": "#343B29",
+    "group": "verdi",
+    "name": "Verde bottiglia",
+    "english": "Bottle green"
+  },
+  {
+    "code": "6008",
+    "hex": "#39352A",
+    "group": "verdi",
+    "name": "Verde marrone",
+    "english": "Brown green"
+  },
+  {
+    "code": "6009",
+    "hex": "#31372B",
+    "group": "verdi",
+    "name": "Verde abete",
+    "english": "Fir green"
+  },
+  {
+    "code": "6010",
+    "hex": "#35682D",
+    "group": "verdi",
+    "name": "Verde erba",
+    "english": "Grass green"
+  },
+  {
+    "code": "6011",
+    "hex": "#587246",
+    "group": "verdi",
+    "name": "Verde reseda",
+    "english": "Reseda green"
+  },
+  {
+    "code": "6012",
+    "hex": "#343E40",
+    "group": "verdi",
+    "name": "Verde nerastro",
+    "english": "Black green"
+  },
+  {
+    "code": "6013",
+    "hex": "#6C7156",
+    "group": "verdi",
+    "name": "Verde canna",
+    "english": "Reed green"
+  },
+  {
+    "code": "6014",
+    "hex": "#47402E",
+    "group": "verdi",
+    "name": "Oliva giallastro",
+    "english": "Yellow olive"
+  },
+  {
+    "code": "6015",
+    "hex": "#3B3C36",
+    "group": "verdi",
+    "name": "Oliva nerastro",
+    "english": "Black olive"
+  },
+  {
+    "code": "6016",
+    "hex": "#1E5945",
+    "group": "verdi",
+    "name": "Verde turchese",
+    "english": "Turquoise green"
+  },
+  {
+    "code": "6017",
+    "hex": "#4C9141",
+    "group": "verdi",
+    "name": "Verde maggio",
+    "english": "May green"
+  },
+  {
+    "code": "6018",
+    "hex": "#57A639",
+    "group": "verdi",
+    "name": "Verde giallastro",
+    "english": "Yellow green"
+  },
+  {
+    "code": "6019",
+    "hex": "#BDECB6",
+    "group": "verdi",
+    "name": "Verde pastello",
+    "english": "Pastel green"
+  },
+  {
+    "code": "6020",
+    "hex": "#2E3A23",
+    "group": "verdi",
+    "name": "Verde cromo",
+    "english": "Chrome green"
+  },
+  {
+    "code": "6021",
+    "hex": "#89AC76",
+    "group": "verdi",
+    "name": "Verde pallido",
+    "english": "Pale green"
+  },
+  {
+    "code": "6022",
+    "hex": "#25221B",
+    "group": "verdi",
+    "name": "Oliva brunastro",
+    "english": "Olive drab"
+  },
+  {
+    "code": "6024",
+    "hex": "#308446",
+    "group": "verdi",
+    "name": "Verde traffico",
+    "english": "Traffic green"
+  },
+  {
+    "code": "6025",
+    "hex": "#3D642D",
+    "group": "verdi",
+    "name": "Verde felce",
+    "english": "Fern green"
+  },
+  {
+    "code": "6026",
+    "hex": "#015D52",
+    "group": "verdi",
+    "name": "Verde opale",
+    "english": "Opal green"
+  },
+  {
+    "code": "6027",
+    "hex": "#84C3BE",
+    "group": "verdi",
+    "name": "Verde chiaro",
+    "english": "Light green"
+  },
+  {
+    "code": "6028",
+    "hex": "#2C5545",
+    "group": "verdi",
+    "name": "Verde pino",
+    "english": "Pine green"
+  },
+  {
+    "code": "6029",
+    "hex": "#20603D",
+    "group": "verdi",
+    "name": "Verde menta",
+    "english": "Mint green"
+  },
+  {
+    "code": "6032",
+    "hex": "#317F43",
+    "group": "verdi",
+    "name": "Verde segnale",
+    "english": "Signal green"
+  },
+  {
+    "code": "6033",
+    "hex": "#497E76",
+    "group": "verdi",
+    "name": "Turchese menta",
+    "english": "Mint turquoise"
+  },
+  {
+    "code": "6034",
+    "hex": "#7FB5B5",
+    "group": "verdi",
+    "name": "Turchese pastello",
+    "english": "Pastel turquoise"
+  },
+  {
+    "code": "6035",
+    "hex": "#1C542D",
+    "group": "verdi",
+    "name": "Verde perlato",
+    "english": "Pearl green"
+  },
+  {
+    "code": "6036",
+    "hex": "#193737",
+    "group": "verdi",
+    "name": "Verde opale perlato",
+    "english": "Pearl opal green"
+  },
+  {
+    "code": "6037",
+    "hex": "#008F39",
+    "group": "verdi",
+    "name": "Verde puro",
+    "english": "Pure green"
+  },
+  {
+    "code": "6038",
+    "hex": "#00BB2D",
+    "group": "verdi",
+    "name": "Verde brillante",
+    "english": "Luminous green"
+  },
+  {
+    "code": "7000",
+    "hex": "#78858B",
+    "group": "grigi",
+    "name": "Grigio vaio",
+    "english": "Squirrel grey"
+  },
+  {
+    "code": "7001",
+    "hex": "#8A9597",
+    "group": "grigi",
+    "name": "Grigio argento",
+    "english": "Silver grey"
+  },
+  {
+    "code": "7002",
+    "hex": "#817F68",
+    "group": "grigi",
+    "name": "Grigio oliva",
+    "english": "Olive grey"
+  },
+  {
+    "code": "7003",
+    "hex": "#6C7059",
+    "group": "grigi",
+    "name": "Grigio muschio",
+    "english": "Moss grey"
+  },
+  {
+    "code": "7004",
+    "hex": "#969992",
+    "group": "grigi",
+    "name": "Grigio segnale",
+    "english": "Signal grey"
+  },
+  {
+    "code": "7005",
+    "hex": "#646B63",
+    "group": "grigi",
+    "name": "Grigio topo",
+    "english": "Mouse grey"
+  },
+  {
+    "code": "7006",
+    "hex": "#6D6552",
+    "group": "grigi",
+    "name": "Grigio beige",
+    "english": "Beige grey"
+  },
+  {
+    "code": "7008",
+    "hex": "#6A5F31",
+    "group": "grigi",
+    "name": "Grigio kaki",
+    "english": "Khaki grey"
+  },
+  {
+    "code": "7009",
+    "hex": "#4D5645",
+    "group": "grigi",
+    "name": "Grigio verdastro",
+    "english": "Green grey"
+  },
+  {
+    "code": "7010",
+    "hex": "#4C514A",
+    "group": "grigi",
+    "name": "Grigio tenda",
+    "english": "Tarpaulin grey"
+  },
+  {
+    "code": "7011",
+    "hex": "#434B4D",
+    "group": "grigi",
+    "name": "Grigio ferro",
+    "english": "Iron grey"
+  },
+  {
+    "code": "7012",
+    "hex": "#4E5754",
+    "group": "grigi",
+    "name": "Grigio basalto",
+    "english": "Basalt grey"
+  },
+  {
+    "code": "7013",
+    "hex": "#464531",
+    "group": "grigi",
+    "name": "Grigio marrone",
+    "english": "Brown grey"
+  },
+  {
+    "code": "7015",
+    "hex": "#434750",
+    "group": "grigi",
+    "name": "Grigio ardesia",
+    "english": "Slate grey"
+  },
+  {
+    "code": "7016",
+    "hex": "#293133",
+    "group": "grigi",
+    "name": "Grigio antracite",
+    "english": "Anthracite grey"
+  },
+  {
+    "code": "7021",
+    "hex": "#23282B",
+    "group": "grigi",
+    "name": "Grigio nerastro",
+    "english": "Black grey"
+  },
+  {
+    "code": "7022",
+    "hex": "#332F2C",
+    "group": "grigi",
+    "name": "Grigio ombra",
+    "english": "Umbra grey"
+  },
+  {
+    "code": "7023",
+    "hex": "#686C5E",
+    "group": "grigi",
+    "name": "Grigio calcestruzzo",
+    "english": "Concrete grey"
+  },
+  {
+    "code": "7024",
+    "hex": "#474A51",
+    "group": "grigi",
+    "name": "Grigio grafite",
+    "english": "Graphite grey"
+  },
+  {
+    "code": "7026",
+    "hex": "#2F353B",
+    "group": "grigi",
+    "name": "Grigio granito",
+    "english": "Granite grey"
+  },
+  {
+    "code": "7030",
+    "hex": "#8B8C7A",
+    "group": "grigi",
+    "name": "Grigio pietra",
+    "english": "Stone grey"
+  },
+  {
+    "code": "7031",
+    "hex": "#474B4E",
+    "group": "grigi",
+    "name": "Grigio bluastro",
+    "english": "Blue grey"
+  },
+  {
+    "code": "7032",
+    "hex": "#B8B799",
+    "group": "grigi",
+    "name": "Grigio ghiaia",
+    "english": "Pebble grey"
+  },
+  {
+    "code": "7033",
+    "hex": "#7D8471",
+    "group": "grigi",
+    "name": "Grigio cemento",
+    "english": "Cement grey"
+  },
+  {
+    "code": "7034",
+    "hex": "#8F8B66",
+    "group": "grigi",
+    "name": "Grigio giallastro",
+    "english": "Yellow grey"
+  },
+  {
+    "code": "7035",
+    "hex": "#D7D7D7",
+    "group": "grigi",
+    "name": "Grigio luce",
+    "english": "Light grey"
+  },
+  {
+    "code": "7036",
+    "hex": "#7F7679",
+    "group": "grigi",
+    "name": "Grigio platino",
+    "english": "Platinum grey"
+  },
+  {
+    "code": "7037",
+    "hex": "#7D7F7D",
+    "group": "grigi",
+    "name": "Grigio polvere",
+    "english": "Dusty grey"
+  },
+  {
+    "code": "7038",
+    "hex": "#B5B8B1",
+    "group": "grigi",
+    "name": "Grigio agata",
+    "english": "Agate grey"
+  },
+  {
+    "code": "7039",
+    "hex": "#6C6960",
+    "group": "grigi",
+    "name": "Grigio quarzo",
+    "english": "Quartz grey"
+  },
+  {
+    "code": "7040",
+    "hex": "#9DA1AA",
+    "group": "grigi",
+    "name": "Grigio finestra",
+    "english": "Window grey"
+  },
+  {
+    "code": "7042",
+    "hex": "#8D948D",
+    "group": "grigi",
+    "name": "Grigio traffico A",
+    "english": "Traffic grey A"
+  },
+  {
+    "code": "7043",
+    "hex": "#4E5452",
+    "group": "grigi",
+    "name": "Grigio traffico B",
+    "english": "Traffic grey B"
+  },
+  {
+    "code": "7044",
+    "hex": "#CAC4B0",
+    "group": "grigi",
+    "name": "Grigio seta",
+    "english": "Silk grey"
+  },
+  {
+    "code": "7045",
+    "hex": "#909090",
+    "group": "grigi",
+    "name": "Telegrigio 1",
+    "english": "Telegrey 1"
+  },
+  {
+    "code": "7046",
+    "hex": "#82898F",
+    "group": "grigi",
+    "name": "Telegrigio 2",
+    "english": "Telegrey 2"
+  },
+  {
+    "code": "7047",
+    "hex": "#D0D0D0",
+    "group": "grigi",
+    "name": "Telegrigio 4",
+    "english": "Telegrey 4"
+  },
+  {
+    "code": "7048",
+    "hex": "#898176",
+    "group": "grigi",
+    "name": "Grigio topo perlato",
+    "english": "Pearl mouse grey"
+  },
+  {
+    "code": "8000",
+    "hex": "#826C34",
+    "group": "marroni",
+    "name": "Marrone verdastro",
+    "english": "Green brown"
+  },
+  {
+    "code": "8001",
+    "hex": "#955F20",
+    "group": "marroni",
+    "name": "Marrone ocra",
+    "english": "Ochre brown"
+  },
+  {
+    "code": "8002",
+    "hex": "#6C3B2A",
+    "group": "marroni",
+    "name": "Marrone mogano",
+    "english": "Signal brown"
+  },
+  {
+    "code": "8003",
+    "hex": "#734222",
+    "group": "marroni",
+    "name": "Marrone fango",
+    "english": "Clay brown"
+  },
+  {
+    "code": "8004",
+    "hex": "#8E402A",
+    "group": "marroni",
+    "name": "Marrone rame",
+    "english": "Copper brown"
+  },
+  {
+    "code": "8007",
+    "hex": "#59351F",
+    "group": "marroni",
+    "name": "Marrone capriolo",
+    "english": "Fawn brown"
+  },
+  {
+    "code": "8008",
+    "hex": "#6F4F28",
+    "group": "marroni",
+    "name": "Marrone oliva",
+    "english": "Olive brown"
+  },
+  {
+    "code": "8011",
+    "hex": "#5B3A29",
+    "group": "marroni",
+    "name": "Marrone noce",
+    "english": "Nut brown"
+  },
+  {
+    "code": "8012",
+    "hex": "#592321",
+    "group": "marroni",
+    "name": "Marrone rossiccio",
+    "english": "Red brown"
+  },
+  {
+    "code": "8014",
+    "hex": "#382C1E",
+    "group": "marroni",
+    "name": "Marrone seppia",
+    "english": "Sepia brown"
+  },
+  {
+    "code": "8015",
+    "hex": "#633A34",
+    "group": "marroni",
+    "name": "Marrone castagna",
+    "english": "Chestnut brown"
+  },
+  {
+    "code": "8016",
+    "hex": "#4C2F27",
+    "group": "marroni",
+    "name": "Marrone mogano",
+    "english": "Mahogany brown"
+  },
+  {
+    "code": "8017",
+    "hex": "#45322E",
+    "group": "marroni",
+    "name": "Marrone cioccolato",
+    "english": "Chocolate brown"
+  },
+  {
+    "code": "8019",
+    "hex": "#403A3A",
+    "group": "marroni",
+    "name": "Marrone grigiastro",
+    "english": "Grey brown"
+  },
+  {
+    "code": "8022",
+    "hex": "#212121",
+    "group": "marroni",
+    "name": "Marrone nerastro",
+    "english": "Black brown"
+  },
+  {
+    "code": "8023",
+    "hex": "#A65E2E",
+    "group": "marroni",
+    "name": "Marrone arancio",
+    "english": "Orange brown"
+  },
+  {
+    "code": "8024",
+    "hex": "#79553D",
+    "group": "marroni",
+    "name": "Marrone beige",
+    "english": "Beige brown"
+  },
+  {
+    "code": "8025",
+    "hex": "#755C48",
+    "group": "marroni",
+    "name": "Marrone pallido",
+    "english": "Pale brown"
+  },
+  {
+    "code": "8028",
+    "hex": "#4E3B31",
+    "group": "marroni",
+    "name": "Marrone terra",
+    "english": "Terra brown"
+  },
+  {
+    "code": "8029",
+    "hex": "#763C28",
+    "group": "marroni",
+    "name": "Rame perlato",
+    "english": "Pearl copper"
+  },
+  {
+    "code": "9001",
+    "hex": "#FDF4E3",
+    "group": "bianchi_neri",
+    "name": "Bianco crema",
+    "english": "Cream"
+  },
+  {
+    "code": "9002",
+    "hex": "#E7EBDA",
+    "group": "bianchi_neri",
+    "name": "Bianco grigiastro",
+    "english": "Grey white"
+  },
+  {
+    "code": "9003",
+    "hex": "#F4F4F4",
+    "group": "bianchi_neri",
+    "name": "Bianco segnale",
+    "english": "Signal white"
+  },
+  {
+    "code": "9004",
+    "hex": "#282828",
+    "group": "bianchi_neri",
+    "name": "Nero segnale",
+    "english": "Signal black"
+  },
+  {
+    "code": "9005",
+    "hex": "#0A0A0A",
+    "group": "bianchi_neri",
+    "name": "Nero intenso",
+    "english": "Jet black"
+  },
+  {
+    "code": "9006",
+    "hex": "#A5A5A5",
+    "group": "bianchi_neri",
+    "name": "Alluminio brillante",
+    "english": "White aluminium"
+  },
+  {
+    "code": "9007",
+    "hex": "#8F8F8F",
+    "group": "bianchi_neri",
+    "name": "Alluminio grigiastro",
+    "english": "Grey aluminium"
+  },
+  {
+    "code": "9010",
+    "hex": "#FFFFFF",
+    "group": "bianchi_neri",
+    "name": "Bianco puro",
+    "english": "Pure white"
+  },
+  {
+    "code": "9011",
+    "hex": "#1C1C1C",
+    "group": "bianchi_neri",
+    "name": "Nero grafite",
+    "english": "Graphite black"
+  },
+  {
+    "code": "9016",
+    "hex": "#F6F6F6",
+    "group": "bianchi_neri",
+    "name": "Bianco traffico",
+    "english": "Traffic white"
+  },
+  {
+    "code": "9017",
+    "hex": "#1E1E1E",
+    "group": "bianchi_neri",
+    "name": "Nero traffico",
+    "english": "Traffic black"
+  },
+  {
+    "code": "9018",
+    "hex": "#D7D7D7",
+    "group": "bianchi_neri",
+    "name": "Bianco papiro",
+    "english": "Papyrus white"
+  },
+  {
+    "code": "9023",
+    "hex": "#828282",
+    "group": "bianchi_neri",
+    "name": "Grigio scuro perlato",
+    "english": "Pearl dark grey"
+  }
+]

@@ -5,7 +5,7 @@ import { authenticateRequest } from "./ms-auth";
 export type TrpcContext = {
   req: Request;
   resHeaders: Headers;
-  user?: User;
+  user?: User & {commercialOnly?:boolean};
 };
 
 export async function createContext(

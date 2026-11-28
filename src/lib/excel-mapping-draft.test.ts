@@ -1,0 +1,2 @@
+import {describe,expect,it} from "vitest";import {parseMappingDraft,serializeMappingDraft,type MappingDraft} from "../types/excel-mapping-draft";
+describe("MappingDraft",()=>it("roundtrips decisions",()=>{const d:MappingDraft={schemaVersion:1,id:"x",workbookSha256:"a",productKey:"p",fields:[],problems:[],updatedAt:new Date(0).toISOString()};expect(parseMappingDraft(serializeMappingDraft(d))).toEqual(d)}));
